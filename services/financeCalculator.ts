@@ -93,27 +93,39 @@ export class FinanceCalculator {
             return d >= usageStartDate && d <= usageEndDate;
         });
 
-        const statementBalance = statementTxs
+        // Waterfall Logic:
+        // 1. Calculate Gross Expenses for Statement Period
+        const grossStatementBalance = statementTxs
             .filter(t => t.type === TransactionType.EXPENSE)
-            .reduce((sum, t) => sum + t.amount, 0)
-            -
-            statementTxs
-                .filter(t => t.type === TransactionType.INCOME || (t.type === TransactionType.TRANSFER && t.amount > 0)) // Refunds/Payments
-                .reduce((sum, t) => sum + t.amount, 0);
+            .reduce((sum, t) => sum + t.amount, 0);
 
-        // Unbilled Balance: Everything AFTER Usage End Date
-        const unbilledTxs = relevantTxs.filter(t => {
-            const d = new Date(t.date);
-            return d > usageEndDate;
-        });
-
-        const unbilledBalance = unbilledTxs
+        // 2. Calculate Gross Expenses for Unbilled Period
+        const grossUnbilledBalance = unbilledTxs
             .filter(t => t.type === TransactionType.EXPENSE)
-            .reduce((sum, t) => sum + t.amount, 0)
-            -
-            unbilledTxs
-                .filter(t => t.type === TransactionType.INCOME || (t.type === TransactionType.TRANSFER && t.amount > 0))
-                .reduce((sum, t) => sum + t.amount, 0);
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        // 3. Calculate TOTAL Payments/Refunds (All Time for this asset)
+        // We look at ALL transactions for this asset to find influx of cash (Payment)
+        // This includes manual payments or refunds.
+        // We should really only look at payments made *after* the statement start maybe?
+        // But to be safe and simple: Sum of ALL payments in the 'relevantTxs' list.
+        // Since 'relevantTxs' is all transactions for this asset.
+
+        // Wait, 'transactions' passed in might be global or local? Assuming global filtered.
+        // Let's rely on relevantTxs.
+        const totalPayments = relevantTxs
+            .filter(t => t.type === TransactionType.INCOME || (t.type === TransactionType.TRANSFER && t.toAssetId === asset.id))
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        // 4. Apply Payments to Statement First
+        const statementBalance = Math.max(0, grossStatementBalance - totalPayments);
+
+        // 5. Apply Remaining Payments to Unbilled
+        // Amount used for statement:
+        const paymentUsedForStatement = grossStatementBalance - statementBalance;
+        const remainingPayment = totalPayments - paymentUsedForStatement;
+
+        const unbilledBalance = Math.max(0, grossUnbilledBalance - remainingPayment);
 
         return {
             statementBalance: Math.max(0, statementBalance), // Don't show negative due
