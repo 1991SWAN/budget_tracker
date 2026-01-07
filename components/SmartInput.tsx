@@ -39,7 +39,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     type: TransactionType.EXPENSE,
     category: Category.FOOD,
     memo: '',
-    merchant: '', 
+    merchant: '',
     emoji: '🍔',
     assetId: assets[0]?.id || '',
     toAssetId: ''
@@ -50,7 +50,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
       setMode('manual');
       const isExternal = initialData.type === TransactionType.TRANSFER && !initialData.toAssetId;
       setIsExternalTransfer(isExternal);
-      
+
       // Check if it was an installment (existing logic check)
       if (initialData.installment) {
         setIsInstallment(true);
@@ -90,31 +90,32 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     }
 
     const totalAmount = parseFloat(manualForm.amount);
-    
+
     // Construct the Transaction Object
     const transactionData: Partial<Transaction> = {
-        date: manualForm.date,
-        amount: totalAmount,
-        type: manualForm.type,
-        category: manualForm.category,
-        memo: manualForm.memo,
-        merchant: manualForm.merchant,
-        emoji: manualForm.emoji,
-        assetId: manualForm.assetId,
-        toAssetId: (manualForm.type === TransactionType.TRANSFER && !isExternalTransfer) ? manualForm.toAssetId : undefined
+      date: manualForm.date,
+      amount: totalAmount,
+      type: manualForm.type,
+      category: manualForm.category,
+      memo: manualForm.memo,
+      merchant: manualForm.merchant,
+      emoji: manualForm.emoji,
+      assetId: manualForm.assetId,
+      toAssetId: (manualForm.type === TransactionType.TRANSFER && !isExternalTransfer) ? manualForm.toAssetId : undefined
     };
 
     // Add Installment Metadata if applicable
     if (isInstallment && manualForm.type === TransactionType.EXPENSE && installmentMonths > 1) {
-       transactionData.installment = {
-         totalMonths: installmentMonths,
-         isInterestFree: isInterestFree,
-         monthlyAmount: Math.floor(totalAmount / installmentMonths) // Approximate
-       };
-       // Append info to memo for clarity in list
-       if (!transactionData.memo.includes('Installment')) {
-           transactionData.memo += ` (${installmentMonths}M Installment)`;
-       }
+      transactionData.installment = {
+        totalMonths: installmentMonths,
+        currentMonth: 1, // Start at 1st month
+        isInterestFree: isInterestFree,
+        remainingBalance: totalAmount // Full amount is outstanding initially
+      };
+      // Append info to memo for clarity in list
+      if (!transactionData.memo.includes('Installment')) {
+        transactionData.memo += ` (${installmentMonths}M Installment)`;
+      }
     }
 
     onTransactionsParsed([transactionData]);
@@ -166,20 +167,20 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
             {/* 1. Type Selector - Top Priority, Full Width */}
             <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
               {Object.values(TransactionType).map((t) => (
-                 <button
-                   key={t}
-                   onClick={() => setManualForm({
-                      ...manualForm, 
-                      type: t,
-                      category: t === TransactionType.TRANSFER ? Category.TRANSFER : manualForm.category,
-                      emoji: t === TransactionType.TRANSFER ? CATEGORY_EMOJIS[Category.TRANSFER] : manualForm.emoji
-                   })}
-                   className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${manualForm.type === t 
-                     ? (t === TransactionType.INCOME ? 'bg-white text-emerald-600 shadow-sm' : t === TransactionType.EXPENSE ? 'bg-white text-rose-600 shadow-sm' : 'bg-white text-blue-600 shadow-sm')
-                     : 'text-slate-400 hover:text-slate-600'}`}
-                 >
-                   {t}
-                 </button>
+                <button
+                  key={t}
+                  onClick={() => setManualForm({
+                    ...manualForm,
+                    type: t,
+                    category: t === TransactionType.TRANSFER ? Category.TRANSFER : manualForm.category,
+                    emoji: t === TransactionType.TRANSFER ? CATEGORY_EMOJIS[Category.TRANSFER] : manualForm.emoji
+                  })}
+                  className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${manualForm.type === t
+                    ? (t === TransactionType.INCOME ? 'bg-white text-emerald-600 shadow-sm' : t === TransactionType.EXPENSE ? 'bg-white text-rose-600 shadow-sm' : 'bg-white text-blue-600 shadow-sm')
+                    : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  {t}
+                </button>
               ))}
             </div>
 
@@ -187,12 +188,12 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Date</label>
-                <input type="date" value={manualForm.date} onChange={e => setManualForm({...manualForm, date: e.target.value})} className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-medium"/>
+                <input type="date" value={manualForm.date} onChange={e => setManualForm({ ...manualForm, date: e.target.value })} className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-medium" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Amount</label>
                 <div className="relative">
-                  <input type="number" placeholder="0" value={manualForm.amount} onChange={e => setManualForm({...manualForm, amount: e.target.value})} className="w-full h-10 pl-3 pr-7 bg-white border-2 border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-black text-slate-800"/>
+                  <input type="number" placeholder="0" value={manualForm.amount} onChange={e => setManualForm({ ...manualForm, amount: e.target.value })} className="w-full h-10 pl-3 pr-7 bg-white border-2 border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-black text-slate-800" />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">₩</span>
                 </div>
               </div>
@@ -204,7 +205,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   {manualForm.type === TransactionType.TRANSFER ? 'From Account' : 'Account'}
                 </label>
-                <select value={manualForm.assetId} onChange={e => setManualForm({...manualForm, assetId: e.target.value})} className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-semibold">
+                <select value={manualForm.assetId} onChange={e => setManualForm({ ...manualForm, assetId: e.target.value })} className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-semibold">
                   {assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
@@ -212,7 +213,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
               {manualForm.type === TransactionType.TRANSFER && !isExternalTransfer && (
                 <div className="space-y-1 animate-in slide-in-from-left-2">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">To Account</label>
-                  <select value={manualForm.toAssetId} onChange={e => setManualForm({...manualForm, toAssetId: e.target.value})} className="w-full h-10 px-3 bg-blue-50/50 border border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-semibold text-blue-700">
+                  <select value={manualForm.toAssetId} onChange={e => setManualForm({ ...manualForm, toAssetId: e.target.value })} className="w-full h-10 px-3 bg-blue-50/50 border border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-semibold text-blue-700">
                     <option value="">Select Target</option>
                     {assets.map(a => <option key={a.id} value={a.id} disabled={a.id === manualForm.assetId}>{a.name}</option>)}
                   </select>
@@ -228,12 +229,12 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                   <select value={manualForm.category} onChange={e => handleCategoryChange(e.target.value as Category)} className="w-1/3 h-10 px-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-[10px] font-bold appearance-none">
                     {Object.values(Category).map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
-                  <input type="text" placeholder={manualForm.type === TransactionType.TRANSFER ? "Recipient" : "Merchant"} value={manualForm.merchant} onChange={e => setManualForm({...manualForm, merchant: e.target.value})} className="flex-1 h-10 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs"/>
+                  <input type="text" placeholder={manualForm.type === TransactionType.TRANSFER ? "Recipient" : "Merchant"} value={manualForm.merchant} onChange={e => setManualForm({ ...manualForm, merchant: e.target.value })} className="flex-1 h-10 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" />
                 </div>
               </div>
               <div className="col-span-1 space-y-1 text-center">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 block">Icon</label>
-                <input type="text" value={manualForm.emoji} onChange={e => setManualForm({...manualForm, emoji: e.target.value})} className="w-full h-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-center text-lg"/>
+                <input type="text" value={manualForm.emoji} onChange={e => setManualForm({ ...manualForm, emoji: e.target.value })} className="w-full h-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-center text-lg" />
               </div>
             </div>
 
@@ -253,38 +254,38 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                     </>
                   )}
                 </div>
-                
+
                 {isInstallment && manualForm.type === TransactionType.EXPENSE && (
                   <div className="animate-in fade-in space-y-2">
-                     {/* Months Slider */}
-                     <div className="flex items-center gap-2">
-                       <input type="range" min="2" max="24" value={installmentMonths} onChange={e => setInstallmentMonths(Number(e.target.value))} className="flex-1 h-1.5 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600"/>
-                       <span className="text-[10px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded min-w-[2rem] text-center">{installmentMonths}M</span>
-                     </div>
-                     {/* Interest Toggle */}
-                     <div className="flex items-center justify-between bg-white px-2 py-1 rounded-lg border border-slate-100">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase">Interest Free</span>
-                        <div 
-                           onClick={() => setIsInterestFree(!isInterestFree)}
-                           className={`w-8 h-4 rounded-full p-0.5 cursor-pointer transition-colors ${isInterestFree ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                        >
-                           <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${isInterestFree ? 'translate-x-4' : 'translate-x-0'}`} />
-                        </div>
-                     </div>
+                    {/* Months Slider */}
+                    <div className="flex items-center gap-2">
+                      <input type="range" min="2" max="24" value={installmentMonths} onChange={e => setInstallmentMonths(Number(e.target.value))} className="flex-1 h-1.5 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                      <span className="text-[10px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded min-w-[2rem] text-center">{installmentMonths}M</span>
+                    </div>
+                    {/* Interest Toggle */}
+                    <div className="flex items-center justify-between bg-white px-2 py-1 rounded-lg border border-slate-100">
+                      <span className="text-[9px] font-bold text-slate-500 uppercase">Interest Free</span>
+                      <div
+                        onClick={() => setIsInterestFree(!isInterestFree)}
+                        className={`w-8 h-4 rounded-full p-0.5 cursor-pointer transition-colors ${isInterestFree ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                      >
+                        <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${isInterestFree ? 'translate-x-4' : 'translate-x-0'}`} />
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Memo</label>
-                <input type="text" placeholder="Optional note..." value={manualForm.memo} onChange={e => setManualForm({...manualForm, memo: e.target.value})} className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs"/>
+                <input type="text" placeholder="Optional note..." value={manualForm.memo} onChange={e => setManualForm({ ...manualForm, memo: e.target.value })} className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" />
               </div>
             </div>
 
             {/* 6. Action Footer - Floating look */}
             <div className="flex gap-2 pt-2">
               <button onClick={() => setMode('select')} className="flex-1 py-3 text-slate-400 bg-slate-100 rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancel</button>
-              <button 
+              <button
                 onClick={handleManualSubmit}
                 className="flex-[2] py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl text-xs font-black shadow-lg shadow-blue-100 hover:shadow-blue-200 hover:-translate-y-0.5 active:translate-y-0 transition-all uppercase tracking-tighter"
               >

@@ -10,7 +10,8 @@ export enum AssetType {
   CHECKING = 'CHECKING',
   SAVINGS = 'SAVINGS',
   CREDIT_CARD = 'CREDIT_CARD',
-  INVESTMENT = 'INVESTMENT'
+  INVESTMENT = 'INVESTMENT',
+  LOAN = 'LOAN'
 }
 
 export enum Category {
@@ -32,51 +33,68 @@ export enum BillType {
   INSURANCE = 'INSURANCE',
   INSTALLMENT = 'INSTALLMENT',
   LIVING = 'LIVING',
-  CARD_PAYMENT = 'CARD_PAYMENT' // Added for credit card settlement
+  CARD_PAYMENT = 'CARD_PAYMENT'
+}
+
+export interface CreditCardDetails {
+  limit: number;
+  apr: number;
+  // Flexible Billing Cycle
+  billingCycle: {
+    usageStartDay: number; // e.g. 1st
+    usageEndDay: number;   // e.g. End of month (calculated)
+    paymentDay: number;    // e.g. 14th of next month
+  };
+}
+
+export interface LoanDetails {
+  principal: number; // Original amount
+  interestRate: number;
+  startDate: string;
+  termMonths: number;
+  monthlyPayment?: number; // Fixed monthly payment (principal + interest)
 }
 
 export interface Asset {
   id: string;
   name: string;
   type: AssetType;
-  balance: number; 
+  balance: number;
   currency: string;
   color?: string;
   description?: string;
-  
-  // Credit Card Specifics
-  limit?: number;
-  billingDay?: number;
-  paymentDay?: number;
-  apr?: number; // Annual Percentage Rate for interest-bearing installments
-  
-  // Savings/Investment Specifics
+
+  // Type Specifics
+  creditDetails?: CreditCardDetails;
+  loanDetails?: LoanDetails;
+
+  // Legacy support for migration (optional)
   interestRate?: number;
+  limit?: number; // Deprecated, move to creditDetails
 }
 
 export interface Transaction {
   id: string;
-  date: string; // YYYY-MM-DD string for display grouping
-  timestamp?: number; // Epoch time for precise matching
+  date: string;
+  timestamp?: number;
   amount: number;
   type: TransactionType;
   category: Category | string;
   memo: string;
-  emoji?: string; 
-  merchant?: string; 
-  assetId: string; 
-  toAssetId?: string; 
-  
-  // Data Integrity & Linking
-  hashKey?: string; // Unique identifier (Asset + Time + Amount + Memo)
-  linkedTransactionId?: string; // For matched transfers
-  originalText?: string; // Raw CSV description for matching logic
+  emoji?: string;
+  merchant?: string;
+  assetId: string;
+  toAssetId?: string;
+
+  hashKey?: string;
+  linkedTransactionId?: string;
+  originalText?: string;
 
   installment?: {
     totalMonths: number;
+    currentMonth: number; // 1-based index (e.g. 3 of 12)
     isInterestFree: boolean;
-    monthlyAmount?: number;
-    interestRate?: number; // Specific interest rate for this purchase
+    remainingBalance: number; // helper for display
   };
 }
 
@@ -93,7 +111,6 @@ export interface RecurringTransaction {
     totalAmount: number;
     totalMonths: number;
     isInterestFree: boolean;
-    feePerMonth?: number; // Calculated interest fee
   };
 }
 
