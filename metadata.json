@@ -1,0 +1,7 @@
+{
+  "name": "SmartPenny",
+  "description": "An AI-powered personal finance manager for tracking expenses, assets, and analyzing spending habits using OCR and natural language processing.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
