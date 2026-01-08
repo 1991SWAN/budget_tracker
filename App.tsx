@@ -110,9 +110,20 @@ const App: React.FC = () => {
     setShowSmartInput(false);
   };
 
+  const handleUpdateParsed = (txs: Partial<Transaction>[]) => {
+    if (editingTransaction && txs.length > 0) {
+      const updated = { ...editingTransaction, ...txs[0] } as Transaction;
+      handleUpdateTransaction(editingTransaction, updated);
+    }
+    setShowSmartInput(false);
+    setEditingTransaction(null);
+  };
+
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !importAssetId) {
+
+
       // Safe check, though UI shouldn't allow this
       return;
     }
@@ -401,8 +412,17 @@ const App: React.FC = () => {
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         <header className="lg:hidden bg-white border-b border-slate-100 p-4 flex justify-between items-center sticky top-0 z-30"><div className="flex items-center space-x-2 text-blue-600"><span className="text-2xl">🪙</span><span className="font-bold text-slate-900">SmartPenny</span></div><button onClick={() => setIsSidebarOpen(true)} className="p-2 text-slate-600 text-2xl">☰</button></header>
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth"><div className="max-w-5xl mx-auto">
-          {showSmartInput && <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm overflow-y-auto"><div className="w-full max-w-lg md:max-w-3xl my-auto"><SmartInput onTransactionsParsed={handleSmartParsed} onCancel={() => setShowSmartInput(false)} assets={assets} initialData={editingTransaction} /></div></div>}
-          {view === 'dashboard' && <Dashboard
+          {showSmartInput && (
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+              <SmartInput
+                onTransactionsParsed={editingTransaction ? handleUpdateParsed : handleSmartParsed}
+                onCancel={() => { setShowSmartInput(false); setEditingTransaction(null); }}
+                assets={assets}
+                initialData={editingTransaction}
+                transactions={transactions} // Pass history for autocomplete
+              />
+            </div>
+          )}    {view === 'dashboard' && <Dashboard
             transactions={transactions}
             assets={assets}
             recurring={recurring}

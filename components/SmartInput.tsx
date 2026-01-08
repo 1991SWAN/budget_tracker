@@ -1,29 +1,17 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GeminiService } from '../services/geminiService';
 import { Transaction, TransactionType, Category, Asset, AssetType } from '../types';
+import { CATEGORY_EMOJIS } from '../constants';
 
 interface SmartInputProps {
   onTransactionsParsed: (transactions: Partial<Transaction>[]) => void;
   onCancel: () => void;
   assets: Asset[];
   initialData?: Transaction | null;
+  transactions?: Transaction[]; // For Autocomplete history
 }
 
-const CATEGORY_EMOJIS: Record<string, string> = {
-  [Category.FOOD]: '🍔',
-  [Category.TRANSPORT]: '🚌',
-  [Category.SHOPPING]: '🛍️',
-  [Category.HOUSING]: '🏠',
-  [Category.UTILITIES]: '⚡',
-  [Category.HEALTH]: '🏥',
-  [Category.ENTERTAINMENT]: '🎬',
-  [Category.SALARY]: '💰',
-  [Category.INVESTMENT]: '📈',
-  [Category.TRANSFER]: '💸',
-  [Category.OTHER]: '📦'
-};
-
-const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel, assets, initialData }) => {
+const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel, assets, initialData, transactions = [] }) => {
   const [mode, setMode] = useState<'select' | 'ocr' | 'text' | 'manual'>('select');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +32,16 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     assetId: assets[0]?.id || '',
     toAssetId: ''
   });
+
+  // Unique Merchants for Autocomplete
+  const uniqueMerchants = useMemo(() => {
+    const merchants = new Set<string>();
+    transactions.forEach(t => {
+      if (t.merchant) merchants.add(t.merchant);
+    });
+    return Array.from(merchants).sort();
+  }, [transactions]);
+
 
   useEffect(() => {
     if (initialData) {
@@ -131,7 +129,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
   }
 
   return (
-    <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden w-full max-w-full mx-auto flex flex-col">
+    <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden w-full max-w-full mx-auto flex flex-col max-h-[90vh]">
       {/* Compact Header */}
       <div className="bg-slate-50/80 backdrop-blur-sm px-6 py-3 flex justify-between items-center border-b border-slate-100 shrink-0">
         <h3 className="text-sm sm:text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -146,7 +144,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
         </button>
       </div>
 
-      <div className="p-4 sm:p-5 overflow-y-auto max-h-[80vh] sm:max-h-none scroll-smooth">
+      <div className="p-4 sm:p-5 overflow-y-auto scroll-smooth">
         {mode === 'select' && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {['manual', 'ocr', 'text'].map((m) => (
@@ -165,7 +163,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
         {mode === 'manual' && (
           <div className="flex flex-col gap-4">
             {/* 1. Type Selector - Top Priority, Full Width */}
-            <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+            <div className="flex bg-slate-100 p-1 rounded-xl gap-1 shrink-0">
               {Object.values(TransactionType).map((t) => (
                 <button
                   key={t}
@@ -185,7 +183,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
             </div>
 
             {/* 2. Core Row: Date & Amount (50/50 split) */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 shrink-0">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Date</label>
                 <input type="date" value={manualForm.date} onChange={e => setManualForm({ ...manualForm, date: e.target.value })} className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-medium" />
@@ -200,7 +198,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
             </div>
 
             {/* 3. Account Row: Linked logic (From -> To for transfers, else Single Account) */}
-            <div className={`grid gap-3 ${manualForm.type === TransactionType.TRANSFER && !isExternalTransfer ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <div className={`grid gap-3 shrink-0 ${manualForm.type === TransactionType.TRANSFER && !isExternalTransfer ? 'grid-cols-2' : 'grid-cols-1'}`}>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   {manualForm.type === TransactionType.TRANSFER ? 'From Account' : 'Account'}
@@ -221,25 +219,53 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
               )}
             </div>
 
-            {/* 4. Categorization Row: Category & Emoji (Compressed) */}
-            <div className="grid grid-cols-4 gap-3">
-              <div className="col-span-3 space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Category & Merchant</label>
-                <div className="flex gap-2">
-                  <select value={manualForm.category} onChange={e => handleCategoryChange(e.target.value as Category)} className="w-1/3 h-10 px-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-[10px] font-bold appearance-none">
-                    {Object.values(Category).map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <input type="text" placeholder={manualForm.type === TransactionType.TRANSFER ? "Recipient" : "Merchant"} value={manualForm.merchant} onChange={e => setManualForm({ ...manualForm, merchant: e.target.value })} className="flex-1 h-10 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" />
+            {/* 4. Categorization Row: Category & Merchant */}
+            <div className="space-y-3 shrink-0">
+              {/* 4.1 Merchant with Autocomplete */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  {manualForm.type === TransactionType.TRANSFER ? "Recipient" : "Merchant"}
+                </label>
+                <div>
+                  <input
+                    type="text"
+                    list="merchant-suggestions"
+                    placeholder="Starbucks..."
+                    value={manualForm.merchant}
+                    onChange={e => setManualForm({ ...manualForm, merchant: e.target.value })}
+                    className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-medium"
+                  />
+                  <datalist id="merchant-suggestions">
+                    {uniqueMerchants.map((m, i) => <option key={i} value={m} />)}
+                  </datalist>
                 </div>
               </div>
-              <div className="col-span-1 space-y-1 text-center">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 block">Icon</label>
-                <input type="text" value={manualForm.emoji} onChange={e => setManualForm({ ...manualForm, emoji: e.target.value })} className="w-full h-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-center text-lg" />
+
+              {/* 4.2 Category Grid Picker */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Category</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {Object.values(Category).map(cat => {
+                    const isSelected = manualForm.category === cat;
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => handleCategoryChange(cat)}
+                        className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all border ${isSelected ? 'bg-blue-50 border-blue-200 shadow-sm scale-105' : 'bg-slate-50 border-transparent hover:bg-slate-100'}`}
+                      >
+                        <span className="text-xl mb-1">{CATEGORY_EMOJIS[cat]}</span>
+                        <span className={`text-[9px] font-bold text-center leading-tight ${isSelected ? 'text-blue-700' : 'text-slate-500'}`}>
+                          {cat.replace('&', '').split(' ')[0]}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
             {/* 5. Detail Row: Options & Installment (Expanded Logic) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end shrink-0">
               <div className="bg-slate-50 p-2 rounded-2xl border border-slate-100">
                 <div className="flex bg-white/60 p-0.5 rounded-lg mb-2">
                   {manualForm.type === TransactionType.TRANSFER ? (
@@ -283,7 +309,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
             </div>
 
             {/* 6. Action Footer - Floating look */}
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 pt-2 pb-4 shrink-0">
               <button onClick={() => setMode('select')} className="flex-1 py-3 text-slate-400 bg-slate-100 rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancel</button>
               <button
                 onClick={handleManualSubmit}
