@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Transaction, Asset, View, TransactionType, Category, RecurringTransaction, SavingsGoal, BillType, AssetType } from './types';
 import { StorageService } from './services/storageService';
+import { SupabaseService } from './services/supabaseService';
 import { ImportService } from './services/importService';
 import Dashboard from './components/Dashboard';
 import AssetManager from './components/AssetManager';
@@ -37,41 +38,63 @@ const App: React.FC = () => {
   const [importAssetId, setImportAssetId] = useState<string>('');
 
   useEffect(() => {
-    setTransactions(StorageService.getTransactions());
-    setAssets(StorageService.getAssets());
-    setRecurring(StorageService.getRecurringExpenses());
-    setGoals(StorageService.getSavingsGoals());
-    setMonthlyBudget(StorageService.getBudget());
+    loadData();
   }, []);
 
-  useEffect(() => { StorageService.saveTransactions(transactions); }, [transactions]);
-  useEffect(() => { StorageService.saveAssets(assets); }, [assets]);
-  useEffect(() => { StorageService.saveRecurringExpenses(recurring); }, [recurring]);
-  useEffect(() => { StorageService.saveSavingsGoals(goals); }, [goals]);
-  useEffect(() => { StorageService.saveBudget(monthlyBudget); }, [monthlyBudget]);
+  const loadData = async () => {
+    const [txs, assts, recs, gls] = await Promise.all([
+      SupabaseService.getTransactions(),
+      SupabaseService.getAssets(),
+      SupabaseService.getRecurring(),
+      SupabaseService.getGoals()
+    ]);
+    setTransactions(txs);
+    setAssets(assts);
+    setRecurring(recs);
+    setGoals(gls);
+    // Budget is still local for now or we can tack it onto a settings table later
+    setMonthlyBudget(StorageService.getBudget());
+  };
+
+  // Optimistic updates are handled in state, but we need to persist changes
+  // We will wrap state setters or call Service directly in handlers
+
 
   const handleAddTransaction = (newTx: Transaction) => {
+    SupabaseService.saveTransaction(newTx);
     setTransactions(prev => [newTx, ...prev]);
     updateAssetsWithTransaction(newTx);
   };
 
   const updateAssetsWithTransaction = (tx: Transaction, multiplier: number = 1) => {
-    setAssets(prev => prev.map(a => {
-      // Direct Impact
-      if (a.id === tx.assetId && !tx.toAssetId) {
-        const change = tx.type === TransactionType.INCOME ? tx.amount : -tx.amount;
-        return { ...a, balance: a.balance + (change * multiplier) };
-      }
-      // Transfer Impact
-      if (tx.type === TransactionType.TRANSFER) {
-        if (a.id === tx.assetId) return { ...a, balance: a.balance - (tx.amount * multiplier) };
-        if (a.id === tx.toAssetId) return { ...a, balance: a.balance + (tx.amount * multiplier) };
-      }
-      return a;
-    }));
+    setAssets(prev => {
+      const newAssets = prev.map(a => {
+        // Direct Impact
+        if (a.id === tx.assetId && !tx.toAssetId) {
+          const change = tx.type === TransactionType.INCOME ? tx.amount : -tx.amount;
+          return { ...a, balance: a.balance + (change * multiplier) };
+        }
+        // Transfer Impact
+        if (tx.type === TransactionType.TRANSFER) {
+          if (a.id === tx.assetId) return { ...a, balance: a.balance - (tx.amount * multiplier) };
+          if (a.id === tx.toAssetId) return { ...a, balance: a.balance + (tx.amount * multiplier) };
+        }
+        return a;
+      });
+
+      // Persist changes
+      newAssets.forEach(newAsset => {
+        const oldAsset = prev.find(p => p.id === newAsset.id);
+        if (oldAsset && oldAsset.balance !== newAsset.balance) {
+          SupabaseService.saveAsset(newAsset);
+        }
+      });
+      return newAssets;
+    });
   };
 
   const handleUpdateTransaction = (oldTx: Transaction, newTx: Transaction) => {
+    SupabaseService.saveTransaction(newTx);
     setTransactions(prev => prev.map(t => t.id === newTx.id ? newTx : t));
 
     // Asset Rebalancing logic
@@ -90,7 +113,16 @@ const App: React.FC = () => {
         }
       };
       applyEffect(oldTx, -1); applyEffect(newTx, 1);
-      return Array.from(assetMap.values());
+
+      const newAssets = Array.from(assetMap.values());
+      // Persist changes
+      newAssets.forEach(newAsset => {
+        const oldAsset = prev.find(p => p.id === newAsset.id);
+        if (oldAsset && oldAsset.balance !== newAsset.balance) {
+          SupabaseService.saveAsset(newAsset);
+        }
+      });
+      return newAssets;
     });
   };
 
@@ -128,6 +160,9 @@ const App: React.FC = () => {
 
     // 2. Update Assets (Reverse the effect of the deleted transaction)
     updateAssetsWithTransaction(tx, -1);
+
+    // Persist Delete
+    SupabaseService.deleteTransaction(tx.id);
   };
 
   const handleSmartParsed = (parsedTxs: Partial<Transaction>[]) => {
@@ -247,22 +282,31 @@ const App: React.FC = () => {
     // (Logic simplified for brevity as it matches existing code exactly for Bill/Goal updates)
     // Re-implementing strictly needed parts for the modal handlers to work
     if (modalType === 'bill') {
-      // ... (existing implementation)
       const action = selectedItem ? 'update' : 'add';
-      const data = { id: selectedItem?.id, name: formData.name, amount: Number(formData.amount), dayOfMonth: Number(formData.dayOfMonth), category: formData.category, billType: formData.billType };
-      if (action === 'add') setRecurring(prev => [...prev, { ...data, id: Date.now().toString() }]);
-      else if (action === 'update') setRecurring(prev => prev.map(r => r.id === data.id ? { ...r, ...data } : r));
+      const data = { id: selectedItem?.id || Date.now().toString(), name: formData.name, amount: Number(formData.amount), dayOfMonth: Number(formData.dayOfMonth), category: formData.category, billType: formData.billType };
+
+      SupabaseService.saveRecurring(data as RecurringTransaction);
+      if (action === 'add') setRecurring(prev => [...prev, data as RecurringTransaction]);
+      else if (action === 'update') setRecurring(prev => prev.map(r => r.id === data.id ? data as RecurringTransaction : r));
+
     } else if (modalType === 'goal') {
-      // ... (existing implementation)
       const action = selectedItem ? 'update' : 'add';
-      const data = { id: selectedItem?.id, name: formData.name, targetAmount: Number(formData.targetAmount), emoji: formData.emoji, deadline: formData.deadline };
-      if (action === 'add') setGoals(prev => [...prev, { ...data, id: Date.now().toString() }]);
-      else if (action === 'update') setGoals(prev => prev.map(g => g.id === data.id ? { ...g, ...data } : g));
+      const data = { id: selectedItem?.id || Date.now().toString(), name: formData.name, targetAmount: Number(formData.targetAmount), emoji: formData.emoji, deadline: formData.deadline, currentAmount: selectedItem?.currentAmount || 0 };
+
+      SupabaseService.saveGoal(data as SavingsGoal);
+      if (action === 'add') setGoals(prev => [...prev, data as SavingsGoal]);
+      else if (action === 'update') setGoals(prev => prev.map(g => g.id === data.id ? data as SavingsGoal : g));
+
     } else if (modalType === 'pay-bill') {
       handleAddTransaction({ id: 'bp-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: selectedItem.amount, type: TransactionType.EXPENSE, category: selectedItem.category, memo: `Bill Pay: ${selectedItem.name}`, assetId: paymentAsset, emoji: '⚡' });
     } else if (modalType === 'fund-goal') {
       const amount = Number(formData.amount);
-      setGoals(prev => prev.map(g => g.id === selectedItem.id ? { ...g, currentAmount: g.currentAmount + amount } : g));
+      const targetGoal = goals.find(g => g.id === selectedItem.id);
+      if (targetGoal) {
+        const updatedGoal = { ...targetGoal, currentAmount: targetGoal.currentAmount + amount };
+        SupabaseService.saveGoal(updatedGoal);
+        setGoals(prev => prev.map(g => g.id === updatedGoal.id ? updatedGoal : g));
+      }
       handleAddTransaction({ id: 'gc-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: amount, type: TransactionType.TRANSFER, category: Category.INVESTMENT, memo: `Goal: ${selectedItem.name}`, assetId: paymentAsset, toAssetId: destinationAsset || undefined, emoji: '💰' });
     }
 
@@ -383,8 +427,8 @@ const App: React.FC = () => {
             {modalType !== 'import' && (
               <div className="flex gap-2 pt-4">
                 {(modalType === 'bill' || modalType === 'goal') && selectedItem && <button onClick={() => {
-                  if (modalType === 'bill') { setRecurring(prev => prev.filter(r => r.id !== selectedItem.id)); }
-                  if (modalType === 'goal') { setGoals(prev => prev.filter(g => g.id !== selectedItem.id)); }
+                  if (modalType === 'bill') { SupabaseService.deleteRecurring(selectedItem.id); setRecurring(prev => prev.filter(r => r.id !== selectedItem.id)); }
+                  if (modalType === 'goal') { SupabaseService.deleteGoal(selectedItem.id); setGoals(prev => prev.filter(g => g.id !== selectedItem.id)); }
                   closeModal();
                 }} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg mr-auto text-xl">🗑️</button>}
                 <button onClick={closeModal} className="flex-1 py-2 text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>
@@ -436,8 +480,8 @@ const App: React.FC = () => {
         <header className="lg:hidden bg-white border-b border-slate-100 p-4 flex justify-between items-center sticky top-0 z-30"><div className="flex items-center space-x-2 text-blue-600"><span className="text-2xl">🪙</span><span className="font-bold text-slate-900">SmartPenny</span></div><button onClick={() => setIsSidebarOpen(true)} className="p-2 text-slate-600 text-2xl">☰</button></header>
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth"><div className="max-w-5xl mx-auto">
           {showSmartInput && <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm overflow-y-auto"><div className="w-full max-w-lg md:max-w-3xl my-auto"><SmartInput onTransactionsParsed={handleSmartParsed} onCancel={() => setShowSmartInput(false)} assets={assets} initialData={editingTransaction} /></div></div>}
-          {view === 'dashboard' && <Dashboard transactions={transactions} assets={assets} recurring={recurring} goals={goals} onRecurringChange={(action, item) => { if (action === 'delete' && item.id) setRecurring(prev => prev.filter(r => r.id !== item.id)); else if (action === 'add') setRecurring(prev => [...prev, { ...item, id: Date.now().toString() }]); else if (action === 'update') setRecurring(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r)); else if (action === 'pay') { handleAddTransaction({ id: 'bp-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.EXPENSE, category: item.category, memo: `Bill Pay: ${item.name}`, assetId: item.assetId, emoji: '⚡' }); } }} onGoalChange={(action, item) => { if (action === 'delete' && item.id) setGoals(prev => prev.filter(g => g.id !== item.id)); else if (action === 'add') setGoals(prev => [...prev, { ...item, id: Date.now().toString() }]); else if (action === 'update') setGoals(prev => prev.map(g => g.id === item.id ? { ...g, ...item } : g)); else if (action === 'contribute') { setGoals(prev => prev.map(g => g.id === item.id ? { ...g, currentAmount: g.currentAmount + item.amount } : g)); handleAddTransaction({ id: 'gc-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.TRANSFER, category: Category.INVESTMENT, memo: `Goal: ${item.name}`, assetId: item.assetId, toAssetId: item.toAssetId, emoji: '💰' }); } }} onAddTransaction={handleAddTransaction} monthlyBudget={monthlyBudget} onBudgetChange={setMonthlyBudget} onNavigateToTransactions={(range) => { if (range) setDateRange(range); setView('transactions'); }} />}
-          {view === 'assets' && <AssetManager assets={assets} transactions={transactions} onAdd={a => setAssets(prev => [...prev, a])} onDelete={id => setAssets(prev => prev.filter(a => a.id !== id))} onEdit={a => setAssets(prev => prev.map(old => old.id === a.id ? a : old))} onPay={openPayCard} />}
+          {view === 'dashboard' && <Dashboard transactions={transactions} assets={assets} recurring={recurring} goals={goals} onRecurringChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteRecurring(item.id); setRecurring(prev => prev.filter(r => r.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveRecurring(newItem); setRecurring(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveRecurring(item); setRecurring(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r)); } else if (action === 'pay') { handleAddTransaction({ id: 'bp-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.EXPENSE, category: item.category, memo: `Bill Pay: ${item.name}`, assetId: item.assetId, emoji: '⚡' }); } }} onGoalChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteGoal(item.id); setGoals(prev => prev.filter(g => g.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveGoal(newItem); setGoals(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveGoal(item); setGoals(prev => prev.map(g => g.id === item.id ? { ...g, ...item } : g)); } else if (action === 'contribute') { const updated = { ...item, currentAmount: item.currentAmount + item.amount }; SupabaseService.saveGoal(updated); setGoals(prev => prev.map(g => g.id === item.id ? updated : g)); handleAddTransaction({ id: 'gc-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.TRANSFER, category: Category.INVESTMENT, memo: `Goal: ${item.name}`, assetId: item.assetId, toAssetId: item.toAssetId, emoji: '💰' }); } }} onAddTransaction={handleAddTransaction} monthlyBudget={monthlyBudget} onBudgetChange={setMonthlyBudget} onNavigateToTransactions={(range) => { if (range) setDateRange(range); setView('transactions'); }} />}
+          {view === 'assets' && <AssetManager assets={assets} transactions={transactions} onAdd={a => { SupabaseService.saveAsset(a); setAssets(prev => [...prev, a]); }} onDelete={id => { SupabaseService.deleteAsset(id); setAssets(prev => prev.filter(a => a.id !== id)); }} onEdit={a => { SupabaseService.saveAsset(a); setAssets(prev => prev.map(old => old.id === a.id ? a : old)); }} onPay={openPayCard} />}
           {view === 'transactions' && <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold text-slate-800">Transactions</h2>
