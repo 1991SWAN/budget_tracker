@@ -98,6 +98,25 @@ export const SupabaseService = {
         if (error) console.error('Error saving transaction:', error);
     },
 
+    saveTransactions: async (txs: Transaction[]) => {
+        const rows = txs.map(tx => ({
+            id: tx.id,
+            date: tx.date,
+            timestamp: tx.timestamp,
+            amount: tx.amount,
+            type: tx.type,
+            category: tx.category,
+            memo: tx.memo,
+            emoji: tx.emoji,
+            asset_id: tx.assetId,
+            to_asset_id: tx.toAssetId,
+            linked_transaction_id: tx.linkedTransactionId,
+            installment: tx.installment
+        }));
+        const { error } = await supabase.from('transactions').upsert(rows);
+        if (error) console.error('Error saving transactions:', error);
+    },
+
     deleteTransaction: async (id: string) => {
         const { error } = await supabase.from('transactions').delete().eq('id', id);
         if (error) console.error('Error deleting transaction:', error);

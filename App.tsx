@@ -8,6 +8,7 @@ import Dashboard from './components/Dashboard';
 import AssetManager from './components/AssetManager';
 import SmartInput from './components/SmartInput';
 import { GeminiService } from './services/geminiService';
+import { useTransactionManager } from './hooks/useTransactionManager';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('dashboard');
@@ -43,6 +44,8 @@ const App: React.FC = () => {
     loadData();
   }, []);
 
+  const { addTransaction: handleAddTransaction, addTransactions: handleAddTransactions, updateTransaction: handleUpdateTransaction, deleteTransaction: handleDeleteTransaction } = useTransactionManager(transactions, setTransactions, assets, setAssets);
+
   const loadData = async () => {
     try {
       const [txs, assts, recs, gls] = await Promise.all([
@@ -65,112 +68,7 @@ const App: React.FC = () => {
   // We will wrap state setters or call Service directly in handlers
 
 
-  const handleAddTransaction = (newTx: Transaction) => {
-    SupabaseService.saveTransaction(newTx);
-    setTransactions(prev => [newTx, ...prev]);
-    updateAssetsWithTransaction(newTx);
-    addToast('Transaction added', 'success');
-  };
-
-  const updateAssetsWithTransaction = (tx: Transaction, multiplier: number = 1) => {
-    setAssets(prev => {
-      const newAssets = prev.map(a => {
-        // Direct Impact
-        if (a.id === tx.assetId && !tx.toAssetId) {
-          const change = tx.type === TransactionType.INCOME ? tx.amount : -tx.amount;
-          return { ...a, balance: a.balance + (change * multiplier) };
-        }
-        // Transfer Impact
-        if (tx.type === TransactionType.TRANSFER) {
-          if (a.id === tx.assetId) return { ...a, balance: a.balance - (tx.amount * multiplier) };
-          if (a.id === tx.toAssetId) return { ...a, balance: a.balance + (tx.amount * multiplier) };
-        }
-        return a;
-      });
-
-      // Persist changes
-      newAssets.forEach(newAsset => {
-        const oldAsset = prev.find(p => p.id === newAsset.id);
-        if (oldAsset && oldAsset.balance !== newAsset.balance) {
-          SupabaseService.saveAsset(newAsset);
-        }
-      });
-      return newAssets;
-    });
-  };
-
-  const handleUpdateTransaction = (oldTx: Transaction, newTx: Transaction) => {
-    SupabaseService.saveTransaction(newTx);
-    setTransactions(prev => prev.map(t => t.id === newTx.id ? newTx : t));
-
-    // Asset Rebalancing logic
-    setAssets(prev => {
-      const assetMap = new Map<string, Asset>(prev.map(a => [a.id, { ...a }]));
-      const applyEffect = (tx: Transaction, mult: number) => {
-        if (tx.type === TransactionType.TRANSFER) {
-          const f = assetMap.get(tx.assetId); if (f) f.balance -= tx.amount * mult;
-          const t = tx.toAssetId ? assetMap.get(tx.toAssetId) : null; if (t) t.balance += tx.amount * mult;
-        } else {
-          const a = assetMap.get(tx.assetId);
-          if (a) {
-            const change = tx.type === TransactionType.INCOME ? tx.amount : -tx.amount;
-            a.balance += change * mult;
-          }
-        }
-      };
-      applyEffect(oldTx, -1); applyEffect(newTx, 1);
-
-      const newAssets = Array.from(assetMap.values());
-      // Persist changes
-      newAssets.forEach(newAsset => {
-        const oldAsset = prev.find(p => p.id === newAsset.id);
-        if (oldAsset && oldAsset.balance !== newAsset.balance) {
-          SupabaseService.saveAsset(newAsset);
-        }
-      });
-      return newAssets;
-    });
-  };
-
-  /**
-   * Safe Delete with Cascading Update for Linked Transfers
-   */
-  const handleDeleteTransaction = (tx: Transaction) => {
-    if (!window.confirm("Are you sure you want to delete this transaction?")) return;
-
-    let updatedTransactions = transactions.filter(t => t.id !== tx.id);
-    let linkedTx: Transaction | undefined;
-
-    // 1. Check for Linked Transaction (Transfer Partner)
-    if (tx.linkedTransactionId) {
-      linkedTx = transactions.find(t => t.id === tx.linkedTransactionId);
-      if (linkedTx) {
-        // Unlink the partner
-        const unlinkedPartner: Transaction = {
-          ...linkedTx,
-          linkedTransactionId: undefined,
-          toAssetId: undefined,
-          // Revert type: If I was Transferring OUT, Partner was Transferring IN.
-          // Partner becomes pure INCOME.
-          type: linkedTx.amount > 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
-          category: Category.OTHER, // Safest fallback
-          memo: linkedTx.memo.replace(' (Transfer)', '') // Optional cleanup
-        };
-
-        updatedTransactions = updatedTransactions.map(t => t.id === unlinkedPartner.id ? unlinkedPartner : t);
-        addToast("Linked transfer unlinked (partner reverted)", 'info');
-      }
-    }
-
-    setTransactions(updatedTransactions);
-
-    // 2. Update Assets (Reverse the effect of the deleted transaction)
-    updateAssetsWithTransaction(tx, -1);
-
-    // Persist Delete
-    SupabaseService.deleteTransaction(tx.id);
-    addToast('Transaction deleted', 'success');
-  };
+  // Legacy transaction handlers removed. Logic moved to useTransactionManager.
 
   const handleSmartParsed = (parsedTxs: Partial<Transaction>[]) => {
     const defaultAssetId = assets[0]?.id || '1';
@@ -220,13 +118,17 @@ const App: React.FC = () => {
         const parsedDrafts = ImportService.parseCSV(csvText, importAssetId);
         const { finalNewTxs, updatedExistingTxs } = ImportService.processImportedTransactions(parsedDrafts, transactions);
 
-        setTransactions(prev => {
-          const updatedIds = new Set(updatedExistingTxs.map(t => t.id));
-          const filteredPrev = prev.filter(t => !updatedIds.has(t.id));
-          return [...finalNewTxs, ...updatedExistingTxs, ...filteredPrev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        // Batch Add New Transactions (updates assets automatically via hook)
+        handleAddTransactions(finalNewTxs);
+
+        // Handle Updates (if any)
+        // For now, we will just sync them to DB? Or should we use updateTransaction?
+        // Using loop for safety to update assets if changed.
+        updatedExistingTxs.forEach(updatedTx => {
+          const original = transactions.find(t => t.id === updatedTx.id);
+          if (original) handleUpdateTransaction(original, updatedTx);
         });
 
-        finalNewTxs.forEach(tx => updateAssetsWithTransaction(tx));
         addToast(`Imported ${finalNewTxs.length} transactions (${updatedExistingTxs.length} matched)`, 'success');
       }
     };
@@ -519,7 +421,33 @@ const App: React.FC = () => {
               // Let's just open modal.
             }}
           />}
-          {view === 'assets' && <AssetManager assets={assets} transactions={transactions} onAdd={a => { SupabaseService.saveAsset(a); setAssets(prev => [...prev, a]); }} onDelete={id => { SupabaseService.deleteAsset(id); setAssets(prev => prev.filter(a => a.id !== id)); }} onEdit={a => { SupabaseService.saveAsset(a); setAssets(prev => prev.map(old => old.id === a.id ? a : old)); }} onPay={openPayCard} />}
+          {view === 'assets' && <AssetManager assets={assets} transactions={transactions} onAdd={a => { SupabaseService.saveAsset(a); setAssets(prev => [...prev, a]); }} onDelete={id => { SupabaseService.deleteAsset(id); setAssets(prev => prev.filter(a => a.id !== id)); }} onEdit={async (editedAsset) => {
+            const oldAsset = assets.find(a => a.id === editedAsset.id);
+            if (!oldAsset) return;
+
+            const diff = editedAsset.balance - oldAsset.balance;
+            const metadataOnly = { ...editedAsset, balance: oldAsset.balance };
+
+            // 1. Update Metadata (if changed, or just always to be safe)
+            // We use the OLD balance here to ensure the transaction logic below is the sole source of balance truth.
+            await SupabaseService.saveAsset(metadataOnly);
+            setAssets(prev => prev.map(a => a.id === metadataOnly.id ? metadataOnly : a));
+
+            // 2. Handle Balance Adjustment via Transaction
+            if (diff !== 0) {
+              const tx: Transaction = {
+                id: 'adj-' + Date.now(),
+                date: new Date().toISOString().split('T')[0],
+                amount: Math.abs(diff),
+                type: diff > 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
+                category: Category.OTHER,
+                memo: 'Manual Balance Adjustment',
+                assetId: editedAsset.id,
+                emoji: '🔧'
+              };
+              await handleAddTransaction(tx);
+            }
+          }} onPay={openPayCard} />}
           {view === 'transactions' && <div className="space-y-6">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-4">
