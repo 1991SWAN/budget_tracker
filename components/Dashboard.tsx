@@ -678,10 +678,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, assets, recurring, 
                 {/* Local Toggle for Flow */}
                 <button
                   onClick={() => setFlowTimeframe(prev => prev === 'monthly' ? 'weekly' : 'monthly')}
-                  className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg cursor-pointer hover:bg-slate-200 transition-colors"
+                  className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:bg-slate-200 transition-colors"
                 >
-                  <span className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${flowTimeframe === 'weekly' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Weekly</span>
-                  <span className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${flowTimeframe === 'monthly' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Monthly</span>
+                  {flowTimeframe}
                 </button>
               </div>
 
@@ -733,10 +732,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, assets, recurring, 
                   <h3 className="font-bold text-lg text-slate-800">Spending Trend</h3>
                   <button
                     onClick={() => setTrendTimeframe(prev => prev === 'monthly' ? 'weekly' : 'monthly')}
-                    className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg cursor-pointer hover:bg-slate-200 transition-colors"
+                    className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:bg-slate-200 transition-colors"
                   >
-                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${trendTimeframe === 'weekly' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Weekly</span>
-                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${trendTimeframe === 'monthly' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Monthly</span>
+                    {trendTimeframe}
                   </button>
                 </div>
                 <ResponsiveContainer width="100%" height="80%" key={`trend-bar-${trendTimeframe}`}>
@@ -755,10 +753,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, assets, recurring, 
                   <h3 className="font-bold text-lg text-slate-800">By Category</h3>
                   <button
                     onClick={() => setCategoryTimeframe(prev => prev === 'monthly' ? 'weekly' : 'monthly')}
-                    className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg cursor-pointer hover:bg-slate-200 transition-colors"
+                    className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:bg-slate-200 transition-colors"
                   >
-                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${categoryTimeframe === 'weekly' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Weekly</span>
-                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${categoryTimeframe === 'monthly' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Monthly</span>
+                    {categoryTimeframe}
                   </button>
                 </div>
                 <div className="flex items-center justify-center flex-1">
