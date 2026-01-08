@@ -1,4 +1,5 @@
 import { Transaction, TransactionType, Category } from '../types';
+import { read, utils } from 'xlsx';
 
 export const ImportService = {
   /**
@@ -8,9 +9,9 @@ export const ImportService = {
   generateHashKey: (assetId: string, timestamp: number, amount: number, memo: string): string => {
     // Round timestamp to minute to handle slight OCR/CSV format differences
     // 60000ms = 1 minute
-    const timeKey = Math.floor(timestamp / 60000); 
+    const timeKey = Math.floor(timestamp / 60000);
     const raw = `${assetId}|${timeKey}|${amount}|${memo.trim()}`;
-    
+
     // Simple hash function for browser environment
     let hash = 0;
     for (let i = 0; i < raw.length; i++) {
@@ -36,7 +37,7 @@ export const ImportService = {
 
       // Simple CSV split (Note: robust CSV parsing should handle quoted commas)
       const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-      
+
       // Assuming Format: Date, Description, Amount
       // Adjust indices based on actual bank CSV format
       if (cols.length < 3) continue;
@@ -52,7 +53,7 @@ export const ImportService = {
 
       const timestamp = dateObj.getTime();
       const type = amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENSE;
-      
+
       const hashKey = ImportService.generateHashKey(assetId, timestamp, amount, memo);
 
       parsed.push({
@@ -72,23 +73,93 @@ export const ImportService = {
   },
 
   /**
+   * Parses an Excel file buffer into partial Transaction objects.
+   * Supports .xlsx and .xls formats.
+   */
+  parseExcel: (fileBuffer: ArrayBuffer, assetId: string): Partial<Transaction>[] => {
+    const workbook = read(fileBuffer, { type: 'array', cellDates: true });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+
+    // Convert to JSON array of arrays (header: 1)
+    const rows = utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+    const parsed: Partial<Transaction>[] = [];
+
+    // Skip header row
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.length < 3) continue;
+
+      // Adaptable column mapping (Simple Assumption: Date, Memo, Amount)
+      // TODO: Add smarter column detection in future
+      let dateVal = row[0];
+      const memo = String(row[1] || '').trim();
+      const amountVal = row[2];
+
+      let amount = 0;
+      if (typeof amountVal === 'number') {
+        amount = amountVal;
+      } else {
+        amount = parseFloat(String(amountVal).replace(/,/g, ''));
+      }
+
+      if (isNaN(amount)) continue;
+
+      // Date Handling (cellDates: true makes Excel dates into JS Date objects)
+      let dateStr = '';
+      let timestamp = 0;
+
+      if (dateVal instanceof Date) {
+        dateStr = dateVal.toISOString().split('T')[0];
+        timestamp = dateVal.getTime();
+      } else {
+        // Fallback for string dates
+        const d = new Date(dateVal);
+        if (!isNaN(d.getTime())) {
+          dateStr = d.toISOString().split('T')[0];
+          timestamp = d.getTime();
+        } else {
+          continue; // Invalid date
+        }
+      }
+
+      const type = amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENSE;
+      const hashKey = ImportService.generateHashKey(assetId, timestamp, amount, memo);
+
+      parsed.push({
+        id: `imported-xls-${Date.now()}-${i}`,
+        date: dateStr,
+        timestamp: timestamp,
+        amount: amount,
+        type: type,
+        category: Category.OTHER,
+        memo: memo,
+        assetId: assetId,
+        hashKey: hashKey,
+        originalText: memo
+      });
+    }
+    return parsed;
+  },
+
+  /**
    * Main logic for processing imported transactions.
    * 1. Filters duplicates via hashKey.
    * 2. Performs Transfer Matching Algorithm.
    */
   processImportedTransactions: (
-    newTransactions: Partial<Transaction>[], 
+    newTransactions: Partial<Transaction>[],
     existingTransactions: Transaction[]
-  ): { 
-    finalNewTxs: Transaction[], 
-    updatedExistingTxs: Transaction[] 
+  ): {
+    finalNewTxs: Transaction[],
+    updatedExistingTxs: Transaction[]
   } => {
     const finalNewTxs: Transaction[] = [];
     const updatedExistingTxs: Transaction[] = [];
-    
+
     // Track hash keys to prevent duplicates
     const processedHashKeys = new Set(existingTransactions.map(t => t.hashKey).filter(Boolean));
-    
+
     // CRITICAL FIX: Track IDs that have been matched IN THIS BATCH to prevent double-spending the same match
     const newlyMatchedIds = new Set<string>();
 
@@ -98,19 +169,19 @@ export const ImportService = {
         console.log(`Skipping duplicate: ${draftTx.memo} (${draftTx.amount})`);
         continue;
       }
-      processedHashKeys.add(draftTx.hashKey!); 
+      processedHashKeys.add(draftTx.hashKey!);
 
       // Prepare the transaction object
       const newTx = { ...draftTx } as Transaction;
-      
+
       // 2. TRANSFER MATCHING ALGORITHM
       // Look for a counterpart in existing transactions that is NOT already linked
       const matchCandidate = existingTransactions.find(existing => {
         if (existing.linkedTransactionId) return false; // Already persistently linked
         if (newlyMatchedIds.has(existing.id)) return false; // Already matched in this current loop! (Fix for Edge Case #1)
-        
+
         const amountMatch = existing.amount === -newTx.amount;
-        
+
         // Time diff check (5 minutes = 300,000 ms)
         const timeDiff = Math.abs((newTx.timestamp || 0) - (existing.timestamp || 0));
         const timeMatch = timeDiff <= 300000;
@@ -121,7 +192,7 @@ export const ImportService = {
       if (matchCandidate) {
         // MATCH FOUND!
         console.log(`Transfer Match Found: ${newTx.memo} <-> ${matchCandidate.memo}`);
-        
+
         // Mark as matched in this batch
         newlyMatchedIds.add(matchCandidate.id);
 
@@ -129,8 +200,8 @@ export const ImportService = {
         newTx.type = TransactionType.TRANSFER;
         newTx.category = Category.TRANSFER;
         newTx.linkedTransactionId = matchCandidate.id;
-        newTx.toAssetId = matchCandidate.assetId; 
-        newTx.emoji = '💸';
+        newTx.toAssetId = matchCandidate.assetId;
+        newTx.toAssetId = matchCandidate.assetId;
 
         // Update Existing Transaction
         // We need to clone it to avoid mutating the prop directly before state update
@@ -139,10 +210,10 @@ export const ImportService = {
         updatedMatch.category = Category.TRANSFER;
         updatedMatch.linkedTransactionId = newTx.id;
         updatedMatch.toAssetId = newTx.assetId;
-        updatedMatch.emoji = '💸';
+        updatedMatch.toAssetId = newTx.assetId;
 
         updatedExistingTxs.push(updatedMatch);
-      } 
+      }
 
       finalNewTxs.push(newTx);
     }

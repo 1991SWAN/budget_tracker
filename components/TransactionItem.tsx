@@ -1,6 +1,5 @@
 import React from 'react';
 import { Transaction, TransactionType, Asset } from '../types';
-import { CATEGORY_EMOJIS } from '../constants';
 
 interface TransactionItemProps {
     transaction: Transaction;
@@ -17,6 +16,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     onEdit,
     onDelete
 }) => {
+    const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false);
     const isExpense = transaction.type === TransactionType.EXPENSE;
     const isIncome = transaction.type === TransactionType.INCOME;
     const isTransfer = transaction.type === TransactionType.TRANSFER;
@@ -25,10 +25,10 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
     // Determine sign and color
     let amountSign = '';
-    let amountColor = 'text-slate-800'; // Default
+    let amountColor = 'text-slate-900'; // Default black for cleaner look
     if (isExpense) {
         amountSign = '-';
-        amountColor = 'text-rose-600';
+        amountColor = 'text-rose-600'; // Color-coded (Red for expense)
     } else if (isIncome) {
         amountSign = '+';
         amountColor = 'text-emerald-600';
@@ -36,55 +36,90 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         amountColor = 'text-blue-600';
     }
 
-    // Determine Icon
-    const emoji = transaction.emoji || CATEGORY_EMOJIS[transaction.category as string] || '📦';
+    // Date Logic
+    const dateObj = new Date(transaction.date);
+    const mm = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+    const dd = dateObj.getDate().toString().padStart(2, '0');
 
     return (
         <div
-            className="group flex items-center p-3 bg-white hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors cursor-pointer"
+            className="group grid grid-cols-[auto_1fr_auto] gap-4 items-center p-4 bg-white hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-all cursor-pointer"
             onClick={() => onEdit(transaction)}
         >
-            {/* 1. Icon Box */}
-            <div className="w-10 h-10 flex items-center justify-center bg-slate-100 rounded-full text-xl shrink-0 mr-3">
-                {emoji}
+            {/* 1. Date Box (Replaces Icon) */}
+            <div className="flex flex-col items-center justify-center w-12 h-12 bg-slate-50 rounded-xl border border-slate-100 shrink-0">
+                <span className="text-[10px] uppercase font-bold text-slate-400 leading-none mb-1">Date</span>
+                <span className="text-sm font-black text-slate-700 leading-none">{mm}.{dd}</span>
             </div>
 
-            {/* 2. Main Info (Memo + Asset) */}
-            <div className="flex-1 min-w-0 mr-2">
-                <p className="font-bold text-slate-800 text-sm truncate leading-tight mb-0.5">
-                    {transaction.memo}
+            {/* 2. Main Info (Merchant, Text Category, Asset) */}
+            <div className="min-w-0 flex flex-col justify-center gap-1">
+                <p className="font-bold text-slate-900 text-[15px] truncate leading-tight">
+                    {transaction.merchant || transaction.memo}
                 </p>
-                <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
-                    {isTransfer && <span className="text-xs">💸</span>}
-                    <span>{asset?.name || 'Unknown Asset'}</span>
+                <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                    {/* Category Text Badge */}
+                    <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md font-bold tracking-wide uppercase text-[10px]">
+                        {transaction.category}
+                    </span>
+                    {transaction.installment && (
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${transaction.installment.isInterestFree
+                            ? 'bg-purple-50 text-purple-600 border-purple-100'
+                            : 'bg-slate-50 text-slate-500 border-slate-200'
+                            }`}>
+                            {transaction.installment.totalMonths}개월{transaction.installment.isInterestFree && ' 무이자'}
+                        </span>
+                    )}
+                    <span className="truncate text-slate-400">
+                        {asset?.name || 'Unknown'}
+                    </span>
                     {isTransfer && toAsset && (
                         <>
-                            <span className="text-slate-300">→</span>
-                            <span>{toAsset.name}</span>
+                            <span>→</span>
+                            <span className="truncate">{toAsset.name}</span>
                         </>
                     )}
-                </p>
+                </div>
             </div>
 
             {/* 3. Amount & Actions */}
-            <div className="text-right shrink-0">
-                <p className={`font-bold text-sm ${amountColor}`}>
-                    {amountSign}{formattedAmount} <span className="text-[10px] text-slate-400">KRW</span>
+            <div className="text-right shrink-0 flex flex-col items-end justify-center">
+                <p className={`font-bold text-base tabular-nums tracking-tight ${amountColor}`}>
+                    {amountSign}{formattedAmount}
+                    <span className="text-[11px] ml-1 text-slate-400 font-normal">KRW</span>
                 </p>
+                <div className="flex flex-col items-end mt-0.5">
+                    {transaction.installment && (
+                        <div className="flex items-center gap-1">
+                            <p className="text-[10px] text-slate-400 font-medium">
+                                {transaction.installment.currentMonth}/{transaction.installment.totalMonths}회차
+                            </p>
+                            {!transaction.installment.isInterestFree && asset?.creditDetails?.apr && (
+                                <p className="text-[9px] text-rose-500 font-medium whitespace-nowrap">
+                                    (+ 수수료 {Math.round(transaction.amount * (asset.creditDetails.apr / 100 / 12)).toLocaleString()})
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
 
-                {/* Hidden delete button that appears on hover/swipe logic could go here, 
-            but for now we keep it simple or use long-press/context menu in future. 
-            For this phase, let's add a small delete button that shows on group hover on desktop
-        */}
-                <div className="hidden group-hover:flex justify-end mt-1">
+                <div className="h-4 flex items-center mt-1">
                     <button
-                        className="text-[10px] text-rose-400 hover:text-rose-600 uppercase font-bold tracking-wider"
+                        className={`opacity-0 group-hover:opacity-100 transition-all text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${isConfirmingDelete
+                            ? 'bg-rose-600 text-white opacity-100 scale-105'
+                            : 'text-rose-500 hover:text-rose-700 bg-rose-50'
+                            }`}
                         onClick={(e) => {
                             e.stopPropagation();
-                            if (confirm('Delete this transaction?')) onDelete(transaction);
+                            if (isConfirmingDelete) {
+                                onDelete(transaction);
+                            } else {
+                                setIsConfirmingDelete(true);
+                                setTimeout(() => setIsConfirmingDelete(false), 3000); // Reset after 3s
+                            }
                         }}
                     >
-                        Delete
+                        {isConfirmingDelete ? 'Confirm?' : 'Delete'}
                     </button>
                 </div>
             </div>

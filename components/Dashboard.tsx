@@ -4,6 +4,7 @@ import {
   BarChart, Bar, AreaChart, Area, XAxis, YAxis, Legend, CartesianGrid
 } from 'recharts';
 import { Transaction, TransactionType, Asset, RecurringTransaction, SavingsGoal, Category, BillType, AssetType } from '../types';
+import TransactionItem from './TransactionItem';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -11,8 +12,10 @@ interface DashboardProps {
   recurring: RecurringTransaction[];
   goals: SavingsGoal[];
   onRecurringChange?: (action: 'add' | 'update' | 'delete' | 'pay', item: any) => void;
-  onGoalChange?: (action: 'add' | 'update' | 'delete' | 'contribute', item: any) => void;
+  onGoalChange: (action: 'add' | 'update' | 'delete' | 'contribute', item: any) => void;
   onAddTransaction: (tx: Transaction) => void;
+  onEditTransaction: (tx: Transaction) => void;
+  onDeleteTransaction: (tx: Transaction) => void;
   monthlyBudget: number;
   onBudgetChange: (amount: number) => void;
   onNavigateToTransactions: (range?: { start: string, end: string }) => void;
@@ -24,7 +27,11 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 type DashboardTab = 'overview' | 'trends' | 'planning';
 type Timeframe = 'weekly' | 'monthly';
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, assets, recurring, goals, onRecurringChange, onGoalChange, onAddTransaction, monthlyBudget, onBudgetChange, onNavigateToTransactions, onAddBillToGroup }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions, assets, recurring, goals, onRecurringChange, onGoalChange,
+  onAddTransaction,
+  onEditTransaction,
+  onDeleteTransaction,
+  monthlyBudget, onBudgetChange, onNavigateToTransactions, onAddBillToGroup }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [billFilter, setBillFilter] = useState<BillType>(BillType.SUBSCRIPTION);
 
@@ -295,7 +302,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, assets, recurring, 
         memo: `Credit Card Payoff: ${selectedItem.name}`,
         assetId: paymentAsset,
         toAssetId: selectedItem.id,
-        emoji: '💳'
+        // emoji: '💳'
       };
       onAddTransaction(tx);
       closeModal();
@@ -457,20 +464,17 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, assets, recurring, 
           <h3 onClick={() => onNavigateToTransactions()} className="font-bold text-lg text-slate-800 hover:text-blue-600 cursor-pointer flex items-center gap-2 transition-colors group">Activity<span className="opacity-0 group-hover:opacity-100 text-sm">↗️</span></h3>
           <button onClick={() => { const o: any[] = ['today', 'week', 'month']; setActivityFilter(o[(o.indexOf(activityFilter) + 1) % o.length]); }} className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full capitalize">{activityFilter}</button>
         </div>
-        <div className="space-y-3">
+        <div className="space-y-0 relative">
+          {/* Add a subtle line connector for visual flow if desired, or just list items */}
           {filteredActivityTransactions.slice(0, 10).map((t) => (
-            <div key={t.id} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-xl transition-colors border border-transparent">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${t.type === TransactionType.INCOME ? 'bg-emerald-100 text-emerald-600' : t.type === TransactionType.TRANSFER ? 'bg-blue-100 text-blue-600' : 'bg-rose-100 text-rose-600'}`}>
-                  {t.emoji || getCategoryIcon(t.category as string)}
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-900 text-sm">{t.memo}</p>
-                  <p className="text-xs text-slate-500">{t.category} • {assets.find(a => a.id === t.assetId)?.name}</p>
-                </div>
-              </div>
-              <p className={`font-bold text-sm ${t.type === TransactionType.INCOME ? 'text-emerald-600' : t.type === TransactionType.TRANSFER ? 'text-blue-600' : 'text-rose-600'}`}>{t.type === TransactionType.INCOME ? '+' : t.type === TransactionType.EXPENSE ? '-' : ''}{t.amount.toLocaleString()}</p>
-            </div>
+            <TransactionItem
+              key={t.id}
+              transaction={t}
+              asset={assets.find(a => a.id === t.assetId)}
+              toAsset={t.toAssetId ? assets.find(a => a.id === t.toAssetId) : undefined}
+              onEdit={onEditTransaction}
+              onDelete={onDeleteTransaction}
+            />
           ))}
         </div>
       </div>

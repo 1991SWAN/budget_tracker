@@ -100,7 +100,7 @@ const App: React.FC = () => {
           type: ptx.type || TransactionType.EXPENSE,
           category: ptx.category || Category.OTHER,
           memo: ptx.memo || ptx.merchant || 'Smart Entry',
-          emoji: ptx.emoji,
+          // emoji: ptx.emoji,
           assetId: ptx.assetId || defaultAssetId,
           toAssetId: ptx.toAssetId,
           installment: ptx.installment
@@ -120,6 +120,7 @@ const App: React.FC = () => {
   const handleUpdateParsed = (txs: Partial<Transaction>[]) => {
     if (editingTransaction && txs.length > 0) {
       const updated = { ...editingTransaction, ...txs[0] } as Transaction;
+      console.log('App Update Parsed:', updated.installment);
       handleUpdateTransaction(editingTransaction, updated);
     }
     setShowSmartInput(false);
@@ -136,27 +137,40 @@ const App: React.FC = () => {
     }
 
     const reader = new FileReader();
+
     reader.onload = (evt) => {
-      const csvText = evt.target?.result as string;
-      if (csvText) {
-        const parsedDrafts = ImportService.parseCSV(csvText, importAssetId);
-        const { finalNewTxs, updatedExistingTxs } = ImportService.processImportedTransactions(parsedDrafts, transactions);
+      const result = evt.target?.result;
+      if (!result) return;
 
-        // Batch Add New Transactions (updates assets automatically via hook)
-        handleAddTransactions(finalNewTxs);
+      let parsedDrafts: Partial<Transaction>[] = [];
 
-        // Handle Updates (if any)
-        // For now, we will just sync them to DB? Or should we use updateTransaction?
-        // Using loop for safety to update assets if changed.
-        updatedExistingTxs.forEach(updatedTx => {
-          const original = transactions.find(t => t.id === updatedTx.id);
-          if (original) handleUpdateTransaction(original, updatedTx);
-        });
-
-        addToast(`Imported ${finalNewTxs.length} transactions (${updatedExistingTxs.length} matched)`, 'success');
+      if (file.name.endsWith('.csv')) {
+        parsedDrafts = ImportService.parseCSV(result as string, importAssetId);
+      } else {
+        // Excel (xlsx/xls) - result is ArrayBuffer
+        parsedDrafts = ImportService.parseExcel(result as ArrayBuffer, importAssetId);
       }
+
+      const { finalNewTxs, updatedExistingTxs } = ImportService.processImportedTransactions(parsedDrafts, transactions);
+
+      // Batch Add New Transactions (updates assets automatically via hook)
+      handleAddTransactions(finalNewTxs);
+
+      // Handle Updates (if any)
+      updatedExistingTxs.forEach(updatedTx => {
+        const original = transactions.find(t => t.id === updatedTx.id);
+        if (original) handleUpdateTransaction(original, updatedTx);
+      });
+
+      addToast(`Imported ${finalNewTxs.length} transactions (${updatedExistingTxs.length} matched)`, 'success');
     };
-    reader.readAsText(file);
+
+    if (file.name.endsWith('.csv')) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
+
     e.target.value = ''; // Reset
   };
 
@@ -203,7 +217,7 @@ const App: React.FC = () => {
         memo: `Credit Card Payoff: ${selectedItem.name}`,
         assetId: paymentAsset,
         toAssetId: selectedItem.id,
-        emoji: '💳'
+        // emoji: '💳'
       };
       handleAddTransaction(tx);
       closeModal();
@@ -407,7 +421,7 @@ const App: React.FC = () => {
         </nav>
 
         {/* Hidden File Input */}
-        <input type="file" ref={fileInputRef} onChange={handleFileImport} className="hidden" accept=".csv" />
+        <input type="file" ref={fileInputRef} onChange={handleFileImport} className="hidden" accept=".csv, .xlsx, .xls" />
 
         <div className="pt-6 border-t border-slate-100 space-y-3">
           <button onClick={triggerImport} className="w-full bg-slate-100 text-slate-600 hover:bg-slate-200 p-3 rounded-xl flex items-center justify-center space-x-2 font-semibold text-sm transition-colors">
@@ -437,6 +451,8 @@ const App: React.FC = () => {
             onRecurringChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteRecurring(item.id); setRecurring(prev => prev.filter(r => r.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveRecurring(newItem); setRecurring(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveRecurring(item); setRecurring(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r)); } else if (action === 'pay') { handleAddTransaction({ id: 'bp-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.EXPENSE, category: item.category, memo: `Bill Pay: ${item.name}`, assetId: item.assetId, emoji: '⚡' }); } }}
             onGoalChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteGoal(item.id); setGoals(prev => prev.filter(g => g.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveGoal(newItem); setGoals(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveGoal(item); setGoals(prev => prev.map(g => g.id === item.id ? { ...g, ...item } : g)); } else if (action === 'contribute') { const updated = { ...item, currentAmount: item.currentAmount + item.amount }; SupabaseService.saveGoal(updated); setGoals(prev => prev.map(g => g.id === item.id ? updated : g)); handleAddTransaction({ id: 'gc-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.TRANSFER, category: Category.INVESTMENT, memo: `Goal: ${item.name}`, assetId: item.assetId, toAssetId: item.toAssetId, emoji: '💰' }); } }}
             onAddTransaction={handleAddTransaction}
+            onEditTransaction={(tx) => { setEditingTransaction(tx); setShowSmartInput(true); }} // Re-use smart input for editing
+            onDeleteTransaction={handleDeleteTransaction}
             monthlyBudget={monthlyBudget}
             onBudgetChange={setMonthlyBudget}
             onNavigateToTransactions={(range) => { if (range) setDateRange(range); setView('transactions'); }}
@@ -476,7 +492,7 @@ const App: React.FC = () => {
                 category: Category.OTHER,
                 memo: 'Manual Balance Adjustment',
                 assetId: editedAsset.id,
-                emoji: '🔧'
+                // emoji: '🔧'
               };
               await handleAddTransaction(tx);
             }

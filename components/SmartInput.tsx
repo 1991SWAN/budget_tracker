@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GeminiService } from '../services/geminiService';
 import { Transaction, TransactionType, Category, Asset, AssetType } from '../types';
-import { CATEGORY_EMOJIS } from '../constants';
+
+import { useModalClose } from '../hooks/useModalClose';
 
 interface SmartInputProps {
   onTransactionsParsed: (transactions: Partial<Transaction>[]) => void;
@@ -12,25 +13,44 @@ interface SmartInputProps {
 }
 
 const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel, assets, initialData, transactions = [] }) => {
-  const [mode, setMode] = useState<'select' | 'ocr' | 'text' | 'manual'>('select');
+  const modalRef = useRef<HTMLDivElement>(null);
+  useModalClose(true, onCancel, modalRef);
+  const [mode, setMode] = useState<'select' | 'ocr' | 'text' | 'manual'>(initialData ? 'manual' : 'select');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [isExternalTransfer, setIsExternalTransfer] = useState(false);
-  const [isInstallment, setIsInstallment] = useState(false);
-  const [installmentMonths, setInstallmentMonths] = useState(2);
-  const [isInterestFree, setIsInterestFree] = useState(true);
+  const [isExternalTransfer, setIsExternalTransfer] = useState(() => {
+    if (!initialData) return false;
+    return initialData.type === TransactionType.TRANSFER && !initialData.toAssetId;
+  });
 
-  const [manualForm, setManualForm] = useState({
-    date: new Date().toISOString().split('T')[0],
-    amount: '',
-    type: TransactionType.EXPENSE,
-    category: Category.FOOD,
-    memo: '',
-    merchant: '',
-    emoji: '🍔',
-    assetId: assets[0]?.id || '',
-    toAssetId: ''
+  const [isInstallment, setIsInstallment] = useState(() => !!initialData?.installment);
+  const [installmentMonths, setInstallmentMonths] = useState(() => initialData?.installment?.totalMonths || 2);
+  const [isInterestFree, setIsInterestFree] = useState(() => initialData?.installment?.isInterestFree ?? true);
+
+  const [manualForm, setManualForm] = useState(() => {
+    if (initialData) {
+      return {
+        date: initialData.date,
+        amount: initialData.amount.toString(),
+        type: initialData.type,
+        category: initialData.category as Category,
+        memo: initialData.memo,
+        merchant: initialData.merchant || '',
+        assetId: initialData.assetId,
+        toAssetId: initialData.toAssetId || ''
+      };
+    }
+    return {
+      date: new Date().toISOString().split('T')[0],
+      amount: '',
+      type: TransactionType.EXPENSE,
+      category: Category.FOOD,
+      memo: '',
+      merchant: '',
+      assetId: assets[0]?.id || '',
+      toAssetId: ''
+    };
   });
 
   // Unique Merchants for Autocomplete
@@ -53,7 +73,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
       if (initialData.installment) {
         setIsInstallment(true);
         setInstallmentMonths(initialData.installment.totalMonths);
-        setIsInterestFree(initialData.installment.isInterestFree);
+        setIsInterestFree(initialData.installment.isInterestFree ?? true);
       }
 
       setManualForm({
@@ -63,7 +83,6 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
         category: initialData.category as Category,
         memo: initialData.memo,
         merchant: initialData.merchant || '',
-        emoji: initialData.emoji || CATEGORY_EMOJIS[initialData.category as string] || '📦',
         assetId: initialData.assetId,
         toAssetId: initialData.toAssetId || ''
       });
@@ -73,8 +92,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
   const handleCategoryChange = (cat: Category) => {
     setManualForm(prev => ({
       ...prev,
-      category: cat,
-      emoji: CATEGORY_EMOJIS[cat] || '📦'
+      category: cat
     }));
   };
 
@@ -97,23 +115,35 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
       category: manualForm.category,
       memo: manualForm.memo,
       merchant: manualForm.merchant,
-      emoji: manualForm.emoji,
+      // emoji: manualForm.emoji,
       assetId: manualForm.assetId,
       toAssetId: (manualForm.type === TransactionType.TRANSFER && !isExternalTransfer) ? manualForm.toAssetId : undefined
     };
 
     // Add Installment Metadata if applicable
-    if (isInstallment && manualForm.type === TransactionType.EXPENSE && installmentMonths > 1) {
+    console.log('DEBUG: handleManualSubmit', { isInstallment, type: manualForm.type, months: installmentMonths, isInterestFree });
+
+    if (isInstallment && manualForm.type === TransactionType.EXPENSE) {
+      const existing = initialData?.installment;
+      console.log('DEBUG: Constructing Installment Object. InterestFree:', isInterestFree);
+
       transactionData.installment = {
         totalMonths: installmentMonths,
-        currentMonth: 1, // Start at 1st month
-        isInterestFree: isInterestFree,
-        remainingBalance: totalAmount // Full amount is outstanding initially
+        currentMonth: existing ? existing.currentMonth : 1,
+        // Save redundant keys to ensure persistence regardless of DB convention
+        // @ts-ignore
+        isInterestFree: !!isInterestFree,
+        // @ts-ignore
+        is_interest_free: !!isInterestFree,
+        remainingBalance: existing ? existing.remainingBalance : totalAmount
       };
-      // Append info to memo for clarity in list
-      if (!transactionData.memo.includes('Installment')) {
-        transactionData.memo += ` (${installmentMonths}M Installment)`;
-      }
+
+      // Append info to memo logic removed as per user request
+
+    } else if (initialData?.installment && !isInstallment) {
+      console.log('DEBUG: Clearing Installment Object');
+      // Explicitly clear installment if user unchecked it
+      transactionData.installment = null as any;
     }
 
     onTransactionsParsed([transactionData]);
@@ -129,7 +159,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
   }
 
   return (
-    <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden w-full max-w-lg mx-auto flex flex-col max-h-[90vh]">
+    <div ref={modalRef} className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden w-full max-w-lg mx-auto flex flex-col max-h-[90vh]">
       {/* Compact Header */}
       <div className="bg-slate-50/80 backdrop-blur-sm px-6 py-3 flex justify-between items-center border-b border-slate-100 shrink-0">
         <h3 className="text-sm sm:text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -162,160 +192,159 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
 
         {mode === 'manual' && (
           <div className="flex flex-col gap-4">
-            {/* 1. Type Selector - Top Priority, Full Width */}
-            <div className="flex bg-slate-100 p-1 rounded-xl gap-1 shrink-0">
-              {Object.values(TransactionType).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setManualForm({
-                    ...manualForm,
-                    type: t,
-                    category: t === TransactionType.TRANSFER ? Category.TRANSFER : manualForm.category,
-                    emoji: t === TransactionType.TRANSFER ? CATEGORY_EMOJIS[Category.TRANSFER] : manualForm.emoji
-                  })}
-                  className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${manualForm.type === t
-                    ? (t === TransactionType.INCOME ? 'bg-white text-emerald-600 shadow-sm' : t === TransactionType.EXPENSE ? 'bg-white text-rose-600 shadow-sm' : 'bg-white text-blue-600 shadow-sm')
-                    : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  {t}
-                </button>
-              ))}
+
+            {/* 1. Hero Section: Amount & Type */}
+            <div className="flex flex-col gap-3 bg-slate-50 p-4 rounded-3xl border border-slate-100">
+              {/* Type Segmented Control */}
+              <div className="flex p-1 bg-slate-200/50 rounded-xl">
+                {Object.values(TransactionType).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setManualForm({
+                      ...manualForm,
+                      type: t,
+                      category: t === TransactionType.TRANSFER ? Category.TRANSFER : manualForm.category
+                    })}
+                    className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all uppercase tracking-wide ${manualForm.type === t
+                      ? (t === TransactionType.INCOME ? 'bg-white text-emerald-600 shadow-sm' : t === TransactionType.EXPENSE ? 'bg-white text-rose-600 shadow-sm' : 'bg-white text-blue-600 shadow-sm')
+                      : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+
+              {/* Hero Amount Input */}
+              <div className="relative flex items-center justify-center py-2">
+                <span className={`text-2xl font-bold mr-2 ${manualForm.type === TransactionType.EXPENSE ? 'text-rose-500' : manualForm.type === TransactionType.INCOME ? 'text-emerald-500' : 'text-blue-500'}`}>
+                  {manualForm.type === TransactionType.EXPENSE ? '-' : manualForm.type === TransactionType.INCOME ? '+' : '→'}
+                </span>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={manualForm.amount}
+                  onChange={e => setManualForm({ ...manualForm, amount: e.target.value })}
+                  className="w-full text-center bg-transparent text-4xl font-black text-slate-800 placeholder-slate-200 outline-none p-0"
+                  autoFocus={!initialData}
+                />
+                <span className="text-xl font-bold text-slate-400 absolute right-4">₩</span>
+              </div>
             </div>
 
-            {/* 2. Core Row: Date & Amount (50/50 split) */}
-            <div className="grid grid-cols-2 gap-3 shrink-0">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Date</label>
-                <input type="date" value={manualForm.date} onChange={e => setManualForm({ ...manualForm, date: e.target.value })} className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-medium" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Amount</label>
-                <div className="relative">
-                  <input type="number" placeholder="0" value={manualForm.amount} onChange={e => setManualForm({ ...manualForm, amount: e.target.value })} className="w-full h-10 pl-3 pr-7 bg-white border-2 border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-black text-slate-800" />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">₩</span>
-                </div>
+            {/* 2. Horizontal Category List */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1.5 block">Category</label>
+              <div className="overflow-x-auto pb-4 -mx-4 px-5 scrollbar-hide flex gap-2 snap-x">
+                {Object.values(Category).map(cat => {
+                  const isSelected = manualForm.category === cat;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => handleCategoryChange(cat)}
+                      className={`snap-start shrink-0 px-4 py-2 rounded-xl border transition-all text-xs font-bold whitespace-nowrap ${isSelected
+                        ? 'bg-slate-800 text-white border-slate-800 shadow-lg shadow-slate-200 scale-105'
+                        : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}
+                    >
+                      {cat.replace('&', '').split(' ')[0]}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* 3. Account Row: Linked logic (From -> To for transfers, else Single Account) */}
-            <div className={`grid gap-3 shrink-0 ${manualForm.type === TransactionType.TRANSFER && !isExternalTransfer ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {/* 3. Compact Inputs Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Date */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
-                  {manualForm.type === TransactionType.TRANSFER ? 'From Account' : 'Account'}
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1">Date</label>
+                <input type="date" value={manualForm.date} onChange={e => setManualForm({ ...manualForm, date: e.target.value })} className="w-full h-11 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-600" />
+              </div>
+
+              {/* Account */}
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  {manualForm.type === TransactionType.TRANSFER ? 'From' : 'Account'}
                 </label>
-                <select value={manualForm.assetId} onChange={e => setManualForm({ ...manualForm, assetId: e.target.value })} className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-semibold">
+                <select value={manualForm.assetId} onChange={e => setManualForm({ ...manualForm, assetId: e.target.value })} className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-700">
                   {assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
 
+              {/* Transfer Target (Conditional) */}
               {manualForm.type === TransactionType.TRANSFER && !isExternalTransfer && (
-                <div className="space-y-1 animate-in slide-in-from-left-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">To Account</label>
-                  <select value={manualForm.toAssetId} onChange={e => setManualForm({ ...manualForm, toAssetId: e.target.value })} className="w-full h-10 px-3 bg-blue-50/50 border border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-semibold text-blue-700">
+                <div className="col-span-2 space-y-1 animate-in slide-in-from-top-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1">To Account</label>
+                  <select value={manualForm.toAssetId} onChange={e => setManualForm({ ...manualForm, toAssetId: e.target.value })} className="w-full h-11 px-3 bg-blue-50 border border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-blue-700">
                     <option value="">Select Target</option>
                     {assets.map(a => <option key={a.id} value={a.id} disabled={a.id === manualForm.assetId}>{a.name}</option>)}
                   </select>
                 </div>
               )}
-            </div>
 
-            {/* 4. Categorization Row: Category & Merchant */}
-            <div className="space-y-3 shrink-0">
-              {/* 4.1 Merchant with Autocomplete */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
-                  {manualForm.type === TransactionType.TRANSFER ? "Recipient" : "Merchant"}
+              {/* Merchant */}
+              <div className="col-span-1 space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  {manualForm.type === TransactionType.TRANSFER ? 'Recipient' : 'Merchant'}
                 </label>
-                <div>
-                  <input
-                    type="text"
-                    list="merchant-suggestions"
-                    placeholder="Starbucks..."
-                    value={manualForm.merchant}
-                    onChange={e => setManualForm({ ...manualForm, merchant: e.target.value })}
-                    className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-medium"
-                  />
-                  <datalist id="merchant-suggestions">
-                    {uniqueMerchants.map((m, i) => <option key={i} value={m} />)}
-                  </datalist>
-                </div>
+                <input
+                  type="text"
+                  list="merchant-suggestions"
+                  value={manualForm.merchant}
+                  onChange={e => setManualForm({ ...manualForm, merchant: e.target.value })}
+                  className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-medium placeholder:text-slate-300"
+                  placeholder="Where?"
+                />
+                <datalist id="merchant-suggestions">
+                  {uniqueMerchants.map((m, i) => <option key={i} value={m} />)}
+                </datalist>
               </div>
 
-              {/* 4.2 Category Grid Picker */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Category</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {Object.values(Category).map(cat => {
-                    const isSelected = manualForm.category === cat;
-                    return (
-                      <button
-                        key={cat}
-                        onClick={() => handleCategoryChange(cat)}
-                        className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all border ${isSelected ? 'bg-blue-50 border-blue-200 shadow-sm scale-105' : 'bg-slate-50 border-transparent hover:bg-slate-100'}`}
-                      >
-                        <span className="text-xl mb-1">{CATEGORY_EMOJIS[cat]}</span>
-                        <span className={`text-[9px] font-bold text-center leading-tight ${isSelected ? 'text-blue-700' : 'text-slate-500'}`}>
-                          {cat.replace('&', '').split(' ')[0]}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+              {/* Memo */}
+              <div className="col-span-1 space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1">Memo</label>
+                <input type="text" placeholder="Note" value={manualForm.memo} onChange={e => setManualForm({ ...manualForm, memo: e.target.value })} className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-medium placeholder:text-slate-300" />
               </div>
             </div>
 
-            {/* 5. Detail Row: Options & Installment (Expanded Logic) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end shrink-0">
-              <div className="bg-slate-50 p-2 rounded-2xl border border-slate-100">
-                <div className="flex bg-white/60 p-0.5 rounded-lg mb-2">
-                  {manualForm.type === TransactionType.TRANSFER ? (
-                    <>
-                      <button onClick={() => setIsExternalTransfer(false)} className={`flex-1 py-1 text-[9px] font-black rounded-md transition-all ${!isExternalTransfer ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>INTERNAL</button>
-                      <button onClick={() => setIsExternalTransfer(true)} className={`flex-1 py-1 text-[9px] font-black rounded-md transition-all ${isExternalTransfer ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>EXTERNAL</button>
-                    </>
-                  ) : (
-                    <>
-                      <button onClick={() => setIsInstallment(false)} className={`flex-1 py-1 text-[9px] font-black rounded-md transition-all ${!isInstallment ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-400'}`}>LUMP SUM</button>
-                      <button onClick={() => setIsInstallment(true)} className={`flex-1 py-1 text-[9px] font-black rounded-md transition-all ${isInstallment ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>INSTALLMENT</button>
-                    </>
-                  )}
+            {/* 4. Options Row (Installment / Internal) */}
+            <div className="flex items-center gap-3 pt-2">
+              {manualForm.type === TransactionType.TRANSFER ? (
+                <div className="flex bg-slate-100 p-0.5 rounded-lg shrink-0">
+                  <button onClick={() => setIsExternalTransfer(false)} className={`px-2 py-1 text-[9px] font-black rounded-md transition-all ${!isExternalTransfer ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>INT</button>
+                  <button onClick={() => setIsExternalTransfer(true)} className={`px-2 py-1 text-[9px] font-black rounded-md transition-all ${isExternalTransfer ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>EXT</button>
                 </div>
+              ) : (
+                <div className="flex bg-slate-100 p-0.5 rounded-lg shrink-0">
+                  <button onClick={() => setIsInstallment(false)} className={`px-2 py-1 text-[9px] font-black rounded-md transition-all ${!isInstallment ? 'bg-white shadow-sm text-slate-700' : 'text-slate-400'}`}>LUMP</button>
+                  <button onClick={() => setIsInstallment(true)} className={`px-2 py-1 text-[9px] font-black rounded-md transition-all ${isInstallment ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>INST</button>
+                </div>
+              )}
 
-                {isInstallment && manualForm.type === TransactionType.EXPENSE && (
-                  <div className="animate-in fade-in space-y-2">
-                    {/* Months Slider */}
-                    <div className="flex items-center gap-2">
-                      <input type="range" min="2" max="24" value={installmentMonths} onChange={e => setInstallmentMonths(Number(e.target.value))} className="flex-1 h-1.5 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                      <span className="text-[10px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded min-w-[2rem] text-center">{installmentMonths}M</span>
-                    </div>
-                    {/* Interest Toggle */}
-                    <div className="flex items-center justify-between bg-white px-2 py-1 rounded-lg border border-slate-100">
-                      <span className="text-[9px] font-bold text-slate-500 uppercase">Interest Free</span>
-                      <div
-                        onClick={() => setIsInterestFree(!isInterestFree)}
-                        className={`w-8 h-4 rounded-full p-0.5 cursor-pointer transition-colors ${isInterestFree ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                      >
-                        <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${isInterestFree ? 'translate-x-4' : 'translate-x-0'}`} />
-                      </div>
-                    </div>
+              {/* Installment Slider (Inline) */}
+              {isInstallment && manualForm.type === TransactionType.EXPENSE && (
+                <div className="flex-1 flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-left-2">
+                  <span className="text-[9px] font-bold text-blue-500 whitespace-nowrap">{installmentMonths}M</span>
+                  <input type="range" min="2" max="24" value={installmentMonths} onChange={e => setInstallmentMonths(Number(e.target.value))} className="flex-1 h-1.5 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                  <div className={`cursor-pointer px-1.5 py-0.5 rounded text-[8px] font-black uppercase border ${isInterestFree ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-400 border-slate-200'}`} onClick={() => setIsInterestFree(!isInterestFree)}>
+                    {isInterestFree ? 'Free' : 'Fee'}
                   </div>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Memo</label>
-                <input type="text" placeholder="Optional note..." value={manualForm.memo} onChange={e => setManualForm({ ...manualForm, memo: e.target.value })} className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" />
-              </div>
+                </div>
+              )}
             </div>
 
             {/* 6. Action Footer - Floating look */}
-            <div className="flex gap-2 pt-2 pb-4 shrink-0">
-              <button onClick={() => setMode('select')} className="flex-1 py-3 text-slate-400 bg-slate-100 rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancel</button>
+            <div className="flex gap-2 pt-4 shrink-0">
+              <button
+                onClick={initialData ? onCancel : () => setMode('select')}
+                className="flex-1 py-3 text-slate-400 bg-slate-100 rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
               <button
                 onClick={handleManualSubmit}
-                className="flex-[2] py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl text-xs font-black shadow-lg shadow-blue-100 hover:shadow-blue-200 hover:-translate-y-0.5 active:translate-y-0 transition-all uppercase tracking-tighter"
+                className="flex-[2] py-3 bg-slate-900 text-white rounded-2xl text-xs font-bold shadow-xl hover:shadow-2xl hover:-translate-y-0.5 active:translate-y-0 transition-all uppercase tracking-wide"
               >
-                {initialData ? 'Update Transaction' : 'Confirm & Save'}
+                {initialData ? 'Update' : 'Save'}
               </button>
             </div>
           </div>

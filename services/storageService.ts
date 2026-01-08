@@ -64,7 +64,7 @@ const DEFAULT_TRANSACTIONS: Transaction[] = [
     type: 'EXPENSE' as any,
     category: Category.TRANSPORT,
     memo: 'Subway',
-    emoji: '🚇',
+    // emoji: '🚇',
     assetId: '1'
   },
   {

@@ -81,7 +81,6 @@ export interface Transaction {
   type: TransactionType;
   category: Category | string;
   memo: string;
-  emoji?: string;
   merchant?: string;
   assetId: string;
   toAssetId?: string;

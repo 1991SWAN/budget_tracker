@@ -75,7 +75,15 @@ export const SupabaseService = {
             assetId: row.asset_id,
             toAssetId: row.to_asset_id,
             linkedTransactionId: row.linked_transaction_id,
-            // Installment is JSON, auto-parsed by JS client usually
+            merchant: row.merchant, // Map new merchant column
+
+            // Reconstruct Installment Object from Flat Columns (Preferred) or JSON (Fallback)
+            installment: (row.installment_total_months > 1 || row.installment) ? {
+                totalMonths: row.installment_total_months || row.installment?.totalMonths || row.installment?.total_months,
+                currentMonth: row.installment_current_month || row.installment?.currentMonth || row.installment?.current_month || 1,
+                isInterestFree: row.is_interest_free ?? row.installment?.isInterestFree ?? row.installment?.is_interest_free ?? true,
+                remainingBalance: row.installment?.remainingBalance || row.installment?.remaining_balance || row.amount
+            } : undefined
         })) as Transaction[];
     },
 
@@ -88,14 +96,25 @@ export const SupabaseService = {
             type: tx.type,
             category: tx.category,
             memo: tx.memo,
-            emoji: tx.emoji,
+
+            // New Columns
+            merchant: tx.merchant,
             asset_id: tx.assetId,
             to_asset_id: tx.toAssetId,
             linked_transaction_id: tx.linkedTransactionId,
-            installment: tx.installment
+
+            // Legacy JSON (Keep for now or deprecate? Keep for backup)
+            installment: tx.installment,
+
+            // New Flattened Installment Columns
+            installment_total_months: tx.installment?.totalMonths,
+            installment_current_month: tx.installment?.currentMonth,
+            is_interest_free: tx.installment?.isInterestFree
         };
         const { error } = await supabase.from('transactions').upsert(row);
-        if (error) console.error('Error saving transaction:', error);
+        if (error) {
+            console.error('Error saving transaction:', error);
+        }
     },
 
     saveTransactions: async (txs: Transaction[]) => {
@@ -107,7 +126,9 @@ export const SupabaseService = {
             type: tx.type,
             category: tx.category,
             memo: tx.memo,
-            emoji: tx.emoji,
+
+            // emoji: tx.emoji,
+            merchant: tx.merchant,
             asset_id: tx.assetId,
             to_asset_id: tx.toAssetId,
             linked_transaction_id: tx.linkedTransactionId,
@@ -118,8 +139,14 @@ export const SupabaseService = {
     },
 
     deleteTransaction: async (id: string) => {
-        const { error } = await supabase.from('transactions').delete().eq('id', id);
-        if (error) console.error('Error deleting transaction:', error);
+        const { error, count } = await supabase.from('transactions').delete({ count: 'exact' }).eq('id', id);
+
+        if (error) {
+            console.error('Error deleting transaction:', error);
+            throw error;
+        } else if (count === 0) {
+            throw new Error('No transaction deleted');
+        }
     },
 
     // --- Recurring ---
