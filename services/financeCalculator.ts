@@ -94,6 +94,13 @@ export class FinanceCalculator {
         });
 
         // Waterfall Logic:
+
+        // Unbilled Balance: Everything AFTER Usage End Date
+        const unbilledTxs = relevantTxs.filter(t => {
+            const d = new Date(t.date);
+            return d > usageEndDate;
+        });
+
         // 1. Calculate Gross Expenses for Statement Period
         const grossStatementBalance = statementTxs
             .filter(t => t.type === TransactionType.EXPENSE)
@@ -106,19 +113,29 @@ export class FinanceCalculator {
 
         // 3. Calculate TOTAL Payments/Refunds (All Time for this asset)
         // We look at ALL transactions for this asset to find influx of cash (Payment)
-        // This includes manual payments or refunds.
-        // We should really only look at payments made *after* the statement start maybe?
-        // But to be safe and simple: Sum of ALL payments in the 'relevantTxs' list.
-        // Since 'relevantTxs' is all transactions for this asset.
-
-        // Wait, 'transactions' passed in might be global or local? Assuming global filtered.
-        // Let's rely on relevantTxs.
         const totalPayments = relevantTxs
             .filter(t => t.type === TransactionType.INCOME || (t.type === TransactionType.TRANSFER && t.toAssetId === asset.id))
             .reduce((sum, t) => sum + t.amount, 0);
 
+        // --- Handle Initial Balance (Migration/Setup) ---
+        // 'asset.balance' is the current real-time balance.
+        // We need to back-calculate the 'Initial Balance' to see if there was starting debt.
+        // Current Balance = Initial + Expenses(-ve) + Income(+ve)
+        // For Credit Cards, Expenses are -ve in asset.balance but +ve in our 'gross' calc.
+        // Let's rely on standard ledger:
+        // Initial = Current - (Sum of Txs)
+        const netTxChange = relevantTxs.reduce((acc, t) => {
+            if (t.type === TransactionType.INCOME || (t.type === TransactionType.TRANSFER && t.toAssetId === asset.id)) return acc + t.amount;
+            if (t.type === TransactionType.EXPENSE || (t.type === TransactionType.TRANSFER && t.assetId === asset.id)) return acc - t.amount;
+            return acc;
+        }, 0);
+
+        const initialBalance = asset.balance - netTxChange;
+        const initialDebt = initialBalance < 0 ? Math.abs(initialBalance) : 0;
+
         // 4. Apply Payments to Statement First
-        const statementBalance = Math.max(0, grossStatementBalance - totalPayments);
+        // The Statement Balance matches the "Gross" + "Initial Debt" unless paid off.
+        const statementBalance = Math.max(0, (grossStatementBalance + initialDebt) - totalPayments);
 
         // 5. Apply Remaining Payments to Unbilled
         // Amount used for statement:

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Asset, AssetType, Transaction, TransactionType, CreditCardDetails, LoanDetails } from '../types';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Cell
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar
 } from 'recharts';
 import { FinanceCalculator } from '../services/financeCalculator';
 
@@ -11,6 +11,7 @@ interface AssetManagerProps {
   onAdd: (asset: Asset) => void;
   onEdit: (asset: Asset) => void;
   onDelete: (id: string) => void;
+  onPay?: (asset: Asset) => void;
 }
 
 // Premium Gradients for Cards
@@ -85,6 +86,8 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
       assetToSave.creditDetails = creditForm as CreditCardDetails;
       // Legacy/Compat
       assetToSave.limit = Number(creditForm.limit);
+      // Credit Card Debt should be negative
+      if (assetToSave.balance > 0) assetToSave.balance = -assetToSave.balance;
     } else if (formData.type === AssetType.LOAN) {
       assetToSave.loanDetails = loanForm as LoanDetails;
       // Usually balance is negative for Loans.
@@ -117,14 +120,15 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
         {/* Balance Input */}
         <div>
           <label className="text-xs font-bold text-slate-500 uppercase ml-1">
-            {formData.type === AssetType.CREDIT_CARD ? 'Outstanding Balance (Debt)' : formData.type === AssetType.LOAN ? 'Current Principal Remaining' : 'Current Balance'}
+            {formData.type === AssetType.CREDIT_CARD ? 'Initial Debt (기존 잔액)' : formData.type === AssetType.LOAN ? 'Current Principal Remaining' : 'Current Balance'}
           </label>
           <div className="relative mt-1">
             <span className="absolute left-4 top-3.5 text-slate-400 font-bold">₩</span>
             <input type="number"
               value={formData.type === AssetType.LOAN ? Math.abs(formData.balance || 0) : formData.balance}
               onChange={e => setFormData({ ...formData, balance: formData.type === AssetType.LOAN ? -Number(e.target.value) : Number(e.target.value) })}
-              className="w-full pl-10 p-3 bg-slate-50 border border-slate-200 rounded-xl text-lg font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isEditing && formData.type === AssetType.CREDIT_CARD}
+              className={`w-full pl-10 p-3 bg-slate-50 border border-slate-200 rounded-xl text-lg font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 ${isEditing && formData.type === AssetType.CREDIT_CARD ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
             />
           </div>
         </div>
@@ -193,7 +197,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
 };
 
 // --- Detailed Analytics Modal ---
-const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], onClose: () => void, onEdit: () => void, onDelete: () => void }> = ({ asset, transactions, onClose, onEdit, onDelete }) => {
+const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], onClose: () => void, onEdit: () => void, onDelete: () => void, onPay?: (asset: Asset) => void }> = ({ asset, transactions, onClose, onEdit, onDelete, onPay }) => {
   // Generate Chart Data
   const chartData = useMemo(() => {
     const relevantTxs = transactions
@@ -220,6 +224,11 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
     if (asset.type !== AssetType.LOAN || !asset.loanDetails) return null;
     return FinanceCalculator.calculateLoanSchedule(asset.loanDetails.principal, asset.loanDetails.interestRate, asset.loanDetails.termMonths);
   }, [asset]);
+
+  const creditStats = useMemo(() => {
+    if (asset.type !== AssetType.CREDIT_CARD) return null;
+    return FinanceCalculator.calculateCreditCardBalances(asset, transactions);
+  }, [asset, transactions]);
 
   const theme = ASSET_THEMES[asset.type];
 
@@ -254,6 +263,20 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
         <div className="p-6 overflow-y-auto custom-scrollbar space-y-8">
           {activeTab === 'overview' && (
             <>
+              {/* Credit Card Stats */}
+              {asset.type === AssetType.CREDIT_CARD && creditStats && (
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <p className="text-xs text-slate-500 font-bold uppercase mb-1">Next Bill</p>
+                    <p className="text-2xl font-extrabold text-slate-900">{Math.round(creditStats.statementBalance).toLocaleString()}</p>
+                  </div>
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <p className="text-xs text-slate-500 font-bold uppercase mb-1">Unbilled</p>
+                    <p className="text-2xl font-extrabold text-slate-900">{Math.round(creditStats.unbilledBalance).toLocaleString()}</p>
+                  </div>
+                </div>
+              )}
+
               {/* Chart */}
               <div className="h-48 w-full">
                 <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><span>📉</span> Balance Trend (30 Days)</h4>
@@ -369,6 +392,9 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
 
         {/* Footer Actions */}
         <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-3">
+          {asset.type === AssetType.CREDIT_CARD && onPay && (
+            <button onClick={() => onPay(asset)} className="flex-1 py-3 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-200">💸 Pay Bill</button>
+          )}
           <button onClick={onEdit} className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors">Edit Details</button>
           <button onClick={onDelete} className="px-6 py-3 bg-rose-100 text-rose-600 font-bold rounded-xl hover:bg-rose-200 transition-colors">Delete Asset</button>
         </div>
@@ -378,15 +404,13 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
 };
 
 // --- Asset Card Wrapper ---
-const AssetCard = ({ asset, transactions, onClick }: { asset: Asset, transactions: Transaction[], onClick: () => void }) => {
+const AssetCard: React.FC<{ asset: Asset, transactions: Transaction[], onClick: () => void }> = ({ asset, transactions, onClick }) => {
   const theme = ASSET_THEMES[asset.type];
 
   // Credit Card Logic
   const creditStats = useMemo(() => {
-    if (asset.type === AssetType.CREDIT_CARD) {
-      return FinanceCalculator.calculateCreditCardBalances(asset, transactions);
-    }
-    return null;
+    if (asset.type !== AssetType.CREDIT_CARD) return null;
+    return FinanceCalculator.calculateCreditCardBalances(asset, transactions);
   }, [asset, transactions]);
 
   const displayBalance = asset.balance;
@@ -435,7 +459,7 @@ const AssetCard = ({ asset, transactions, onClick }: { asset: Asset, transaction
   );
 };
 
-const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd, onEdit, onDelete }) => {
+const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd, onEdit, onDelete, onPay }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null); // For Detail Modal
   const [isAdding, setIsAdding] = useState(false);
@@ -517,6 +541,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
           onClose={() => setViewingId(null)}
           onEdit={() => { setEditingId(viewingId); setViewingId(null); }}
           onDelete={() => { onDelete(viewingId); setViewingId(null); }}
+          onPay={onPay}
         />
       )}
     </div>
