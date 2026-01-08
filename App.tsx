@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from './contexts/ToastContext';
+import FilterBar from "./components/FilterBar";
+import TransactionList from "./components/TransactionList";
+
 import { Transaction, Asset, View, TransactionType, Category, RecurringTransaction, SavingsGoal, BillType, AssetType } from './types';
 import { StorageService } from './services/storageService';
 import { SupabaseService } from './services/supabaseService';
@@ -12,6 +15,7 @@ import { useTransactionManager } from './hooks/useTransactionManager';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('dashboard');
+  const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const { addToast } = useToast();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -448,38 +452,69 @@ const App: React.FC = () => {
               await handleAddTransaction(tx);
             }
           }} onPay={openPayCard} />}
-          {view === 'transactions' && <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-4">
+          {view === 'transactions' && <div className="space-y-4">
+            <div className="flex flex-col gap-4">
+              {/* Header & Actions */}
+              <div className="flex justify-between items-center px-1">
                 <h2 className="text-2xl font-bold text-slate-800">Transactions</h2>
-                <button onClick={openAddBill} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors">
-                  <span>🗓️</span> Manage Fixed Bills
-                </button>
-              </div>
-              {dateRange && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg">
-                    {dateRange.start} ~ {dateRange.end}
-                  </span>
-                  <button onClick={() => setDateRange(null)} className="text-xs bg-slate-200 text-slate-500 px-2 py-1 rounded-lg hover:bg-slate-300">
-                    Clear
+                <div className="flex gap-2">
+                  <button onClick={openAddBill} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold hover:bg-indigo-100 transition-colors">
+                    <span>🗓️</span> Bills
                   </button>
+                  {dateRange && (
+                    <button onClick={() => setDateRange(null)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full text-xs font-bold hover:bg-slate-200">
+                      Clear Date
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
+
+              {/* Search Box */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden px-4 py-3 flex gap-2 items-center">
+                <span className="text-slate-400">🔍</span>
+                <input
+                  type="text"
+                  placeholder="Search transactions..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="w-full bg-transparent outline-none text-sm font-medium placeholder:text-slate-300"
+                />
+              </div>
+
+              {/* Filter Chips */}
+              <FilterBar
+                currentFilter={filterCategory}
+                onFilterChange={setFilterCategory}
+                assets={assets}
+              />
             </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="p-4"><input type="text" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full p-2 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500" /></div>
-              <div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th className="p-4">Date</th><th className="p-4">Memo</th><th className="p-4">Asset</th><th className="p-4 text-right">Amount</th><th className="p-4">Actions</th></tr></thead><tbody className="divide-y divide-slate-100">{transactions.filter(t => {
-                const matchesSearch = t.memo.toLowerCase().includes(searchTerm.toLowerCase());
+
+            {/* Transaction List */}
+            <TransactionList
+              transactions={transactions.filter(t => {
+                // 1. Search Filter
+                const matchesSearch = t.memo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  (t.amount.toString().includes(searchTerm));
+                // 2. Date Filter
                 const matchesDate = dateRange ? (t.date >= dateRange.start && t.date <= dateRange.end) : true;
-                return matchesSearch && matchesDate;
-              }).map(t => (
-                <tr key={t.id} className="hover:bg-slate-50/50 group"><td className="p-4 text-sm text-slate-600">{t.date}</td><td className="p-4 font-medium text-slate-900">{t.memo}</td><td className="p-4 text-sm text-slate-500">{assets.find(a => a.id === t.assetId)?.name}</td><td className={`p-4 text-right font-bold ${t.type === TransactionType.INCOME ? 'text-emerald-600' : t.type === TransactionType.EXPENSE ? 'text-rose-600' : 'text-blue-600'}`}>{t.type === TransactionType.INCOME ? '+' : t.type === TransactionType.EXPENSE ? '-' : ''}{t.amount.toLocaleString()}</td><td className="p-4 flex gap-2">
-                  <button onClick={() => { setEditingTransaction(t); setShowSmartInput(true); }} className="text-slate-400 hover:text-blue-500 transition-colors p-1" title="Edit">✏️</button>
-                  <button onClick={() => handleDeleteTransaction(t)} className="text-slate-400 hover:text-rose-500 transition-colors p-1" title="Delete">🗑️</button>
-                </td></tr>
-              ))}</tbody></table></div>
-            </div>
+
+                // 3. Category/Type Filter
+                let matchesType = true;
+                if (filterCategory === 'ALL') matchesType = true;
+                else if (Object.values(TransactionType).includes(filterCategory as any)) {
+                  matchesType = t.type === filterCategory;
+                } else {
+                  // Assume it's an Asset ID
+                  matchesType = t.assetId === filterCategory || t.toAssetId === filterCategory;
+                }
+
+                return matchesSearch && matchesDate && matchesType;
+              })}
+              assets={assets}
+              onEdit={(t) => { setEditingTransaction(t); setShowSmartInput(true); }}
+              onDelete={handleDeleteTransaction}
+              searchTerm={searchTerm}
+            />
           </div>}
         </div></div>
       </main>

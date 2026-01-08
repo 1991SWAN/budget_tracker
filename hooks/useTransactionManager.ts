@@ -1,0 +1,184 @@
+import React, { useState, useCallback } from 'react';
+import { Transaction, Asset, TransactionType, Category } from '../types';
+import { SupabaseService } from '../services/supabaseService';
+import { useToast } from '../contexts/ToastContext';
+
+export const useTransactionManager = (
+    transactions: Transaction[],
+    setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>,
+    assets: Asset[],
+    setAssets: React.Dispatch<React.SetStateAction<Asset[]>>
+) => {
+    const { addToast } = useToast();
+
+    /**
+     * Helper to update asset balances based on a transaction delta.
+     * This handles both Single Asset transactions and Transfers.
+     */
+    const applyTransactionToAssets = useCallback((
+        currentAssets: Asset[],
+        tx: Transaction,
+        multiplier: number = 1 // 1 for Add/New, -1 for Delete/Reverse
+    ): Asset[] => {
+        return currentAssets.map(asset => {
+            // 1. Direct Impact (Income/Expense on this asset)
+            if (asset.id === tx.assetId && !tx.toAssetId) {
+                // Income adds to balance, Expense subtracts.
+                // If multiplier is -1 (reversing), Income subtracts, Expense adds.
+                const change = tx.type === TransactionType.INCOME ? tx.amount : -tx.amount;
+                return { ...asset, balance: asset.balance + (change * multiplier) };
+            }
+
+            // 2. Transfer Impact
+            if (tx.type === TransactionType.TRANSFER) {
+                // Source Asset: Decreases
+                if (asset.id === tx.assetId) {
+                    return { ...asset, balance: asset.balance - (tx.amount * multiplier) };
+                }
+                // Destination Asset: Increases
+                if (asset.id === tx.toAssetId) {
+                    return { ...asset, balance: asset.balance + (tx.amount * multiplier) };
+                }
+            }
+
+            return asset;
+        });
+    }, []);
+
+    /**
+     * Persists changes to Supabase for any assets that have changed.
+     */
+    const persistAssetChanges = useCallback(async (oldAssets: Asset[], newAssets: Asset[]) => {
+        const promises = newAssets.map(newAsset => {
+            const oldAsset = oldAssets.find(a => a.id === newAsset.id);
+            if (oldAsset && oldAsset.balance !== newAsset.balance) {
+                return SupabaseService.saveAsset(newAsset);
+            }
+            return Promise.resolve();
+        });
+        await Promise.all(promises);
+    }, []);
+
+    // --- CRUD Operations ---
+
+    const addTransaction = useCallback(async (newTx: Transaction) => {
+        try {
+            // 1. Save Transaction
+            await SupabaseService.saveTransaction(newTx);
+
+            // 2. Update Local Transaction State
+            setTransactions(prev => [newTx, ...prev]);
+
+            // 3. Update Assets (Apply +1 effect)
+            setAssets(prevAssets => {
+                const newAssets = applyTransactionToAssets(prevAssets, newTx, 1);
+                persistAssetChanges(prevAssets, newAssets); // Fire and forget persistence
+                return newAssets;
+            });
+
+            addToast('Transaction added', 'success');
+        } catch (error) {
+            console.error('Failed to add transaction', error);
+            addToast('Failed to add transaction', 'error');
+        }
+    }, [setTransactions, setAssets, applyTransactionToAssets, persistAssetChanges, addToast]);
+
+    const addTransactions = useCallback(async (newTxs: Transaction[]) => {
+        if (newTxs.length === 0) return;
+        try {
+            // 1. Save All (Batch)
+            await SupabaseService.saveTransactions(newTxs);
+
+            // 2. Update Local Transaction State
+            setTransactions(prev => [...newTxs, ...prev]); // Prepending batch
+
+            // 3. Update Assets (Loop)
+            setAssets(prevAssets => {
+                let currentAssets = prevAssets;
+                newTxs.forEach(tx => {
+                    currentAssets = applyTransactionToAssets(currentAssets, tx, 1);
+                });
+                persistAssetChanges(prevAssets, currentAssets);
+                return currentAssets;
+            });
+
+            addToast(`${newTxs.length} transactions added`, 'success');
+        } catch (error) {
+            console.error('Failed to add transactions', error);
+            addToast('Failed to add transactions', 'error');
+        }
+    }, [setTransactions, setAssets, applyTransactionToAssets, persistAssetChanges, addToast]);
+
+    const updateTransaction = useCallback(async (oldTx: Transaction, newTx: Transaction) => {
+        try {
+            // 1. Save Transaction
+            await SupabaseService.saveTransaction(newTx);
+
+            // 2. Update Local Transaction State
+            setTransactions(prev => prev.map(t => t.id === newTx.id ? newTx : t));
+
+            // 3. Update Assets (Reverse Old, Apply New)
+            setAssets(prevAssets => {
+                // First, reverse the effect of the old transaction
+                const reveresedAssets = applyTransactionToAssets(prevAssets, oldTx, -1);
+                // Then, apply the effect of the new transaction
+                const finalAssets = applyTransactionToAssets(reveresedAssets, newTx, 1);
+
+                persistAssetChanges(prevAssets, finalAssets);
+                return finalAssets;
+            });
+            // Silent success needed for drag-drop reordering sometimes, but Toast is good for manual edits
+            // addToast('Transaction updated', 'success');
+        } catch (error) {
+            console.error('Failed to update transaction', error);
+            addToast('Failed to update transaction', 'error');
+        }
+    }, [setTransactions, setAssets, applyTransactionToAssets, persistAssetChanges, addToast]);
+
+    const deleteTransaction = useCallback(async (tx: Transaction) => {
+        try {
+            // 1. Handle Linked Transfer Partner (Unlink logic)
+            if (tx.linkedTransactionId) {
+                const linkedTx = transactions.find(t => t.id === tx.linkedTransactionId);
+                if (linkedTx) {
+                    const unlinkedPartner: Transaction = {
+                        ...linkedTx,
+                        linkedTransactionId: undefined,
+                        toAssetId: undefined,
+                        type: linkedTx.amount > 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
+                        category: Category.OTHER,
+                        memo: linkedTx.memo.replace(' (Transfer)', '')
+                    };
+
+                    await updateTransaction(linkedTx, unlinkedPartner);
+                    addToast("Linked transfer unlinked", 'info');
+                }
+            }
+
+            // 2. Delete main transaction from DB
+            await SupabaseService.deleteTransaction(tx.id);
+
+            // 3. Update Local State
+            setTransactions(prev => prev.filter(t => t.id !== tx.id));
+
+            // 4. Update Assets (Reverse effect)
+            setAssets(prevAssets => {
+                const newAssets = applyTransactionToAssets(prevAssets, tx, -1);
+                persistAssetChanges(prevAssets, newAssets);
+                return newAssets;
+            });
+
+            addToast('Transaction deleted', 'success');
+        } catch (error) {
+            console.error('Failed to delete transaction', error);
+            addToast('Failed to delete transaction', 'error');
+        }
+    }, [transactions, setTransactions, setAssets, applyTransactionToAssets, persistAssetChanges, addToast, updateTransaction]);
+
+    return {
+        addTransaction,
+        addTransactions,
+        updateTransaction,
+        deleteTransaction
+    };
+};
