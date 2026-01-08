@@ -96,9 +96,10 @@ const TransactionList: React.FC<TransactionListProps> = ({
     }
 
     return (
-        <div className="h-[calc(100vh-280px)] bg-slate-50/50 rounded-3xl border border-slate-100/50">
+        <div className="h-[calc(100vh-280px)] bg-slate-50/50 rounded-3xl border border-slate-100/50 max-w-3xl mx-auto">
             {/* Height calculation expects header/filters above. Adjust as needed or use flex-grow in parent */}
             <GroupedVirtuoso
+                style={{ height: '100%' }}
                 groupCounts={groupCounts}
                 groupContent={(index) => {
                     const dateStr = groupLabels[index];
@@ -118,6 +119,8 @@ const TransactionList: React.FC<TransactionListProps> = ({
                 }}
                 itemContent={(index) => {
                     const tx = sortedData[index];
+                    if (!tx) return <></>; // Safety fallback
+
                     return (
                         <div className="bg-white mx-3 my-1 rounded-2xl shadow-sm border border-slate-100 overflow-hidden first:mt-2 last:mb-4">
                             <TransactionItem

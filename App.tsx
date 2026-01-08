@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from './contexts/ToastContext';
+import ErrorBoundary from "./components/ErrorBoundary";
+
 import { useTransactionSearch } from "./hooks/useTransactionSearch";
 
 import FilterBar from "./components/FilterBar";
@@ -14,6 +16,7 @@ import AssetManager from './components/AssetManager';
 import SmartInput from './components/SmartInput';
 import { GeminiService } from './services/geminiService';
 import { useTransactionManager } from './hooks/useTransactionManager';
+
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('dashboard');
@@ -45,6 +48,10 @@ const App: React.FC = () => {
   // File Import Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importAssetId, setImportAssetId] = useState<string>('');
+
+  // Hooks must be at top level
+  const searchedTransactions = useTransactionSearch(transactions, searchTerm);
+
 
   useEffect(() => {
     loadData();
@@ -512,30 +519,32 @@ const App: React.FC = () => {
             </div>
 
             {/* Transaction List */}
-            <TransactionList
-              transactions={useTransactionSearch(transactions, searchTerm).filter(t => {
-                // 1. (Search is now handled by hook above)
+            <ErrorBoundary>
+              <TransactionList
+                transactions={searchedTransactions.filter(t => {
+                  // 1. (Search is now handled by hook above)
 
-                // 2. Date Filter
-                const matchesDate = dateRange ? (t.date >= dateRange.start && t.date <= dateRange.end) : true;
+                  // 2. Date Filter
+                  const matchesDate = dateRange ? (t.date >= dateRange.start && t.date <= dateRange.end) : true;
 
-                // 3. Category/Type Filter
-                let matchesType = true;
-                if (filterCategory === 'ALL') matchesType = true;
-                else if (Object.values(TransactionType).includes(filterCategory as any)) {
-                  matchesType = t.type === filterCategory;
-                } else {
-                  // Assume it's an Asset ID
-                  matchesType = t.assetId === filterCategory || t.toAssetId === filterCategory;
-                }
+                  // 3. Category/Type Filter
+                  let matchesType = true;
+                  if (filterCategory === 'ALL') matchesType = true;
+                  else if (Object.values(TransactionType).includes(filterCategory as any)) {
+                    matchesType = t.type === filterCategory;
+                  } else {
+                    // Assume it's an Asset ID
+                    matchesType = t.assetId === filterCategory || t.toAssetId === filterCategory;
+                  }
 
-                return matchesDate && matchesType;
-              })}
-              assets={assets}
-              onEdit={(t) => { setEditingTransaction(t); setShowSmartInput(true); }}
-              onDelete={handleDeleteTransaction}
-              searchTerm={searchTerm}
-            />
+                  return matchesDate && matchesType;
+                })}
+                assets={assets}
+                onEdit={(t) => { setEditingTransaction(t); setShowSmartInput(true); }}
+                onDelete={handleDeleteTransaction}
+                searchTerm={searchTerm}
+              />
+            </ErrorBoundary>
           </div>}
         </div></div>
       </main>

@@ -129,7 +129,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
   }
 
   return (
-    <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden w-full max-w-full mx-auto flex flex-col max-h-[90vh]">
+    <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden w-full max-w-lg mx-auto flex flex-col max-h-[90vh]">
       {/* Compact Header */}
       <div className="bg-slate-50/80 backdrop-blur-sm px-6 py-3 flex justify-between items-center border-b border-slate-100 shrink-0">
         <h3 className="text-sm sm:text-lg font-bold text-slate-800 flex items-center gap-2">
