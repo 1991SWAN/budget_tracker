@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from './contexts/ToastContext';
+import { useTransactionSearch } from "./hooks/useTransactionSearch";
+
 import FilterBar from "./components/FilterBar";
 import TransactionList from "./components/TransactionList";
 
@@ -491,10 +493,9 @@ const App: React.FC = () => {
 
             {/* Transaction List */}
             <TransactionList
-              transactions={transactions.filter(t => {
-                // 1. Search Filter
-                const matchesSearch = t.memo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                  (t.amount.toString().includes(searchTerm));
+              transactions={useTransactionSearch(transactions, searchTerm).filter(t => {
+                // 1. (Search is now handled by hook above)
+
                 // 2. Date Filter
                 const matchesDate = dateRange ? (t.date >= dateRange.start && t.date <= dateRange.end) : true;
 
@@ -508,7 +509,7 @@ const App: React.FC = () => {
                   matchesType = t.assetId === filterCategory || t.toAssetId === filterCategory;
                 }
 
-                return matchesSearch && matchesDate && matchesType;
+                return matchesDate && matchesType;
               })}
               assets={assets}
               onEdit={(t) => { setEditingTransaction(t); setShowSmartInput(true); }}

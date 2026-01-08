@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { GroupedVirtuoso } from 'react-virtuoso';
 import { Transaction, Asset } from '../types';
 import TransactionItem from './TransactionItem';
 
@@ -7,7 +8,7 @@ interface TransactionListProps {
     assets: Asset[];
     onEdit: (tx: Transaction) => void;
     onDelete: (tx: Transaction) => void;
-    searchTerm: string; // Used for "Empty State" messaging if needed
+    searchTerm: string;
 }
 
 // Helper to format Human Readable Date Labels
@@ -18,7 +19,6 @@ const getDateLabel = (dateStr: string) => {
     if (dateStr === today) return 'Today';
     if (dateStr === yesterday) return 'Yesterday';
 
-    // Format: "May 20, Mon" (Simple JS date formatting)
     const d = new Date(dateStr);
     const options: Intl.DateTimeFormatOptions = {
         month: 'long',
@@ -34,20 +34,59 @@ const TransactionList: React.FC<TransactionListProps> = ({
     onEdit,
     onDelete
 }) => {
-    // 1. Group by Date
-    const grouped: Record<string, Transaction[]> = {};
+    // 1. Prepare Data for Virtuoso
+    // We need:
+    // - Sorted Transactions (Flat Array)
+    // - Group Counts (Array of numbers, e.g. [5, 3, 2] means first 5 are day 1, next 3 day 2...)
+    // - Group Labels (Array of strings matching the counts)
 
-    // Assuming transactions are already sorted desc by date from App.tsx/Supabase
-    // If not, we might need to sort here, but better to sort at source.
-    transactions.forEach(tx => {
-        if (!grouped[tx.date]) grouped[tx.date] = [];
-        grouped[tx.date].push(tx);
-    });
+    const { sortedData, groupCounts, groupLabels, groupDailyTotals } = useMemo(() => {
+        // Sort transactions by Date Descending
+        const sorted = [...transactions].sort((a, b) => {
+            if (a.date !== b.date) return b.date.localeCompare(a.date);
+            return (b.timestamp || 0) - (a.timestamp || 0); // stable sort within day
+        });
 
-    const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a)); // Ensure Descending
+        const counts: number[] = [];
+        const labels: string[] = [];
+        const dailyTotals: number[] = [];
+
+        if (sorted.length === 0) return { sortedData: [], groupCounts: [], groupLabels: [], groupDailyTotals: [] };
+
+        let currentGroupDate = sorted[0].date;
+        let currentCount = 0;
+        let currentTotal = 0;
+
+        sorted.forEach((tx, index) => {
+            if (tx.date !== currentGroupDate) {
+                // Push previous group
+                counts.push(currentCount);
+                labels.push(currentGroupDate);
+                dailyTotals.push(currentTotal);
+
+                // Start new group
+                currentGroupDate = tx.date;
+                currentCount = 1;
+                currentTotal = (tx.type === 'INCOME' ? tx.amount : tx.type === 'EXPENSE' ? -tx.amount : 0);
+            } else {
+                currentCount++;
+                currentTotal += (tx.type === 'INCOME' ? tx.amount : tx.type === 'EXPENSE' ? -tx.amount : 0);
+            }
+
+            // Handle last item
+            if (index === sorted.length - 1) {
+                counts.push(currentCount);
+                labels.push(currentGroupDate);
+                dailyTotals.push(currentTotal);
+            }
+        });
+
+        return { sortedData: sorted, groupCounts: counts, groupLabels: labels, groupDailyTotals: dailyTotals };
+    }, [transactions]);
+
 
     // Empty State
-    if (dates.length === 0) {
+    if (sortedData.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-20 text-slate-400">
                 <div className="text-4xl mb-2">🍃</div>
@@ -57,22 +96,17 @@ const TransactionList: React.FC<TransactionListProps> = ({
     }
 
     return (
-        <div className="space-y-6 pb-20">
-            {dates.map(date => {
-                const dateLabel = getDateLabel(date);
-                const dayTxs = grouped[date];
+        <div className="h-[calc(100vh-280px)] bg-slate-50/50 rounded-3xl border border-slate-100/50">
+            {/* Height calculation expects header/filters above. Adjust as needed or use flex-grow in parent */}
+            <GroupedVirtuoso
+                groupCounts={groupCounts}
+                groupContent={(index) => {
+                    const dateStr = groupLabels[index];
+                    const dateLabel = getDateLabel(dateStr);
+                    const dailyTotal = groupDailyTotals[index];
 
-                // Calculate Daily Total (Optional UI enhancement)
-                const dailyTotal = dayTxs.reduce((sum, t) => {
-                    if (t.type === 'INCOME') return sum + t.amount;
-                    if (t.type === 'EXPENSE') return sum - t.amount;
-                    return sum;
-                }, 0);
-
-                return (
-                    <div key={date} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-                        {/* Sticky Header */}
-                        <div className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm px-1 py-2 mb-2 flex justify-between items-end border-b border-slate-200/50">
+                    return (
+                        <div className="bg-slate-50/95 backdrop-blur-sm px-4 py-2 border-b border-slate-200/50 flex justify-between items-end transition-all">
                             <span className="text-sm font-black text-slate-400 uppercase tracking-widest pl-1">
                                 {dateLabel}
                             </span>
@@ -80,23 +114,23 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                 {dailyTotal !== 0 ? (dailyTotal > 0 ? '+' : '') + dailyTotal.toLocaleString() : ''}
                             </span>
                         </div>
-
-                        {/* List Group */}
-                        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden divide-y divide-slate-50">
-                            {dayTxs.map(tx => (
-                                <TransactionItem
-                                    key={tx.id}
-                                    transaction={tx}
-                                    asset={assets.find(a => a.id === tx.assetId)}
-                                    toAsset={tx.toAssetId ? assets.find(a => a.id === tx.toAssetId) : undefined}
-                                    onEdit={onEdit}
-                                    onDelete={onDelete}
-                                />
-                            ))}
+                    );
+                }}
+                itemContent={(index) => {
+                    const tx = sortedData[index];
+                    return (
+                        <div className="bg-white mx-3 my-1 rounded-2xl shadow-sm border border-slate-100 overflow-hidden first:mt-2 last:mb-4">
+                            <TransactionItem
+                                transaction={tx}
+                                asset={assets.find(a => a.id === tx.assetId)}
+                                toAsset={tx.toAssetId ? assets.find(a => a.id === tx.toAssetId) : undefined}
+                                onEdit={onEdit}
+                                onDelete={onDelete}
+                            />
                         </div>
-                    </div>
-                );
-            })}
+                    );
+                }}
+            />
         </div>
     );
 };
