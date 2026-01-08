@@ -105,6 +105,7 @@ export interface RecurringTransaction {
   dayOfMonth: number;
   category: Category;
   billType: BillType;
+  groupName?: string; // For custom grouping (e.g. "Housing", "Subscriptions")
 
   installmentDetails?: {
     startDate: string;

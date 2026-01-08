@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useToast } from './contexts/ToastContext';
 import { Transaction, Asset, View, TransactionType, Category, RecurringTransaction, SavingsGoal, BillType, AssetType } from './types';
 import { StorageService } from './services/storageService';
 import { SupabaseService } from './services/supabaseService';
@@ -10,6 +11,7 @@ import { GeminiService } from './services/geminiService';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('dashboard');
+  const { addToast } = useToast();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [recurring, setRecurring] = useState<RecurringTransaction[]>([]);
@@ -42,18 +44,21 @@ const App: React.FC = () => {
   }, []);
 
   const loadData = async () => {
-    const [txs, assts, recs, gls] = await Promise.all([
-      SupabaseService.getTransactions(),
-      SupabaseService.getAssets(),
-      SupabaseService.getRecurring(),
-      SupabaseService.getGoals()
-    ]);
-    setTransactions(txs);
-    setAssets(assts);
-    setRecurring(recs);
-    setGoals(gls);
-    // Budget is still local for now or we can tack it onto a settings table later
-    setMonthlyBudget(StorageService.getBudget());
+    try {
+      const [txs, assts, recs, gls] = await Promise.all([
+        SupabaseService.getTransactions(),
+        SupabaseService.getAssets(),
+        SupabaseService.getRecurring(),
+        SupabaseService.getGoals()
+      ]);
+      setTransactions(txs);
+      setAssets(assts);
+      setRecurring(recs);
+      setGoals(gls);
+      setMonthlyBudget(StorageService.getBudget());
+    } catch (e) {
+      addToast('Failed to load data from cloud', 'error');
+    }
   };
 
   // Optimistic updates are handled in state, but we need to persist changes
@@ -64,6 +69,7 @@ const App: React.FC = () => {
     SupabaseService.saveTransaction(newTx);
     setTransactions(prev => [newTx, ...prev]);
     updateAssetsWithTransaction(newTx);
+    addToast('Transaction added', 'success');
   };
 
   const updateAssetsWithTransaction = (tx: Transaction, multiplier: number = 1) => {
@@ -152,7 +158,7 @@ const App: React.FC = () => {
         };
 
         updatedTransactions = updatedTransactions.map(t => t.id === unlinkedPartner.id ? unlinkedPartner : t);
-        alert("This was a linked transfer. The counterpart transaction has been unlinked and set to 'Other'.");
+        addToast("Linked transfer unlinked (partner reverted)", 'info');
       }
     }
 
@@ -163,6 +169,7 @@ const App: React.FC = () => {
 
     // Persist Delete
     SupabaseService.deleteTransaction(tx.id);
+    addToast('Transaction deleted', 'success');
   };
 
   const handleSmartParsed = (parsedTxs: Partial<Transaction>[]) => {
@@ -220,7 +227,7 @@ const App: React.FC = () => {
         });
 
         finalNewTxs.forEach(tx => updateAssetsWithTransaction(tx));
-        alert(`Success! Imported ${finalNewTxs.length} transactions.\nMatched ${updatedExistingTxs.length} transfers.`);
+        addToast(`Imported ${finalNewTxs.length} transactions (${updatedExistingTxs.length} matched)`, 'success');
       }
     };
     reader.readAsText(file);
@@ -283,11 +290,12 @@ const App: React.FC = () => {
     // Re-implementing strictly needed parts for the modal handlers to work
     if (modalType === 'bill') {
       const action = selectedItem ? 'update' : 'add';
-      const data = { id: selectedItem?.id || Date.now().toString(), name: formData.name, amount: Number(formData.amount), dayOfMonth: Number(formData.dayOfMonth), category: formData.category, billType: formData.billType };
+      const data = { id: selectedItem?.id || Date.now().toString(), name: formData.name, amount: Number(formData.amount), dayOfMonth: Number(formData.dayOfMonth), category: formData.category, billType: formData.billType, groupName: formData.groupName || 'Default' };
 
       SupabaseService.saveRecurring(data as RecurringTransaction);
       if (action === 'add') setRecurring(prev => [...prev, data as RecurringTransaction]);
       else if (action === 'update') setRecurring(prev => prev.map(r => r.id === data.id ? data as RecurringTransaction : r));
+      addToast(`Bill ${action === 'add' ? 'added' : 'updated'}`, 'success');
 
     } else if (modalType === 'goal') {
       const action = selectedItem ? 'update' : 'add';
@@ -296,9 +304,11 @@ const App: React.FC = () => {
       SupabaseService.saveGoal(data as SavingsGoal);
       if (action === 'add') setGoals(prev => [...prev, data as SavingsGoal]);
       else if (action === 'update') setGoals(prev => prev.map(g => g.id === data.id ? data as SavingsGoal : g));
+      addToast(`Goal ${action === 'add' ? 'added' : 'updated'}`, 'success');
 
     } else if (modalType === 'pay-bill') {
       handleAddTransaction({ id: 'bp-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: selectedItem.amount, type: TransactionType.EXPENSE, category: selectedItem.category, memo: `Bill Pay: ${selectedItem.name}`, assetId: paymentAsset, emoji: '⚡' });
+      addToast('Bill paid successfully', 'success');
     } else if (modalType === 'fund-goal') {
       const amount = Number(formData.amount);
       const targetGoal = goals.find(g => g.id === selectedItem.id);
@@ -308,6 +318,7 @@ const App: React.FC = () => {
         setGoals(prev => prev.map(g => g.id === updatedGoal.id ? updatedGoal : g));
       }
       handleAddTransaction({ id: 'gc-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: amount, type: TransactionType.TRANSFER, category: Category.INVESTMENT, memo: `Goal: ${selectedItem.name}`, assetId: paymentAsset, toAssetId: destinationAsset || undefined, emoji: '💰' });
+      addToast('Funds added to goal', 'success');
     }
 
     closeModal();
@@ -367,9 +378,12 @@ const App: React.FC = () => {
                     {Object.values(BillType).map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-slate-500">Day of Month:</span>
-                  <input type="number" min="1" max="31" value={formData.dayOfMonth} onChange={e => setFormData({ ...formData, dayOfMonth: e.target.value })} className="w-20 p-2 border rounded-lg" />
+                <div className="flex gap-2">
+                  <input type="text" placeholder="Group (e.g. Housing)" value={formData.groupName || ''} onChange={e => setFormData({ ...formData, groupName: e.target.value })} className="flex-1 p-2 border rounded-lg" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-500 whitespace-nowrap">Day:</span>
+                    <input type="number" min="1" max="31" value={formData.dayOfMonth} onChange={e => setFormData({ ...formData, dayOfMonth: e.target.value })} className="w-16 p-2 border rounded-lg" />
+                  </div>
                 </div>
               </>
             )}
@@ -480,11 +494,40 @@ const App: React.FC = () => {
         <header className="lg:hidden bg-white border-b border-slate-100 p-4 flex justify-between items-center sticky top-0 z-30"><div className="flex items-center space-x-2 text-blue-600"><span className="text-2xl">🪙</span><span className="font-bold text-slate-900">SmartPenny</span></div><button onClick={() => setIsSidebarOpen(true)} className="p-2 text-slate-600 text-2xl">☰</button></header>
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth"><div className="max-w-5xl mx-auto">
           {showSmartInput && <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm overflow-y-auto"><div className="w-full max-w-lg md:max-w-3xl my-auto"><SmartInput onTransactionsParsed={handleSmartParsed} onCancel={() => setShowSmartInput(false)} assets={assets} initialData={editingTransaction} /></div></div>}
-          {view === 'dashboard' && <Dashboard transactions={transactions} assets={assets} recurring={recurring} goals={goals} onRecurringChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteRecurring(item.id); setRecurring(prev => prev.filter(r => r.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveRecurring(newItem); setRecurring(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveRecurring(item); setRecurring(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r)); } else if (action === 'pay') { handleAddTransaction({ id: 'bp-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.EXPENSE, category: item.category, memo: `Bill Pay: ${item.name}`, assetId: item.assetId, emoji: '⚡' }); } }} onGoalChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteGoal(item.id); setGoals(prev => prev.filter(g => g.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveGoal(newItem); setGoals(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveGoal(item); setGoals(prev => prev.map(g => g.id === item.id ? { ...g, ...item } : g)); } else if (action === 'contribute') { const updated = { ...item, currentAmount: item.currentAmount + item.amount }; SupabaseService.saveGoal(updated); setGoals(prev => prev.map(g => g.id === item.id ? updated : g)); handleAddTransaction({ id: 'gc-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.TRANSFER, category: Category.INVESTMENT, memo: `Goal: ${item.name}`, assetId: item.assetId, toAssetId: item.toAssetId, emoji: '💰' }); } }} onAddTransaction={handleAddTransaction} monthlyBudget={monthlyBudget} onBudgetChange={setMonthlyBudget} onNavigateToTransactions={(range) => { if (range) setDateRange(range); setView('transactions'); }} />}
+          {view === 'dashboard' && <Dashboard
+            transactions={transactions}
+            assets={assets}
+            recurring={recurring}
+            goals={goals}
+            onRecurringChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteRecurring(item.id); setRecurring(prev => prev.filter(r => r.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveRecurring(newItem); setRecurring(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveRecurring(item); setRecurring(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r)); } else if (action === 'pay') { handleAddTransaction({ id: 'bp-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.EXPENSE, category: item.category, memo: `Bill Pay: ${item.name}`, assetId: item.assetId, emoji: '⚡' }); } }}
+            onGoalChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteGoal(item.id); setGoals(prev => prev.filter(g => g.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveGoal(newItem); setGoals(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveGoal(item); setGoals(prev => prev.map(g => g.id === item.id ? { ...g, ...item } : g)); } else if (action === 'contribute') { const updated = { ...item, currentAmount: item.currentAmount + item.amount }; SupabaseService.saveGoal(updated); setGoals(prev => prev.map(g => g.id === item.id ? updated : g)); handleAddTransaction({ id: 'gc-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.TRANSFER, category: Category.INVESTMENT, memo: `Goal: ${item.name}`, assetId: item.assetId, toAssetId: item.toAssetId, emoji: '💰' }); } }}
+            onAddTransaction={handleAddTransaction}
+            monthlyBudget={monthlyBudget}
+            onBudgetChange={setMonthlyBudget}
+            onNavigateToTransactions={(range) => { if (range) setDateRange(range); setView('transactions'); }}
+            onAddBillToGroup={(group) => {
+              setModalType('bill');
+              setSelectedItem(null);
+              setFormData({ name: '', amount: '', dayOfMonth: 1, category: Category.UTILITIES, billType: BillType.SUBSCRIPTION, groupName: group });
+              // Optional: switch to transactions view if we want to show the modal there, but modal is global in App, so it opens over whatever view.
+              // However, user might expect to be in Transactions context.
+              // Given the design "Go to Transactions to add bills" inside the empty state message, 
+              // maybe we should switch view? 
+              // The empty state message says "Go to 'Transactions' to add bills."
+              // The button is shortcut. Let's just open modal, but maybe switch view to transactions so when they close they are there?
+              // The button says "+ Add Bill to {group}".
+              // Let's just open modal.
+            }}
+          />}
           {view === 'assets' && <AssetManager assets={assets} transactions={transactions} onAdd={a => { SupabaseService.saveAsset(a); setAssets(prev => [...prev, a]); }} onDelete={id => { SupabaseService.deleteAsset(id); setAssets(prev => prev.filter(a => a.id !== id)); }} onEdit={a => { SupabaseService.saveAsset(a); setAssets(prev => prev.map(old => old.id === a.id ? a : old)); }} onPay={openPayCard} />}
           {view === 'transactions' && <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-slate-800">Transactions</h2>
+              <div className="flex items-center gap-4">
+                <h2 className="text-2xl font-bold text-slate-800">Transactions</h2>
+                <button onClick={openAddBill} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors">
+                  <span>🗓️</span> Manage Fixed Bills
+                </button>
+              </div>
               {dateRange && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg">
