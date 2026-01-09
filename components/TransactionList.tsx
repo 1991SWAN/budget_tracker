@@ -107,11 +107,11 @@ const TransactionList: React.FC<TransactionListProps> = ({
                     const dailyTotal = groupDailyTotals[index];
 
                     return (
-                        <div className="bg-slate-50/95 backdrop-blur-sm px-4 py-2 border-b border-slate-200/50 flex justify-between items-end transition-all">
-                            <span className="text-sm font-black text-slate-400 uppercase tracking-widest pl-1">
+                        <div className="bg-slate-50/90 backdrop-blur-md px-5 py-3 border-b border-slate-200/50 flex justify-between items-end sticky top-0 z-10 shadow-sm transition-all">
+                            <span className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">
                                 {dateLabel}
                             </span>
-                            <span className={`text-xs font-bold ${dailyTotal > 0 ? 'text-emerald-500' : dailyTotal < 0 ? 'text-slate-400' : 'text-slate-300'}`}>
+                            <span className={`text-xs font-bold ${dailyTotal > 0 ? 'text-emerald-600' : dailyTotal < 0 ? 'text-rose-500' : 'text-slate-400'}`}>
                                 {dailyTotal !== 0 ? (dailyTotal > 0 ? '+' : '') + dailyTotal.toLocaleString() : ''}
                             </span>
                         </div>
