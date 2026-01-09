@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
+import { useModalClose } from '../hooks/useModalClose';
 import { Asset, AssetType, Transaction, TransactionType, CreditCardDetails, LoanDetails } from '../types';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar
@@ -198,6 +199,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
 
 // --- Detailed Analytics Modal ---
 const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], onClose: () => void, onEdit: () => void, onDelete: () => void, onPay?: (asset: Asset) => void }> = ({ asset, transactions, onClose, onEdit, onDelete, onPay }) => {
+  const modalRef = useRef<HTMLDivElement>(null);
   // Generate Chart Data
   const chartData = useMemo(() => {
     const relevantTxs = transactions
@@ -234,9 +236,11 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
 
   const [activeTab, setActiveTab] = useState<'overview' | 'simulation' | 'installments'>('overview');
 
+  useModalClose(true, onClose, modalRef);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-5">
+      <div ref={modalRef} className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-5">
         {/* Header */}
         <div className={`p-6 ${theme.bg} text-white relative overflow-hidden`}>
           <div className="absolute top-0 right-0 p-10 opacity-10 text-9xl transform translate-x-10 -translate-y-10 pointer-events-none">{theme.icon}</div>
@@ -464,6 +468,10 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
   const [viewingId, setViewingId] = useState<string | null>(null); // For Detail Modal
   const [isAdding, setIsAdding] = useState(false);
 
+  const modalRef = useRef<HTMLDivElement>(null);
+  const handleClose = () => { setEditingId(null); setIsAdding(false); };
+  useModalClose(isAdding || !!editingId, handleClose, modalRef);
+
   // Group Assets
   const groupedAssets = useMemo(() => {
     const groups = {
@@ -520,7 +528,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
       {/* Modals */}
       {(isAdding || editingId) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md h-[700px]">
+          <div ref={modalRef} className="w-full max-w-md h-[700px]">
             <AssetForm
               initialData={editingId ? assets.find(a => a.id === editingId) : undefined}
               isEditing={!!editingId}

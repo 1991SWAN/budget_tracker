@@ -14,8 +14,10 @@ import { ImportService } from './services/importService';
 import Dashboard from './components/Dashboard';
 import AssetManager from './components/AssetManager';
 import SmartInput from './components/SmartInput';
-import { GeminiService } from './services/geminiService';
+
+
 import { useTransactionManager } from './hooks/useTransactionManager';
+import { useModalClose } from './hooks/useModalClose';
 
 
 const App: React.FC = () => {
@@ -48,6 +50,11 @@ const App: React.FC = () => {
   // File Import Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importAssetId, setImportAssetId] = useState<string>('');
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Modal Close Support
+  const modalRef = useRef<HTMLDivElement>(null);
+  useModalClose(!!modalType, () => setModalType(null), modalRef);
 
   // Hooks must be at top level
   const searchedTransactions = useTransactionSearch(transactions, searchTerm);
@@ -127,14 +134,8 @@ const App: React.FC = () => {
     setEditingTransaction(null);
   };
 
-  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !importAssetId) {
-
-
-      // Safe check, though UI shouldn't allow this
-      return;
-    }
+  const handleProcessFile = (file: File) => {
+    if (!importAssetId) return;
 
     const reader = new FileReader();
 
@@ -163,6 +164,7 @@ const App: React.FC = () => {
       });
 
       addToast(`Imported ${finalNewTxs.length} transactions (${updatedExistingTxs.length} matched)`, 'success');
+      setModalType(null); // Close modal on success
     };
 
     if (file.name.endsWith('.csv')) {
@@ -170,7 +172,13 @@ const App: React.FC = () => {
     } else {
       reader.readAsArrayBuffer(file);
     }
+  };
 
+  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleProcessFile(file);
+    }
     e.target.value = ''; // Reset
   };
 
@@ -268,7 +276,7 @@ const App: React.FC = () => {
     if (!modalType) return null;
     return (
       <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 animate-in zoom-in-95">
+        <div ref={modalRef} className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 animate-in zoom-in-95">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-bold text-slate-800">
               {modalType === 'bill' ? (selectedItem ? 'Edit Bill' : 'Add New Bill') :
@@ -283,27 +291,44 @@ const App: React.FC = () => {
           </div>
           <div className="space-y-4">
             {modalType === 'import' && (
-              <>
-                <p className="text-sm text-slate-500 mb-2">Select the account to import CSV transactions into.</p>
+              <div
+                className={`space-y-4 transition-all duration-200 ${isDragging ? 'scale-[1.02]' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) handleProcessFile(file);
+                }}
+              >
+                <p className="text-sm text-slate-500 mb-2">Select the account to import transactions into.</p>
                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-2">
                   <p className="text-xs text-blue-800">💡 <strong>Tip:</strong> Duplicates will be automatically skipped based on date, amount, and memo.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Target Account</label>
-                  <select value={importAssetId} onChange={e => setImportAssetId(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500 font-medium">
+                  <select value={importAssetId} onChange={e => setImportAssetId(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all">
                     {assets.map(a => <option key={a.id} value={a.id}>{a.name} ({a.balance.toLocaleString()})</option>)}
                   </select>
                 </div>
-                <button
-                  onClick={() => {
-                    fileInputRef.current?.click();
-                    setModalType(null);
-                  }}
-                  className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-2"
+
+                <div
+                  className={`relative group cursor-pointer border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center gap-3 transition-all duration-300 ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'}`}
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  <span>📂</span> Select CSV File
-                </button>
-              </>
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isDragging ? 'bg-blue-500 text-white scale-110 shadow-lg' : 'bg-slate-100 text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-500'}`}>
+                    <span className="text-2xl">{isDragging ? '📥' : '📂'}</span>
+                  </div>
+                  <div className="text-center">
+                    <p className={`font-bold transition-colors ${isDragging ? 'text-blue-600' : 'text-slate-700'}`}>
+                      {isDragging ? 'Drop file here' : 'Drop your file here'}
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-medium">or click to browse files</p>
+                  </div>
+                  <p className="text-[9px] text-slate-300 uppercase tracking-widest font-bold mt-2">CSV, XLSX, XLS supported</p>
+                </div>
+              </div>
             )}
 
             {modalType === 'bill' && (
