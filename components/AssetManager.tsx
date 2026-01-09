@@ -270,12 +270,21 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
               {/* Credit Card Stats */}
               {asset.type === AssetType.CREDIT_CARD && creditStats && (
                 <div className="grid grid-cols-2 gap-4 mb-6">
+                  {/* New: Total Debt Card */}
+                  <div className="col-span-2 bg-slate-800 p-5 rounded-2xl text-white shadow-lg flex justify-between items-center">
+                    <div>
+                      <p className="text-xs opacity-70 font-bold uppercase mb-1">Total Outstanding Debt</p>
+                      <p className="text-3xl font-black">{Math.abs(asset.balance).toLocaleString()} <span className="text-base font-medium opacity-50">KRW</span></p>
+                    </div>
+                    <div className="text-4xl opacity-20">🏦</div>
+                  </div>
+
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <p className="text-xs text-slate-500 font-bold uppercase mb-1">Next Bill</p>
+                    <p className="text-xs text-slate-500 font-bold uppercase mb-1">Next Bill (Est.)</p>
                     <p className="text-2xl font-extrabold text-slate-900">{Math.round(creditStats.statementBalance).toLocaleString()}</p>
                   </div>
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <p className="text-xs text-slate-500 font-bold uppercase mb-1">Unbilled</p>
+                    <p className="text-xs text-slate-500 font-bold uppercase mb-1">Future Unbilled</p>
                     <p className="text-2xl font-extrabold text-slate-900">{Math.round(creditStats.unbilledBalance).toLocaleString()}</p>
                   </div>
                 </div>
@@ -341,10 +350,16 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
                           <p className="font-bold text-slate-800 text-sm">{tx.memo.replace(/ \(\d+M Installment\)/, '')}</p>
                           <p className="text-xs text-slate-400">{tx.date}</p>
                         </div>
-                        <div className="text-right">
+                        <div className="text-right flex flex-col items-end">
                           <p className="font-bold text-rose-600">-{tx.amount.toLocaleString()}</p>
-                          <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">
-                            {tx.installment.isInterestFree ? 'No Interest' : 'Interest'}
+                          <p className="text-[11px] font-bold text-slate-500 mb-1">
+                            (월 {Math.round(tx.amount / tx.installment.totalMonths).toLocaleString()})
+                          </p>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${tx.installment.isInterestFree
+                            ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                            : 'bg-rose-50 text-rose-600 border-rose-100'
+                            }`}>
+                            {tx.installment.isInterestFree ? '무이자' : '이자'}
                           </span>
                         </div>
                       </div>

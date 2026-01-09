@@ -60,92 +60,72 @@ export class FinanceCalculator {
         // Usage End Date is the day BEFORE User's Usage Start Day.
         // Find the most recent "Usage End Date" before the "Target Payment Date" but with enough gap (min 10 days).
 
+        // Calculate Usage Period (Existing Logic)
         let usageEndDate = new Date(targetPaymentDate);
-        usageEndDate.setDate(usageStartDay - 1); // e.g. Start 14 -> End 13.
-
-        // If Usage End > Payment (impossible), go back a month.
+        usageEndDate.setDate(usageStartDay - 1);
         if (usageEndDate >= targetPaymentDate) {
             usageEndDate.setMonth(usageEndDate.getMonth() - 1);
         }
-
-        // Ensure gap. If Usage End is dangerously close (e.g. 1 day), it might be previous month.
-        // Let's assume the Bill closes at least 10 days before payment.
         const gap = (targetPaymentDate.getTime() - usageEndDate.getTime()) / (1000 * 3600 * 24);
         if (gap < 10) {
             usageEndDate.setMonth(usageEndDate.getMonth() - 1);
         }
-
         let usageStartDate = new Date(usageEndDate);
         if (usageStartDay > usageEndDate.getDate()) {
-            // e.g. End 13th. Start 14th. So Start is previous month.
             usageStartDate.setMonth(usageStartDate.getMonth() - 1);
         }
         usageStartDate.setDate(usageStartDay);
-
-        // Reset Time
         usageStartDate.setHours(0, 0, 0, 0);
         usageEndDate.setHours(23, 59, 59, 999);
 
-        // Calculate Statement Balance (Transactions within Usage Period)
+        // Core Refactor: Statement Balance = Total Debt - Future Liability
+        // This ensures proper installment handling (only billing the current portion).
+
+        // 1. Determine Total Debt (Real-time from Asset Balance)
+        // usage: Balance is negative for debt.
+        const totalDebt = asset.balance < 0 ? Math.abs(asset.balance) : 0;
+
+        // 2. Calculate Future Liability (Expenses that are NOT yet due in this statement)
         const relevantTxs = transactions.filter(t => t.assetId === asset.id);
-        const statementTxs = relevantTxs.filter(t => {
-            const d = new Date(t.date);
-            return d >= usageStartDate && d <= usageEndDate;
+
+        let futureLiability = 0;
+
+        relevantTxs.filter(t => t.type === TransactionType.EXPENSE || (t.type === TransactionType.TRANSFER && t.assetId === asset.id)).forEach(tx => {
+            const txDate = new Date(tx.date);
+
+            if (tx.installment && tx.installment.totalMonths > 1) {
+                // Installment Logic: Sum only portions falling AFTER usageEndDate
+                const monthlyAmount = tx.amount / tx.installment.totalMonths;
+
+                for (let i = 0; i < tx.installment.totalMonths; i++) {
+                    const portionDueDate = new Date(txDate);
+                    portionDueDate.setMonth(portionDueDate.getMonth() + i);
+
+                    // If this portion belongs to a future cycle (after current usageEndDate)
+                    if (portionDueDate > usageEndDate) {
+                        futureLiability += monthlyAmount;
+                    }
+                }
+            } else {
+                // Regular Logic: If transaction date is AFTER usageEndDate
+                if (txDate > usageEndDate) {
+                    futureLiability += tx.amount;
+                }
+            }
         });
 
-        // Waterfall Logic:
+        // 3. Statement Balance (Due Now)
+        // If we owe 1200 Total, and 1100 is Future, then 100 is Due Now.
+        // If we paid 50 (Total 1150), and 1100 is Future, then 50 is Due Now.
+        const statementBalance = Math.max(0, totalDebt - futureLiability);
 
-        // Unbilled Balance: Everything AFTER Usage End Date
-        const unbilledTxs = relevantTxs.filter(t => {
-            const d = new Date(t.date);
-            return d > usageEndDate;
-        });
-
-        // 1. Calculate Gross Expenses for Statement Period
-        const grossStatementBalance = statementTxs
-            .filter(t => t.type === TransactionType.EXPENSE)
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        // 2. Calculate Gross Expenses for Unbilled Period
-        const grossUnbilledBalance = unbilledTxs
-            .filter(t => t.type === TransactionType.EXPENSE)
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        // 3. Calculate TOTAL Payments/Refunds (All Time for this asset)
-        // We look at ALL transactions for this asset to find influx of cash (Payment)
-        const totalPayments = relevantTxs
-            .filter(t => t.type === TransactionType.INCOME || (t.type === TransactionType.TRANSFER && t.toAssetId === asset.id))
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        // --- Handle Initial Balance (Migration/Setup) ---
-        // 'asset.balance' is the current real-time balance.
-        // We need to back-calculate the 'Initial Balance' to see if there was starting debt.
-        // Current Balance = Initial + Expenses(-ve) + Income(+ve)
-        // For Credit Cards, Expenses are -ve in asset.balance but +ve in our 'gross' calc.
-        // Let's rely on standard ledger:
-        // Initial = Current - (Sum of Txs)
-        const netTxChange = relevantTxs.reduce((acc, t) => {
-            if (t.type === TransactionType.INCOME || (t.type === TransactionType.TRANSFER && t.toAssetId === asset.id)) return acc + t.amount;
-            if (t.type === TransactionType.EXPENSE || (t.type === TransactionType.TRANSFER && t.assetId === asset.id)) return acc - t.amount;
-            return acc;
-        }, 0);
-
-        const initialBalance = asset.balance - netTxChange;
-        const initialDebt = initialBalance < 0 ? Math.abs(initialBalance) : 0;
-
-        // 4. Apply Payments to Statement First
-        // The Statement Balance matches the "Gross" + "Initial Debt" unless paid off.
-        const statementBalance = Math.max(0, (grossStatementBalance + initialDebt) - totalPayments);
-
-        // 5. Apply Remaining Payments to Unbilled
-        // Amount used for statement:
-        const paymentUsedForStatement = grossStatementBalance - statementBalance;
-        const remainingPayment = totalPayments - paymentUsedForStatement;
-
-        const unbilledBalance = Math.max(0, grossUnbilledBalance - remainingPayment);
+        // 4. Unbilled Balance
+        // Represents all debt that is not yet on the current statement.
+        // This includes Next Month's portion + All subsequent portions.
+        const unbilledBalance = futureLiability;
 
         return {
-            statementBalance: Math.max(0, statementBalance), // Don't show negative due
+            statementBalance: Math.max(0, statementBalance),
             unbilledBalance: Math.max(0, unbilledBalance),
             nextPaymentDate: targetPaymentDate.toISOString().split('T')[0],
             billingPeriod: `${usageStartDate.getMonth() + 1}/${usageStartDate.getDate()} ~ ${usageEndDate.getMonth() + 1}/${usageEndDate.getDate()}`

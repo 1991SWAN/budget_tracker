@@ -63,12 +63,17 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                         {transaction.category}
                     </span>
                     {transaction.installment && (
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${transaction.installment.isInterestFree
-                            ? 'bg-purple-50 text-purple-600 border-purple-100'
-                            : 'bg-slate-50 text-slate-500 border-slate-200'
-                            }`}>
-                            {transaction.installment.totalMonths}개월{transaction.installment.isInterestFree && ' 무이자'}
-                        </span>
+                        <div className="flex gap-1">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold border bg-slate-50 text-slate-500 border-slate-200">
+                                {transaction.installment.totalMonths}개월
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${transaction.installment.isInterestFree
+                                ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                : 'bg-rose-50 text-rose-600 border-rose-100'
+                                }`}>
+                                {transaction.installment.isInterestFree ? '무이자' : '이자'}
+                            </span>
+                        </div>
                     )}
                     <span className="truncate text-slate-400">
                         {asset?.name || 'Unknown'}
@@ -88,17 +93,19 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                     {amountSign}{formattedAmount}
                     <span className="text-[11px] ml-1 text-slate-400 font-normal">KRW</span>
                 </p>
+                {/* Monthly Installment Amount Display */}
+                {transaction.installment && transaction.installment.totalMonths > 1 && (
+                    <p className="text-[11px] font-bold text-slate-500 mt-0.5">
+                        (월 {Math.round(transaction.amount / transaction.installment.totalMonths).toLocaleString()})
+                    </p>
+                )}
+
                 <div className="flex flex-col items-end mt-0.5">
                     {transaction.installment && (
                         <div className="flex items-center gap-1">
                             <p className="text-[10px] text-slate-400 font-medium">
                                 {transaction.installment.currentMonth}/{transaction.installment.totalMonths}회차
                             </p>
-                            {!transaction.installment.isInterestFree && asset?.creditDetails?.apr && (
-                                <p className="text-[9px] text-rose-500 font-medium whitespace-nowrap">
-                                    (+ 수수료 {Math.round(transaction.amount * (asset.creditDetails.apr / 100 / 12)).toLocaleString()})
-                                </p>
-                            )}
                         </div>
                     )}
                 </div>
