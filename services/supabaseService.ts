@@ -107,9 +107,9 @@ export const SupabaseService = {
             installment: tx.installment,
 
             // New Flattened Installment Columns
-            installment_total_months: tx.installment?.totalMonths,
-            installment_current_month: tx.installment?.currentMonth,
-            is_interest_free: tx.installment?.isInterestFree
+            installment_total_months: tx.installment?.totalMonths ?? null,
+            installment_current_month: tx.installment?.currentMonth ?? null,
+            is_interest_free: tx.installment?.isInterestFree ?? null
         };
         const { error } = await supabase.from('transactions').upsert(row);
         if (error) {
@@ -132,7 +132,14 @@ export const SupabaseService = {
             asset_id: tx.assetId,
             to_asset_id: tx.toAssetId,
             linked_transaction_id: tx.linkedTransactionId,
-            installment: tx.installment
+
+            // Legacy JSON
+            installment: tx.installment,
+
+            // New Flattened Installment Columns
+            installment_total_months: tx.installment?.totalMonths ?? null,
+            installment_current_month: tx.installment?.currentMonth ?? null,
+            is_interest_free: tx.installment?.isInterestFree ?? null
         }));
         const { error } = await supabase.from('transactions').upsert(rows);
         if (error) console.error('Error saving transactions:', error);
