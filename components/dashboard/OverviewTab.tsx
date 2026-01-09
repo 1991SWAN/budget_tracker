@@ -70,7 +70,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
             .filter(a => a.type === AssetType.CREDIT_CARD)
             .reduce((sum, card) => {
                 // Calculate Statement Balance (Next Bill)
-                const { statementBalance } = FinanceCalculator.calculateCreditCardBalances(card, transactions, today);
+                const { statementBalance } = FinanceCalculator.calculateCreditCardBalances(card, transactions);
                 // Only count if payment day is in the future relative to today?
                 // Logic check: Statement Balance is what is "Due" for the *previous* cycle usually.
                 // If today < PaymentDay, we still owe it.
