@@ -36,11 +36,11 @@ const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, onR
                         const hasBill = billsOnDay.length > 0;
 
                         return (
-                            <div key={day} className={`flex-shrink-0 w-14 h-20 rounded-2xl flex flex-col items-center justify-center gap-1 border snap-center transition-all ${isToday ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
-                                <span className="text-xs font-medium uppercase">{new Date(today.getFullYear(), today.getMonth(), day).toLocaleString('default', { weekday: 'short' })}</span>
+                            <div key={day} className={`flex-shrink-0 w-14 h-20 rounded-2xl flex flex-col items-center justify-center gap-1 border snap-center transition-all ${isToday ? 'bg-slate-900 border-slate-900 text-white shadow-md shadow-slate-200 scale-105' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
+                                <span className={`text-xs font-medium uppercase ${isToday ? 'text-slate-300' : ''}`}>{new Date(today.getFullYear(), today.getMonth(), day).toLocaleString('default', { weekday: 'short' })}</span>
                                 <span className={`text-xl font-bold ${isToday ? 'text-white' : 'text-slate-800'}`}>{day}</span>
                                 <div className="h-1.5 flex gap-0.5">
-                                    {hasBill && <div className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-white' : 'bg-rose-400'}`}></div>}
+                                    {hasBill && <div className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-rose-400' : 'bg-rose-500'}`}></div>}
                                 </div>
                             </div>
                         );

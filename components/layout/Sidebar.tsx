@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { View } from '../../types';
+import { Button } from '../ui/Button';
 
 interface SidebarProps {
     view: View;
@@ -19,18 +20,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onQuickAddClick
 }) => {
 
-    const NavItem = ({ v, emoji, label }: { v: View, emoji: string, label: string }) => (
-        <button
-            onClick={() => onNavigate(v)}
-            className={`flex items-center space-x-3 w-full p-3 rounded-xl transition-all ${view === v
-                    ? 'bg-primary text-white shadow-lg shadow-blue-200'
+    const NavItem = ({ v, emoji, label }: { v: View, emoji: string, label: string }) => {
+        const isActive = view === v;
+        return (
+            <Button
+                onClick={() => onNavigate(v)}
+                variant={isActive ? 'primary' : 'ghost'}
+                className={`w-full !justify-start pl-4 py-3 rounded-2xl transition-all h-auto ${isActive
+                    ? 'shadow-md'
                     : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-        >
-            <span className="text-xl">{emoji}</span>
-            <span className="font-medium">{label}</span>
-        </button>
-    );
+                    }`}
+            >
+                <span className="text-xl w-8 flex justify-center shrink-0">{emoji}</span>
+                <span className="font-medium">{label}</span>
+            </Button>
+        );
+    };
 
     return (
         <aside
@@ -52,18 +57,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </nav>
 
             <div className="pt-6 border-t border-slate-100 space-y-3">
-                <button
+                <Button
                     onClick={onImportClick}
-                    className="w-full bg-slate-100 text-slate-600 hover:bg-slate-200 p-3 rounded-xl flex items-center justify-center space-x-2 font-semibold text-sm transition-colors"
+                    variant="secondary"
+                    className="w-full bg-slate-100 text-slate-600 hover:bg-slate-200 p-3 rounded-2xl font-semibold text-sm shadow-none h-auto justify-center"
                 >
                     <span>📂</span><span>Import CSV</span>
-                </button>
-                <button
+                </Button>
+                <Button
                     onClick={onQuickAddClick}
-                    className="w-full bg-primary text-white p-3 rounded-xl shadow-lg flex items-center justify-center space-x-2"
+                    variant="primary"
+                    className="w-full p-3 rounded-2xl shadow-lg h-auto justify-center"
                 >
                     <span>➕</span><span className="font-semibold">Quick Add</span>
-                </button>
+                </Button>
             </div>
         </aside>
     );

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SavingsGoal, Asset, AssetType, Category, TransactionType } from '../../types';
+import { Button } from '../ui/Button';
 
 interface GoalManagerProps {
     goals: SavingsGoal[];
@@ -96,7 +97,7 @@ const GoalManager: React.FC<GoalManagerProps> = ({ goals, assets, onGoalChange }
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-96 flex flex-col">
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 text-slate-800"><span>🎯</span><h3 className="font-bold text-lg">Goals Tracker</h3></div>
-                <button onClick={openAddGoal} className="p-1.5 bg-rose-50 text-rose-600 rounded-lg text-lg hover:bg-rose-100 transition-colors">➕</button>
+                <Button onClick={openAddGoal} size="sm" variant="secondary" className="rounded-2xl">➕ Add Goal</Button>
             </div>
 
             <div className="space-y-6 overflow-y-auto pr-2 scrollbar-thin">
@@ -110,10 +111,10 @@ const GoalManager: React.FC<GoalManagerProps> = ({ goals, assets, onGoalChange }
                                     <p className="text-[10px] text-slate-400 font-medium">Target: {goal.targetAmount.toLocaleString()} KRW</p>
                                 </div>
                             </div>
-                            <button onClick={() => openFundGoal(goal)} className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">+ Add Funds</button>
+                            <button onClick={() => openFundGoal(goal)} className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-2xl hover:bg-emerald-100 transition-colors">+ Add Funds</button>
                         </div>
                         <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden flex items-center px-0.5">
-                            <div className="h-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-1000 shadow-sm" style={{ width: `${Math.min((goal.currentAmount / goal.targetAmount) * 100, 100)}%` }}></div>
+                            <div className="h-2 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-1000 shadow-sm" style={{ width: `${Math.min((goal.currentAmount / goal.targetAmount) * 100, 100)}%` }}></div>
                         </div>
                         <div className="flex justify-between mt-1 text-[10px] font-bold text-slate-400">
                             <span>{Math.round((goal.currentAmount / goal.targetAmount) * 100)}%</span>

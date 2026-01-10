@@ -1,5 +1,6 @@
 import React from 'react';
 import { Transaction, TransactionType, Asset } from '../types';
+import { Button } from './ui/Button';
 
 interface TransactionItemProps {
     transaction: Transaction;
@@ -93,16 +94,16 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                 </div>
 
                 {/* Col 3: Center 2 (Desktop Only - Category, Asset, Installment Badge) */}
-                <div className="hidden lg:flex flex-wrap gap-2 items-center">
-                    <span className="px-2 py-1 bg-white border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold whitespace-nowrap flex items-center h-fit">
+                <div className="hidden lg:flex flex-nowrap gap-2 items-center">
+                    <span className="px-2 py-1 bg-white border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold whitespace-nowrap flex items-center h-fit shrink-0">
                         {transaction.category}
                     </span>
                     {transaction.installment && (
-                        <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold whitespace-nowrap border border-blue-100 flex items-center h-fit">
+                        <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold whitespace-nowrap border border-blue-100 flex items-center h-fit shrink-0">
                             {transaction.installment.totalMonths}개월 할부
                         </span>
                     )}
-                    <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap px-1">
+                    <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap px-1 shrink-0 truncate max-w-[120px]">
                         {asset?.name || 'Unknown'}
                     </span>
                 </div>
@@ -152,21 +153,24 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
 
                     <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                        <button
+                        <Button
                             onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}
-                            className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-xs font-bold shadow-sm"
+                            variant="outline"
+                            size="sm"
+                            className="rounded-2xl text-xs font-bold shadow-sm h-auto py-1.5"
                         >
                             Edit
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                             onClick={(e) => { e.stopPropagation(); if (isConfirmingDelete) onDelete(transaction); else setIsConfirmingDelete(true); }}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors ${isConfirmingDelete
-                                ? 'bg-rose-600 text-white'
-                                : 'bg-white border border-rose-100 text-rose-600'
+                            size="sm"
+                            className={`rounded-2xl text-xs font-bold shadow-sm transition-colors h-auto py-1.5 ${isConfirmingDelete
+                                ? 'bg-rose-600 text-white hover:bg-rose-700'
+                                : 'bg-white border border-rose-100 text-rose-600 hover:bg-rose-50'
                                 }`}
                         >
                             {isConfirmingDelete ? 'Confirm Delete' : 'Delete'}
-                        </button>
+                        </Button>
                     </div>
                 </div>
             )}

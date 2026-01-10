@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Button } from './ui/Button';
 import { Transaction, Asset, RecurringTransaction, SavingsGoal } from '../types';
 import OverviewTab from './dashboard/OverviewTab';
 import TrendsTab from './dashboard/TrendsTab';
@@ -52,18 +53,19 @@ const Dashboard: React.FC<DashboardProps> = ({
           <h1 className="text-3xl font-bold text-primary">Dashboard</h1>
           <p className="text-muted">Welcome back! Here's your financial overview.</p>
         </div>
-        <div className="flex bg-slate-100 p-1 rounded-xl self-start sm:self-auto">
+        <div className="flex bg-slate-100 p-1 rounded-full self-start sm:self-auto">
           {(['overview', 'trends', 'planning'] as TabUser[]).map((tab) => (
-            <button
+            <Button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-lg text-sm font-bold capitalize transition-all ${activeTab === tab
+              variant="ghost"
+              className={`px-4 py-2 rounded-full text-sm font-bold capitalize transition-all ${activeTab === tab
                 ? 'bg-white text-primary shadow-sm'
-                : 'text-muted hover:text-text'
+                : 'text-muted hover:text-text hover:bg-transparent'
                 }`}
             >
               {tab}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -114,8 +116,8 @@ const Dashboard: React.FC<DashboardProps> = ({
               autoFocus
             />
             <div className="flex gap-2">
-              <button onClick={() => setIsBudgetModalOpen(false)} className="flex-1 py-2 text-muted hover:bg-slate-50 rounded-lg font-bold">Cancel</button>
-              <button onClick={saveBudget} className="flex-1 py-2 bg-primary text-white rounded-lg font-bold hover:opacity-90">Save</button>
+              <Button onClick={() => setIsBudgetModalOpen(false)} variant="ghost" className="flex-1">Cancel</Button>
+              <Button onClick={saveBudget} className="flex-1">Save</Button>
             </div>
           </div>
         </div>

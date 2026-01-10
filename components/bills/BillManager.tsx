@@ -164,7 +164,7 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
                 <div className="flex items-center gap-2 text-primary">
                     <span>📫</span><h3 className="font-bold text-lg">Upcoming Bills</h3>
                 </div>
-                <Button onClick={openAddBill} size="sm" variant="secondary">➕ Add Bill</Button>
+                <Button onClick={openAddBill} size="sm" variant="secondary" className="rounded-2xl">➕ Add Bill</Button>
             </div>
 
             {/* Group Tabs */}
@@ -173,7 +173,7 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
                     <button
                         key={group}
                         onClick={() => setBillGroup(group)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 ${billGroup === group
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 ${billGroup === group
                             ? 'bg-primary text-white shadow-md'
                             : 'bg-slate-100 text-muted hover:bg-slate-200'
                             }`}

@@ -145,28 +145,29 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
             </div>
 
             {/* Activity Feed */}
-            <Card className="border-slate-100">
-                <div className="flex items-center justify-between mb-4">
+            <div>
+                <div className="flex items-center justify-between mb-4 px-1">
                     <div className="flex items-center gap-2">
                         <span className="text-2xl">⚡</span>
                         <h3 className="text-xl font-bold text-primary">Activity</h3>
                     </div>
-                    <div className="flex bg-slate-100 p-1 rounded-xl">
+                    <div className="flex bg-slate-100 p-1 rounded-full">
                         {(['today', 'week', 'month'] as const).map(f => (
-                            <button
+                            <Button
                                 key={f}
                                 onClick={() => onFilterChange(f)}
-                                className={`px-3 py-1 text-xs font-bold rounded-lg capitalize transition-all ${activityFilter === f ? 'bg-white text-primary shadow-sm' : 'text-muted hover:text-slate-600'}`}
+                                variant="ghost"
+                                className={`px-3 py-1 text-xs font-bold rounded-full capitalize transition-all shadow-none ${activityFilter === f ? 'bg-white text-primary shadow-sm' : 'text-muted hover:text-slate-600'}`}
                             >
                                 {f}
-                            </button>
+                            </Button>
                         ))}
                     </div>
                 </div>
 
-                <div className="space-y-0">
+                <div className="space-y-2">
                     {filteredActivityTransactions.slice(0, 5).map(tx => (
-                        <div key={tx.id} className="border-b border-slate-50 last:border-0 last:pb-0">
+                        <Card key={tx.id} className="border-slate-100 overflow-hidden" noPadding>
                             <TransactionItem
                                 transaction={tx}
                                 asset={assets.find(a => a.id === tx.assetId)}
@@ -174,21 +175,21 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
                                 onEdit={onEditTransaction}
                                 onDelete={onDeleteTransaction}
                             />
-                        </div>
+                        </Card>
                     ))}
                     {filteredActivityTransactions.length === 0 && (
-                        <div className="text-center py-10 text-muted">
+                        <Card className="text-center py-10 text-muted border-slate-100 border-dashed bg-slate-50/50">
                             No activity found for this period.
-                        </div>
+                        </Card>
                     )}
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-slate-100 text-center">
+                <div className="mt-4 text-center">
                     <Button variant="ghost" size="sm" onClick={onNavigateToTransactions} className="w-full">
                         View All Transactions →
                     </Button>
                 </div>
-            </Card>
+            </div>
         </div>
     );
 };

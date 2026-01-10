@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { Transaction, TransactionType } from '../../types';
 import { Card } from '../ui/Card';
+import { Button } from '../ui/Button';
 
 interface TrendsTabProps {
     transactions: Transaction[];
@@ -106,12 +107,13 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ transactions }) => {
                                 : <span>You have used <strong>{Math.round((financialFlow.expense / financialFlow.base) * 100)}%</strong> of your income.</span>}
                         </p>
                     </div>
-                    <button
+                    <Button
                         onClick={() => setFlowTimeframe(prev => prev === 'monthly' ? 'weekly' : 'monthly')}
-                        className="text-xs font-medium text-muted bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:text-primary transition-colors"
+                        variant="ghost"
+                        className="text-xs font-medium text-muted bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:text-primary hover:bg-slate-200 transition-colors"
                     >
                         {flowTimeframe}
-                    </button>
+                    </Button>
                 </div>
 
                 {/* 2-Color Bar Viz */}
@@ -154,12 +156,13 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ transactions }) => {
                 <Card className="h-80 border-slate-100">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="font-bold text-lg text-primary">Spending Trend</h3>
-                        <button
+                        <Button
                             onClick={() => setTrendTimeframe(prev => prev === 'monthly' ? 'weekly' : 'monthly')}
-                            className="text-xs font-medium text-muted bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:text-primary transition-colors"
+                            variant="ghost"
+                            className="text-xs font-medium text-muted bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:text-primary hover:bg-slate-200 transition-colors"
                         >
                             {trendTimeframe}
-                        </button>
+                        </Button>
                     </div>
                     <ResponsiveContainer width="100%" height="80%" key={`trend-bar-${trendTimeframe}`}>
                         <BarChart data={trendTimeframe === 'weekly' ? weeklyData.trend : monthlyData.trend}>
@@ -175,12 +178,13 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ transactions }) => {
                 <Card className="h-80 flex flex-col border-slate-100">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="font-bold text-lg text-primary">By Category</h3>
-                        <button
+                        <Button
                             onClick={() => setCategoryTimeframe(prev => prev === 'monthly' ? 'weekly' : 'monthly')}
-                            className="text-xs font-medium text-muted bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:text-primary transition-colors"
+                            variant="ghost"
+                            className="text-xs font-medium text-muted bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:text-primary hover:bg-slate-200 transition-colors"
                         >
                             {categoryTimeframe}
-                        </button>
+                        </Button>
                     </div>
                     <div className="flex items-center justify-center flex-1">
                         <ResponsiveContainer width="100%" height="100%" key={`category-pie-${categoryTimeframe}`}>

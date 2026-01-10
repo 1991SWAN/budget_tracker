@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Asset, AssetType, Transaction, TransactionType, CreditCardDetails, LoanDetails } from '../types';
 import { useModalClose } from '../hooks/useModalClose';
 import { FinanceCalculator } from '../services/financeCalculator';
@@ -7,68 +7,45 @@ import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { Badge } from './ui/Badge';
 import { EmptyState } from './ui/EmptyState';
-
-// --- Asset Form ---
-// (Use Button, Card inside Form)
-// Replace standard buttons with <Button>
-// Replace container divs with <Card>
-
-// --- Asset Detail Modal ---
-// Use Button for actions.
-// Use Badge for interest tags.
-
-// --- Asset Card ---
-// Use Card component as wrapper.
-
-// --- Asset Manager Main ---
-// Use Button for Tabs (maybe custom variant or just styled buttons, sticking to existing tab logic for now but using semantic colors).
-
-
-interface AssetManagerProps {
-  assets: Asset[];
-  transactions: Transaction[];
-  onAddAsset: (asset: Asset) => void;
-  onUpdateAsset: (asset: Asset) => void;
-  onDeleteAsset: (assetId: string) => void;
-  onPay?: (asset: Asset) => void;
-}
+import { Input } from './ui/Input';
+import { Select } from './ui/Select';
 
 const ASSET_THEMES: Record<AssetType, { bg: string, text: string, icon: string, border: string }> = {
   [AssetType.CASH]: {
-    bg: 'bg-secondary', // Emerald
+    bg: 'bg-emerald-500', // Asset -> Growth (Emerald)
     text: 'text-white',
     icon: '💵',
-    border: 'border-emerald-200'
+    border: 'border-emerald-400'
   },
   [AssetType.CHECKING]: {
-    bg: 'bg-primary', // Slate 900
+    bg: 'bg-slate-800', // Main Transactional -> Trust (Slate)
     text: 'text-white',
     icon: '💳',
-    border: 'border-slate-700'
-  },
-  [AssetType.SAVINGS]: {
-    bg: 'bg-slate-700', // Lighter Slate
-    text: 'text-white',
-    icon: '🐷',
     border: 'border-slate-600'
   },
+  [AssetType.SAVINGS]: {
+    bg: 'bg-emerald-600', // Savings -> Deep Growth (Emerald)
+    text: 'text-white',
+    icon: '🐷',
+    border: 'border-emerald-500'
+  },
   [AssetType.CREDIT_CARD]: {
-    bg: 'bg-primary',
+    bg: 'bg-rose-500', // Debt/Spending -> Warning (Rose)
     text: 'text-white',
     icon: '💳',
-    border: 'border-slate-800'
+    border: 'border-rose-400'
   },
   [AssetType.INVESTMENT]: {
-    bg: 'bg-slate-800',
+    bg: 'bg-emerald-700', // Investment -> Long term (Dark Emerald)
     text: 'text-white',
     icon: '📈',
-    border: 'border-slate-700'
+    border: 'border-emerald-600'
   },
   [AssetType.LOAN]: {
-    bg: 'bg-slate-600',
+    bg: 'bg-slate-500', // Loan -> Neutral/Burden (Lighter Slate)
     text: 'text-white',
     icon: '🏦',
-    border: 'border-slate-500'
+    border: 'border-slate-400'
   },
 };
 
@@ -81,6 +58,8 @@ interface AssetFormProps {
 }
 
 const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, isEditing = false }) => {
+  console.log('[AssetForm] Rendering. isEditing:', isEditing, 'initialData:', initialData);
+
   const [formData, setFormData] = useState<Partial<Asset>>({
     name: '', type: AssetType.CHECKING, balance: 0, currency: 'KRW', description: '', ...initialData
   });
@@ -89,88 +68,115 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
   const [creditForm, setCreditForm] = useState<Partial<CreditCardDetails>>(initialData?.creditDetails || { limit: 0, apr: 15.0, billingCycle: { usageStartDay: 1, usageEndDay: 30, paymentDay: 14 } });
   const [loanForm, setLoanForm] = useState<Partial<LoanDetails>>(initialData?.loanDetails || { principal: 0, interestRate: 5.0, startDate: new Date().toISOString().split('T')[0], termMonths: 12 });
 
-  const handleSubmit = () => {
-    if (!formData.name) return;
-    const assetToSave: Asset = {
-      id: initialData?.id || Date.now().toString(),
-      name: formData.name,
-      type: formData.type as AssetType,
-      balance: Number(formData.balance),
-      currency: formData.currency || 'KRW',
-      description: formData.description,
-    };
-
-    if (formData.type === AssetType.CREDIT_CARD) {
-      assetToSave.creditDetails = creditForm as CreditCardDetails;
-      assetToSave.limit = Number(creditForm.limit);
-      if (assetToSave.balance > 0) assetToSave.balance = -assetToSave.balance;
-    } else if (formData.type === AssetType.LOAN) {
-      assetToSave.loanDetails = loanForm as LoanDetails;
-      if (assetToSave.balance > 0) assetToSave.balance = -assetToSave.balance;
-    } else {
-      assetToSave.interestRate = formData.interestRate;
+  // Ensure formData syncs if initialData changes while mounted (safety)
+  useEffect(() => {
+    if (initialData) {
+      setFormData(prev => ({ ...prev, ...initialData }));
+      setCreditForm(prev => ({ ...prev, ...initialData.creditDetails }));
+      setLoanForm(prev => ({ ...prev, ...initialData.loanDetails }));
     }
+  }, [initialData]);
 
-    onSave(assetToSave);
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!formData.name) {
+      setError("Please enter an asset name.");
+      return;
+    }
+    setError(null);
+    setIsSaving(true);
+
+    try {
+      const assetToSave: Asset = {
+        id: initialData?.id || Date.now().toString(),
+        name: formData.name,
+        type: formData.type as AssetType,
+        balance: Number(formData.balance),
+        currency: formData.currency || 'KRW',
+        description: formData.description,
+      };
+
+      if (formData.type === AssetType.CREDIT_CARD) {
+        assetToSave.creditDetails = creditForm as CreditCardDetails;
+        assetToSave.limit = Number(creditForm.limit);
+        if (assetToSave.balance > 0) assetToSave.balance = -assetToSave.balance;
+      } else if (formData.type === AssetType.LOAN) {
+        assetToSave.loanDetails = loanForm as LoanDetails;
+        if (assetToSave.balance > 0) assetToSave.balance = -assetToSave.balance;
+      } else {
+        assetToSave.interestRate = formData.interestRate;
+      }
+
+      await onSave(assetToSave);
+    } catch (e) {
+      console.error("Save failed", e);
+      setError("Failed to save asset.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="bg-white p-6 rounded-3xl shadow-2xl border border-slate-100 flex flex-col h-full animate-in zoom-in-95 duration-300 overflow-y-auto">
       <div className="flex justify-between items-center mb-6">
         <h3 className="font-bold text-xl text-slate-800">{isEditing ? 'Edit Asset' : 'Add New Asset'}</h3>
-        <button onClick={onCancel} className="bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-colors">✕</button>
+        <Button variant="ghost" size="icon" onClick={onCancel} className="rounded-full h-8 w-8">✕</Button>
       </div>
 
-      <div className="space-y-5 pb-6">
-        <div>
-          <label className="text-xs font-bold text-slate-500 uppercase ml-1">Type & Name</label>
-          <div className="flex gap-2 mt-1">
-            <select value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value as AssetType })} className="w-1/3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500">
-              {Object.values(AssetType).map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-            <input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. Main Chase" />
+      <div className="space-y-6 pb-6">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-1">
+            <Select
+              label="Type"
+              value={formData.type}
+              onChange={e => setFormData({ ...formData, type: e.target.value as AssetType })}
+              options={Object.values(AssetType).map(t => ({ value: t, label: t }))}
+            />
+          </div>
+          <div className="col-span-2">
+            <Input
+              label="Asset Name"
+              value={formData.name}
+              onChange={e => { setFormData({ ...formData, name: e.target.value }); if (error) setError(null); }}
+              placeholder="e.g. Main Chase"
+              className={error ? "border-rose-500 ring-rose-500" : ""}
+            />
+            {error && <p className="text-xs text-rose-500 font-bold mt-1 ml-1">⚠️ {error}</p>}
           </div>
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-500 uppercase ml-1">
-            {formData.type === AssetType.CREDIT_CARD ? 'Initial Debt (기존 잔액)' : formData.type === AssetType.LOAN ? 'Current Principal Remaining' : 'Current Balance'}
-          </label>
-          <div className="relative mt-1">
-            <span className="absolute left-4 top-3.5 text-slate-400 font-bold">₩</span>
-            <input type="number"
-              value={formData.type === AssetType.LOAN ? Math.abs(formData.balance || 0) : formData.balance}
-              onChange={e => setFormData({ ...formData, balance: formData.type === AssetType.LOAN ? -Number(e.target.value) : Number(e.target.value) })}
-              disabled={isEditing && formData.type === AssetType.CREDIT_CARD}
-              className={`w-full pl-10 p-3 bg-slate-50 border border-slate-200 rounded-xl text-lg font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 ${isEditing && formData.type === AssetType.CREDIT_CARD ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
-            />
-          </div>
+          <Input
+            label={formData.type === AssetType.CREDIT_CARD ? 'Initial Debt (기존 잔액)' : formData.type === AssetType.LOAN ? 'Current Principal Remaining' : 'Current Balance'}
+            type="number"
+            value={formData.type === AssetType.LOAN ? Math.abs(formData.balance || 0) : formData.balance}
+            onChange={e => setFormData({ ...formData, balance: formData.type === AssetType.LOAN ? -Number(e.target.value) : Number(e.target.value) })}
+            disabled={isEditing && formData.type === AssetType.CREDIT_CARD}
+            startIcon="₩"
+            className={`text-lg font-bold ${isEditing && formData.type === AssetType.CREDIT_CARD ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
+          />
         </div>
 
         {formData.type === AssetType.CREDIT_CARD && (
           <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100 space-y-4">
             <h4 className="text-sm font-bold text-rose-700 flex items-center gap-2"><span>💳</span> Credit Configuration</h4>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-bold text-destructive uppercase">Limit</label>
-                <input type="number" value={creditForm.limit} onChange={e => setCreditForm({ ...creditForm, limit: Number(e.target.value) })} className="w-full p-2 bg-white rounded-lg border border-rose-200 text-sm" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-destructive uppercase">APR %</label>
-                <input type="number" value={creditForm.apr} onChange={e => setCreditForm({ ...creditForm, apr: Number(e.target.value) })} className="w-full p-2 bg-white rounded-lg border border-rose-200 text-sm" />
-              </div>
+              <Input label="Limit" type="number" value={creditForm.limit} onChange={e => setCreditForm({ ...creditForm, limit: Number(e.target.value) })} className="bg-white border-rose-200" />
+              <Input label="APR %" type="number" value={creditForm.apr} onChange={e => setCreditForm({ ...creditForm, apr: Number(e.target.value) })} className="bg-white border-rose-200" />
             </div>
             <div className="bg-white p-3 rounded-xl border border-rose-100">
               <p className="text-xs font-bold text-slate-500 mb-2">Billing Cycle</p>
-              <div className="flex items-center gap-2 text-sm">
-                <span>Usage:</span>
-                <input type="number" min="1" max="31" value={creditForm.billingCycle?.usageStartDay} onChange={e => setCreditForm({ ...creditForm, billingCycle: { ...creditForm.billingCycle!, usageStartDay: Number(e.target.value) } })} className="w-12 p-1 border rounded text-center" />
-                <span>st ~ End of Month</span>
+              <div className="flex items-center gap-2 text-sm mb-2">
+                <span className="w-16 font-bold text-slate-400 text-xs uppercase">Usage</span>
+                <input type="number" min="1" max="31" value={creditForm.billingCycle?.usageStartDay} onChange={e => setCreditForm({ ...creditForm, billingCycle: { ...creditForm.billingCycle!, usageStartDay: Number(e.target.value) } })} className="w-12 p-1 border rounded text-center bg-slate-50" />
+                <span className="text-xs text-slate-400">st ~ End of Month</span>
               </div>
-              <div className="flex items-center gap-2 text-sm mt-2">
-                <span>Pays on:</span>
-                <input type="number" min="1" max="31" value={creditForm.billingCycle?.paymentDay} onChange={e => setCreditForm({ ...creditForm, billingCycle: { ...creditForm.billingCycle!, paymentDay: Number(e.target.value) } })} className="w-12 p-1 border rounded text-center bg-rose-50 font-bold" />
-                <span>th next month</span>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="w-16 font-bold text-slate-400 text-xs uppercase">Pays On</span>
+                <input type="number" min="1" max="31" value={creditForm.billingCycle?.paymentDay} onChange={e => setCreditForm({ ...creditForm, billingCycle: { ...creditForm.billingCycle!, paymentDay: Number(e.target.value) } })} className="w-12 p-1 border rounded text-center bg-rose-50 font-bold border-rose-200 text-rose-700" />
+                <span className="text-xs text-slate-400">th next month</span>
               </div>
             </div>
           </div>
@@ -180,37 +186,26 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
           <div className="bg-slate-100 p-4 rounded-2xl border border-slate-200 space-y-4">
             <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2"><span>🏦</span> Loan Details</h4>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Principal</label>
-                <input type="number" value={loanForm.principal} onChange={e => setLoanForm({ ...loanForm, principal: Number(e.target.value) })} className="w-full p-2 bg-white rounded-lg border border-slate-300 text-sm" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Rate %</label>
-                <input type="number" value={loanForm.interestRate} onChange={e => setLoanForm({ ...loanForm, interestRate: Number(e.target.value) })} className="w-full p-2 bg-white rounded-lg border border-slate-300 text-sm" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Start Date</label>
-                <input type="date" value={loanForm.startDate} onChange={e => setLoanForm({ ...loanForm, startDate: e.target.value })} className="w-full p-2 bg-white rounded-lg border border-slate-300 text-sm" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Term (Mo)</label>
-                <input type="number" value={loanForm.termMonths} onChange={e => setLoanForm({ ...loanForm, termMonths: Number(e.target.value) })} className="w-full p-2 bg-white rounded-lg border border-slate-300 text-sm" />
-              </div>
+              <Input label="Principal" type="number" value={loanForm.principal} onChange={e => setLoanForm({ ...loanForm, principal: Number(e.target.value) })} className="bg-white border-slate-300" />
+              <Input label="Rate %" type="number" value={loanForm.interestRate} onChange={e => setLoanForm({ ...loanForm, interestRate: Number(e.target.value) })} className="bg-white border-slate-300" />
+              <Input label="Start Date" type="date" value={loanForm.startDate} onChange={e => setLoanForm({ ...loanForm, startDate: e.target.value })} className="bg-white border-slate-300" />
+              <Input label="Term (Mo)" type="number" value={loanForm.termMonths} onChange={e => setLoanForm({ ...loanForm, termMonths: Number(e.target.value) })} className="bg-white border-slate-300" />
             </div>
           </div>
         )}
 
         <div className="pt-4 mt-auto">
-          <Button onClick={handleSubmit} className="w-full">Save Asset</Button>
+          <Button onClick={handleSubmit} className="w-full" size="lg" isLoading={isSaving} disabled={isSaving}>Save Asset</Button>
         </div>
       </div>
     </div>
   );
 };
 
-// --- Asset Detail Modal (Preserved) ---
+// --- Asset Detail Modal ---
 const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], onClose: () => void, onEdit: () => void, onDelete: () => void, onPay?: (asset: Asset) => void }> = ({ asset, transactions, onClose, onEdit, onDelete, onPay }) => {
   const modalRef = useRef<HTMLDivElement>(null);
+  // ... (chart/history logic preserved)
   const chartData = useMemo(() => {
     const relevantTxs = transactions
       .filter(t => t.assetId === asset.id || t.toAssetId === asset.id)
@@ -250,21 +245,44 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
               <h2 className="text-3xl font-bold mb-2">{asset.name}</h2>
               <h1 className="text-4xl font-extrabold tracking-tight">{asset.balance.toLocaleString()} <span className="text-lg opacity-70 font-normal">KRW</span></h1>
             </div>
-            <button onClick={onClose} className="bg-white/20 hover:bg-white/30 p-2 rounded-full text-white backdrop-blur-md transition-all">✕</button>
+            <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full bg-white/20 hover:bg-white/30 text-white border-0">✕</Button>
           </div>
         </div>
 
         {(asset.type === AssetType.LOAN || asset.type === AssetType.CREDIT_CARD) && (
-          <div className="flex border-b border-slate-100">
-            <button onClick={() => setActiveTab('overview')} className={`flex-1 py-3 text-sm font-bold ${activeTab === 'overview' ? 'text-slate-900 border-b-2 border-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>Overview</button>
-            {asset.type === AssetType.LOAN && <button onClick={() => setActiveTab('simulation')} className={`flex-1 py-3 text-sm font-bold ${activeTab === 'simulation' ? 'text-slate-900 border-b-2 border-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>Payoff Plan</button>}
-            {asset.type === AssetType.CREDIT_CARD && <button onClick={() => setActiveTab('installments')} className={`flex-1 py-3 text-sm font-bold ${activeTab === 'installments' ? 'text-slate-900 border-b-2 border-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>Installments</button>}
+          <div className="flex border-b border-slate-100 px-4 pt-2 gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setActiveTab('overview')}
+              className={`rounded-b-none border-b-2 rounded-t-lg ${activeTab === 'overview' ? 'border-slate-900 text-slate-900 bg-slate-50' : 'border-transparent text-slate-400'}`}
+            >
+              Overview
+            </Button>
+            {asset.type === AssetType.LOAN && (
+              <Button
+                variant="ghost"
+                onClick={() => setActiveTab('simulation')}
+                className={`rounded-b-none border-b-2 rounded-t-lg ${activeTab === 'simulation' ? 'border-slate-900 text-slate-900 bg-slate-50' : 'border-transparent text-slate-400'}`}
+              >
+                Payoff Plan
+              </Button>
+            )}
+            {asset.type === AssetType.CREDIT_CARD && (
+              <Button
+                variant="ghost"
+                onClick={() => setActiveTab('installments')}
+                className={`rounded-b-none border-b-2 rounded-t-lg ${activeTab === 'installments' ? 'border-slate-900 text-slate-900 bg-slate-50' : 'border-transparent text-slate-400'}`}
+              >
+                Installments
+              </Button>
+            )}
           </div>
         )}
-
+        {/* ... (rest of modal content preserved, closing divs below) */}
         <div className="p-6 overflow-y-auto custom-scrollbar space-y-8">
           {activeTab === 'overview' && (
             <>
+              {/* ... (charts & stats preserved) */}
               {asset.type === AssetType.CREDIT_CARD && creditStats && (
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div className="col-span-2 bg-slate-800 p-5 rounded-2xl text-white shadow-lg flex justify-between items-center">
@@ -320,6 +338,7 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
 
           {activeTab === 'installments' && asset.type === AssetType.CREDIT_CARD && (
             <div className="space-y-4">
+              {/* ... (installment list preserved) */}
               <h3 className="font-bold text-lg text-slate-800 mb-4">Active Installments</h3>
               {transactions.filter(t => t.assetId === asset.id && t.installment).length === 0 ? (
                 <p className="text-center text-slate-400 py-10 italic">No active installments found.</p>
@@ -394,7 +413,7 @@ const AssetCard: React.FC<{ asset: Asset, transactions: Transaction[], onClick: 
         </div>
         <div>
           <h3 className="font-bold text-lg mb-0.5 truncate">{asset.name}</h3>
-          <p className="text-2xl font-black tracking-tight">{asset.balance.toLocaleString()}</p>
+          <p className="text-3xl font-black tracking-tight">{asset.balance.toLocaleString()}</p>
           {(asset.type === AssetType.CREDIT_CARD) && creditStats && (
             <div className="mt-2 flex items-center gap-2 text-[10px] font-medium opacity-80 bg-black/20 self-start px-2 py-1 rounded-lg backdrop-blur-sm">
               <span>Next Bill:</span>
@@ -407,10 +426,23 @@ const AssetCard: React.FC<{ asset: Asset, transactions: Transaction[], onClick: 
   );
 };
 
+
+
+// ... (AssetForm and AssetDetailModal remain unchanged)
+
 // --- Main Asset Manager ---
 type AssetTab = 'all' | 'bank' | 'card' | 'loan' | 'other' | 'tools';
 
-const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAddAsset, onUpdateAsset, onDeleteAsset, onPay }) => {
+interface AssetManagerProps {
+  assets: Asset[];
+  transactions: Transaction[];
+  onAdd: (asset: Asset) => void;
+  onEdit: (asset: Asset) => void;
+  onDelete: (assetId: string) => void;
+  onPay?: (asset: Asset) => void;
+}
+
+const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd, onEdit, onDelete, onPay }) => {
   const [activeTab, setActiveTab] = useState<AssetTab>('all');
   const [showForm, setShowForm] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
@@ -432,9 +464,9 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
     setShowForm(true);
   };
 
-  const handleSave = (asset: Asset) => {
-    if (isEditing) onUpdateAsset(asset);
-    else onAddAsset(asset);
+  const handleSave = async (asset: Asset) => {
+    if (isEditing) await onEdit(asset);
+    else await onAdd(asset);
     setShowForm(false);
     setIsEditing(false);
     setSelectedAsset(null);
@@ -442,41 +474,71 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
 
   const handleDelete = () => {
     if (selectedAsset) {
-      onDeleteAsset(selectedAsset.id);
-      setSelectedAsset(null);
+      if (confirm('Are you sure you want to delete this asset?')) {
+        onDelete(selectedAsset.id);
+        setSelectedAsset(null);
+      }
     }
   };
 
   return (
     <div className="h-full flex flex-col relative">
-      {/* Header Tabs */}
-      <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
-        {(['all', 'bank', 'card', 'loan', 'other', 'tools'] as AssetTab[]).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-5 py-2.5 rounded-full text-sm font-bold uppercase tracking-wide transition-all ${activeTab === tab
-              ? 'bg-primary text-white shadow-lg scale-105'
-              : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'
-              }`}
+      {/* Header with Title and Action */}
+      <div className="flex items-center justify-between mb-4 px-1">
+        <div>
+          <h1 className="text-3xl font-bold text-primary">My Assets</h1>
+          <p className="text-muted">Manage your accounts and track net worth.</p>
+        </div>
+        <div className="hidden md:block">
+          <Button
+            onClick={() => { setSelectedAsset(null); setIsEditing(false); setShowForm(true); }}
+            className="rounded-2xl px-5 shadow-md flex items-center gap-2"
+            aria-label="Add Asset"
           >
-            {tab}
-          </button>
-        ))}
-        <button
-          onClick={() => { setSelectedAsset(null); setIsEditing(false); setShowForm(true); }}
-          className="ml-auto bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-full shadow-lg transition-transform active:scale-90 flex-shrink-0"
-        >
-          ➕
-        </button>
+            <span>+</span>
+            <span>Add Asset</span>
+          </Button>
+        </div>
       </div>
+
+      {/* Header Tabs - Padding increased to prevent shadow clipping */}
+      <div className="flex items-center gap-2 mb-4 p-2 overflow-x-auto no-scrollbar">
+        {(['all', 'bank', 'card', 'loan', 'other', 'tools'] as AssetTab[]).map(tab => {
+          const isActive = activeTab === tab;
+          return (
+            <Button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              variant={isActive ? 'primary' : 'ghost'}
+              className={`px-5 py-2.5 rounded-full text-sm font-bold uppercase tracking-wide transition-all flex-shrink-0 ${isActive
+                ? 'shadow-md scale-105'
+                : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'
+                }`}
+            >
+              {tab}
+            </Button>
+          );
+        })}
+      </div>
+
+      {/* Floating Action Button (FAB) for Add Asset - Mobile Only */}
+      <Button
+        onClick={() => { setSelectedAsset(null); setIsEditing(false); setShowForm(true); }}
+        className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-slate-900 text-white rounded-full shadow-xl flex items-center justify-center z-50 transition-transform active:scale-95 hover:bg-slate-800 hover:shadow-2xl hover:-translate-y-1"
+        aria-label="Add Asset"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 12h14" />
+          <path d="M12 5v14" />
+        </svg>
+      </Button>
 
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto pb-24 custom-scrollbar pr-2">
         {activeTab === 'all' && (
           <div className="space-y-8 animate-in fade-in duration-300">
             {/* Net Worth Summary */}
-            <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-3xl p-6 text-white shadow-xl mb-8">
+            <div className="bg-gradient-to-br from-slate-700 to-slate-900 rounded-3xl p-6 text-white shadow-xl mb-8">
               <p className="text-xs font-bold opacity-50 uppercase tracking-widest mb-1">Total Net Worth</p>
               <h1 className="text-4xl font-black">{assets.reduce((sum, a) => sum + a.balance, 0).toLocaleString()} <span className="text-lg font-normal opacity-50">KRW</span></h1>
             </div>
@@ -552,8 +614,8 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
 
       {/* Modals */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowForm(false)}>
-          <div className="w-full max-w-lg h-[80vh]" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => { setShowForm(false); setIsEditing(false); }}>
+          <div className="w-full max-w-lg max-h-[80vh] h-auto flex flex-col" onClick={e => e.stopPropagation()}>
             <AssetForm initialData={selectedAsset || undefined} isEditing={isEditing} onSave={handleSave} onCancel={() => { setShowForm(false); setIsEditing(false); }} />
           </div>
         </div>
