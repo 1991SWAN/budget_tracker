@@ -4,6 +4,7 @@ import {
     BarChart, Bar, XAxis, CartesianGrid, Legend
 } from 'recharts';
 import { Transaction, TransactionType } from '../../types';
+import { Card } from '../ui/Card';
 
 interface TrendsTabProps {
     transactions: Transaction[];
@@ -95,28 +96,28 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ transactions }) => {
         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
 
             {/* 1. New Financial Flow Analysis (Income Bar) */}
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+            <Card className="border-slate-100">
                 <div className="flex justify-between items-start mb-4">
                     <div>
-                        <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><span>💸</span> Financial Flow</h3>
-                        <p className="text-sm text-slate-500 mt-1">
+                        <h3 className="font-bold text-lg text-primary flex items-center gap-2"><span>💸</span> Financial Flow</h3>
+                        <p className="text-sm text-muted mt-1">
                             {financialFlow.isDeficit
-                                ? <span className="text-rose-500 font-bold">Deficit Warning: Spending exceeds Income!</span>
+                                ? <span className="text-destructive font-bold">Deficit Warning: Spending exceeds Income!</span>
                                 : <span>You have used <strong>{Math.round((financialFlow.expense / financialFlow.base) * 100)}%</strong> of your income.</span>}
                         </p>
                     </div>
                     <button
                         onClick={() => setFlowTimeframe(prev => prev === 'monthly' ? 'weekly' : 'monthly')}
-                        className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:bg-slate-200 transition-colors"
+                        className="text-xs font-medium text-muted bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:text-primary transition-colors"
                     >
                         {flowTimeframe}
                     </button>
                 </div>
 
                 {/* 2-Color Bar Viz */}
-                <div className="w-full h-8 bg-slate-50 rounded-xl overflow-hidden flex relative border border-slate-100">
+                <div className="w-full h-8 bg-surface rounded-xl overflow-hidden flex relative border border-slate-100">
                     <div
-                        className="h-full bg-rose-500 flex items-center justify-center text-[10px] font-bold text-white transition-all duration-1000 cursor-pointer group relative"
+                        className="h-full bg-destructive flex items-center justify-center text-[10px] font-bold text-white transition-all duration-1000 cursor-pointer group relative"
                         style={{ width: `${Math.min((financialFlow.expense / financialFlow.base) * 100, 100)}%` }}
                     >
                         <div className="absolute bottom-full mb-1 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
@@ -127,7 +128,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ transactions }) => {
 
                     {!financialFlow.isDeficit && (
                         <div
-                            className="h-full bg-emerald-400 flex items-center justify-center text-[10px] font-bold text-white transition-all duration-1000 cursor-pointer group relative"
+                            className="h-full bg-secondary flex items-center justify-center text-[10px] font-bold text-white transition-all duration-1000 cursor-pointer group relative"
                             style={{ flex: 1 }}
                         >
                             <div className="absolute bottom-full mb-1 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
@@ -139,23 +140,23 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ transactions }) => {
                     )}
                 </div>
 
-                <div className="flex justify-between mt-2 text-xs font-medium text-slate-500">
+                <div className="flex justify-between mt-2 text-xs font-medium text-muted">
                     <div className="flex gap-4">
-                        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-rose-500"></div> Expense</span>
-                        {!financialFlow.isDeficit && <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-400"></div> Savings</span>}
+                        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-destructive"></div> Expense</span>
+                        {!financialFlow.isDeficit && <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-secondary"></div> Savings</span>}
                     </div>
-                    <div>Total Income: <span className="text-emerald-600 font-bold">{financialFlow.income.toLocaleString()}</span></div>
+                    <div>Total Income: <span className="text-secondary font-bold">{financialFlow.income.toLocaleString()}</span></div>
                 </div>
-            </div>
+            </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* 2. Spending Trend Chart */}
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-80">
+                <Card className="h-80 border-slate-100">
                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="font-bold text-lg text-slate-800">Spending Trend</h3>
+                        <h3 className="font-bold text-lg text-primary">Spending Trend</h3>
                         <button
                             onClick={() => setTrendTimeframe(prev => prev === 'monthly' ? 'weekly' : 'monthly')}
-                            className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:bg-slate-200 transition-colors"
+                            className="text-xs font-medium text-muted bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:text-primary transition-colors"
                         >
                             {trendTimeframe}
                         </button>
@@ -168,15 +169,15 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ transactions }) => {
                             <Bar dataKey="amount" fill="#6366f1" radius={[4, 4, 0, 0]} />
                         </BarChart>
                     </ResponsiveContainer>
-                </div>
+                </Card>
 
                 {/* 3. Category Breakdown */}
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-80 flex flex-col">
+                <Card className="h-80 flex flex-col border-slate-100">
                     <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-bold text-lg text-slate-800">By Category</h3>
+                        <h3 className="font-bold text-lg text-primary">By Category</h3>
                         <button
                             onClick={() => setCategoryTimeframe(prev => prev === 'monthly' ? 'weekly' : 'monthly')}
-                            className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:bg-slate-200 transition-colors"
+                            className="text-xs font-medium text-muted bg-slate-100 px-3 py-1.5 rounded-full capitalize hover:text-primary transition-colors"
                         >
                             {categoryTimeframe}
                         </button>
@@ -202,7 +203,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ transactions }) => {
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
-                </div>
+                </Card>
             </div>
 
             {/* 4. Insights */}

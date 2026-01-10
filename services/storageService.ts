@@ -54,7 +54,7 @@ const DEFAULT_TRANSACTIONS: Transaction[] = [
     type: 'EXPENSE' as any,
     category: Category.FOOD,
     memo: 'Lunch at Cafeteria',
-    emoji: '🍱',
+
     assetId: '2'
   },
   {
@@ -74,7 +74,7 @@ const DEFAULT_TRANSACTIONS: Transaction[] = [
     type: 'EXPENSE' as any,
     category: Category.SHOPPING,
     memo: 'Olive Young',
-    emoji: '💄',
+
     assetId: '3'
   },
 ];

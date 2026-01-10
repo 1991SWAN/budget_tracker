@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { Transaction, Asset, RecurringTransaction, TransactionType, AssetType } from '../../types';
 import TransactionItem from '../TransactionItem';
 import { FinanceCalculator } from '../../services/financeCalculator';
+import { Card } from '../ui/Card';
+import { Button } from '../ui/Button';
 
 interface OverviewTabProps {
     transactions: Transaction[];
@@ -71,11 +73,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
             .reduce((sum, card) => {
                 // Calculate Statement Balance (Next Bill)
                 const { statementBalance } = FinanceCalculator.calculateCreditCardBalances(card, transactions);
-                // Only count if payment day is in the future relative to today?
-                // Logic check: Statement Balance is what is "Due" for the *previous* cycle usually.
-                // If today < PaymentDay, we still owe it.
-                // Dashboard logic was: if (card.paymentDay > today.getDate()) return sum + dueAmount;
-                // We will keep that logic but use accurate statementBalance
+
                 if (card.creditDetails?.billingCycle.paymentDay && card.creditDetails.billingCycle.paymentDay > today.getDate()) {
                     return sum + statementBalance;
                 }
@@ -115,6 +113,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Safe to Spend Card */}
+                {/* Hero card uses custom gradient background but wraps content safely */}
                 <div onClick={onOpenBudgetModal} className="bg-gradient-to-br from-indigo-600 to-blue-600 text-white p-6 rounded-3xl shadow-lg relative overflow-hidden group cursor-pointer hover:shadow-xl transition-all">
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><span className="text-8xl">🛡️</span></div>
                     <div className="relative z-10">
@@ -126,48 +125,70 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
 
                 {/* Info Grid */}
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col justify-center cursor-pointer hover:bg-slate-50" onClick={onNavigateToAssets}>
-                        <div className="flex items-center gap-2 text-slate-500 mb-2"><span>💼</span><span className="text-xs font-bold uppercase">Net Worth</span></div>
-                        <p className="text-xl font-bold text-slate-900">{totalNetWorth.toLocaleString()}</p>
-                    </div>
-                    <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col justify-center">
-                        <div className="flex items-center gap-2 text-slate-500 mb-2"><span>📉</span><span className="text-xs font-bold uppercase">Expenses</span></div>
-                        <p className="text-xl font-bold text-slate-900">{monthlyStats.expense.toLocaleString()}</p>
-                    </div>
-                    <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col justify-center">
-                        <div className="flex items-center gap-2 text-slate-500 mb-2"><span>🗓️</span><span className="text-xs font-bold uppercase">Fixed Bills</span></div>
-                        <p className="text-xl font-bold text-slate-900">{totalMonthlyFixed.toLocaleString()}</p>
-                    </div>
-                    <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col justify-center">
-                        <div className="flex items-center gap-2 text-slate-500 mb-2"><span>📊</span><span className="text-xs font-bold uppercase">Top Category</span></div>
-                        <p className="text-lg font-bold text-slate-900 truncate">{categoryDataOverview[0]?.name || 'N/A'}</p>
-                    </div>
+                    <Card className="flex flex-col justify-center cursor-pointer hover:bg-slate-50 border-slate-100" padding="default" onClick={onNavigateToAssets}>
+                        <div className="flex items-center gap-2 text-muted mb-2"><span>💼</span><span className="text-xs font-bold uppercase">Net Worth</span></div>
+                        <p className="text-xl font-bold text-primary">{totalNetWorth.toLocaleString()}</p>
+                    </Card>
+                    <Card className="flex flex-col justify-center border-slate-100">
+                        <div className="flex items-center gap-2 text-muted mb-2"><span>📉</span><span className="text-xs font-bold uppercase">Expenses</span></div>
+                        <p className="text-xl font-bold text-primary">{monthlyStats.expense.toLocaleString()}</p>
+                    </Card>
+                    <Card className="flex flex-col justify-center border-slate-100">
+                        <div className="flex items-center gap-2 text-muted mb-2"><span>🗓️</span><span className="text-xs font-bold uppercase">Fixed Bills</span></div>
+                        <p className="text-xl font-bold text-primary">{totalMonthlyFixed.toLocaleString()}</p>
+                    </Card>
+                    <Card className="flex flex-col justify-center border-slate-100">
+                        <div className="flex items-center gap-2 text-muted mb-2"><span>📊</span><span className="text-xs font-bold uppercase">Top Category</span></div>
+                        <p className="text-lg font-bold text-primary truncate">{categoryDataOverview[0]?.name || 'N/A'}</p>
+                    </Card>
                 </div>
             </div>
 
             {/* Activity Feed */}
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+            <Card className="border-slate-100">
                 <div className="flex items-center justify-between mb-4">
-                    <h3 onClick={onNavigateToTransactions} className="font-bold text-lg text-slate-800 hover:text-blue-600 cursor-pointer flex items-center gap-2 transition-colors group">Activity<span className="opacity-0 group-hover:opacity-100 text-sm">↗️</span></h3>
-                    <button onClick={() => { const o: any[] = ['today', 'week', 'month']; onFilterChange(o[(o.indexOf(activityFilter) + 1) % o.length]); }} className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full capitalize">{activityFilter}</button>
+                    <div className="flex items-center gap-2">
+                        <span className="text-2xl">⚡</span>
+                        <h3 className="text-xl font-bold text-primary">Activity</h3>
+                    </div>
+                    <div className="flex bg-slate-100 p-1 rounded-xl">
+                        {(['today', 'week', 'month'] as const).map(f => (
+                            <button
+                                key={f}
+                                onClick={() => onFilterChange(f)}
+                                className={`px-3 py-1 text-xs font-bold rounded-lg capitalize transition-all ${activityFilter === f ? 'bg-white text-primary shadow-sm' : 'text-muted hover:text-slate-600'}`}
+                            >
+                                {f}
+                            </button>
+                        ))}
+                    </div>
                 </div>
-                <div className="space-y-0 relative">
-                    {filteredActivityTransactions.length === 0 ? (
-                        <p className="text-center text-slate-400 py-4 text-sm">No transactions found.</p>
-                    ) : (
-                        filteredActivityTransactions.slice(0, 10).map((t) => (
+
+                <div className="space-y-0">
+                    {filteredActivityTransactions.slice(0, 5).map(tx => (
+                        <div key={tx.id} className="border-b border-slate-50 last:border-0 last:pb-0">
                             <TransactionItem
-                                key={t.id}
-                                transaction={t}
-                                asset={assets.find(a => a.id === t.assetId)}
-                                toAsset={t.toAssetId ? assets.find(a => a.id === t.toAssetId) : undefined}
+                                transaction={tx}
+                                asset={assets.find(a => a.id === tx.assetId)}
+                                toAsset={tx.toAssetId ? assets.find(a => a.id === tx.toAssetId) : undefined}
                                 onEdit={onEditTransaction}
                                 onDelete={onDeleteTransaction}
                             />
-                        ))
+                        </div>
+                    ))}
+                    {filteredActivityTransactions.length === 0 && (
+                        <div className="text-center py-10 text-muted">
+                            No activity found for this period.
+                        </div>
                     )}
                 </div>
-            </div>
+
+                <div className="mt-4 pt-4 border-t border-slate-100 text-center">
+                    <Button variant="ghost" size="sm" onClick={onNavigateToTransactions} className="w-full">
+                        View All Transactions →
+                    </Button>
+                </div>
+            </Card>
         </div>
     );
 };

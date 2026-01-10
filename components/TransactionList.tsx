@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { GroupedVirtuoso } from 'react-virtuoso';
 import { Transaction, Asset } from '../types';
 import TransactionItem from './TransactionItem';
+import { Card } from './ui/Card';
+import { EmptyState } from './ui/EmptyState';
 
 interface TransactionListProps {
     transactions: Transaction[];
@@ -34,12 +36,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
     onEdit,
     onDelete
 }) => {
-    // 1. Prepare Data for Virtuoso
-    // We need:
-    // - Sorted Transactions (Flat Array)
-    // - Group Counts (Array of numbers, e.g. [5, 3, 2] means first 5 are day 1, next 3 day 2...)
-    // - Group Labels (Array of strings matching the counts)
-
     const { sortedData, groupCounts, groupLabels, groupDailyTotals } = useMemo(() => {
         // Sort transactions by Date Descending
         const sorted = [...transactions].sort((a, b) => {
@@ -88,15 +84,17 @@ const TransactionList: React.FC<TransactionListProps> = ({
     // Empty State
     if (sortedData.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                <div className="text-4xl mb-2">🍃</div>
-                <p className="font-bold text-sm">No transactions found</p>
-            </div>
+            <EmptyState
+                icon="🍃"
+                title="No transactions found"
+                description="Try changing filters or add a new transaction."
+                className="py-20"
+            />
         );
     }
 
     return (
-        <div className="h-[calc(100vh-280px)] bg-slate-50/50 rounded-3xl border border-slate-100/50 max-w-3xl mx-auto">
+        <div className="h-[calc(100vh-280px)] bg-surface rounded-3xl border border-slate-200/50 max-w-3xl mx-auto backdrop-blur-sm">
             {/* Height calculation expects header/filters above. Adjust as needed or use flex-grow in parent */}
             <GroupedVirtuoso
                 style={{ height: '100%' }}
@@ -107,11 +105,11 @@ const TransactionList: React.FC<TransactionListProps> = ({
                     const dailyTotal = groupDailyTotals[index];
 
                     return (
-                        <div className="bg-slate-50/90 backdrop-blur-md px-5 py-3 border-b border-slate-200/50 flex justify-between items-end sticky top-0 z-10 shadow-sm transition-all">
-                            <span className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">
+                        <div className="bg-surface/95 backdrop-blur-md px-5 py-3 border-b border-slate-200/50 flex justify-between items-end sticky top-0 z-10 shadow-sm transition-all">
+                            <span className="text-xs font-black text-muted uppercase tracking-widest pl-1">
                                 {dateLabel}
                             </span>
-                            <span className={`text-xs font-bold ${dailyTotal > 0 ? 'text-emerald-600' : dailyTotal < 0 ? 'text-rose-500' : 'text-slate-400'}`}>
+                            <span className={`text-xs font-bold ${dailyTotal > 0 ? 'text-emerald-600' : dailyTotal < 0 ? 'text-destructive' : 'text-muted'}`}>
                                 {dailyTotal !== 0 ? (dailyTotal > 0 ? '+' : '') + dailyTotal.toLocaleString() : ''}
                             </span>
                         </div>
@@ -122,7 +120,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
                     if (!tx) return <></>; // Safety fallback
 
                     return (
-                        <div className="bg-white mx-3 my-1 rounded-2xl shadow-sm border border-slate-100 overflow-hidden first:mt-2 last:mb-4">
+                        <Card className="mx-3 my-1 border-slate-100 overflow-hidden first:mt-2 last:mb-4" noPadding>
                             <TransactionItem
                                 transaction={tx}
                                 asset={assets.find(a => a.id === tx.assetId)}
@@ -130,7 +128,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                 onEdit={onEdit}
                                 onDelete={onDelete}
                             />
-                        </div>
+                        </Card>
                     );
                 }}
             />

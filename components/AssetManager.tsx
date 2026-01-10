@@ -3,6 +3,26 @@ import { Asset, AssetType, Transaction, TransactionType, CreditCardDetails, Loan
 import { useModalClose } from '../hooks/useModalClose';
 import { FinanceCalculator } from '../services/financeCalculator';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { Button } from './ui/Button';
+import { Card } from './ui/Card';
+import { Badge } from './ui/Badge';
+import { EmptyState } from './ui/EmptyState';
+
+// --- Asset Form ---
+// (Use Button, Card inside Form)
+// Replace standard buttons with <Button>
+// Replace container divs with <Card>
+
+// --- Asset Detail Modal ---
+// Use Button for actions.
+// Use Badge for interest tags.
+
+// --- Asset Card ---
+// Use Card component as wrapper.
+
+// --- Asset Manager Main ---
+// Use Button for Tabs (maybe custom variant or just styled buttons, sticking to existing tab logic for now but using semantic colors).
+
 
 interface AssetManagerProps {
   assets: Asset[];
@@ -15,40 +35,40 @@ interface AssetManagerProps {
 
 const ASSET_THEMES: Record<AssetType, { bg: string, text: string, icon: string, border: string }> = {
   [AssetType.CASH]: {
-    bg: 'bg-gradient-to-br from-emerald-400 to-teal-500',
+    bg: 'bg-secondary', // Emerald
     text: 'text-white',
     icon: '💵',
     border: 'border-emerald-200'
   },
   [AssetType.CHECKING]: {
-    bg: 'bg-gradient-to-br from-blue-500 to-indigo-600',
+    bg: 'bg-primary', // Slate 900
     text: 'text-white',
     icon: '💳',
-    border: 'border-blue-200'
+    border: 'border-slate-700'
   },
   [AssetType.SAVINGS]: {
-    bg: 'bg-gradient-to-br from-violet-500 to-purple-600',
+    bg: 'bg-slate-700', // Lighter Slate
     text: 'text-white',
     icon: '🐷',
-    border: 'border-purple-200'
+    border: 'border-slate-600'
   },
   [AssetType.CREDIT_CARD]: {
-    bg: 'bg-gradient-to-br from-slate-700 to-slate-900',
+    bg: 'bg-primary',
     text: 'text-white',
     icon: '💳',
-    border: 'border-slate-300'
+    border: 'border-slate-800'
   },
   [AssetType.INVESTMENT]: {
-    bg: 'bg-gradient-to-br from-amber-400 to-orange-500',
+    bg: 'bg-slate-800',
     text: 'text-white',
     icon: '📈',
-    border: 'border-orange-200'
+    border: 'border-slate-700'
   },
   [AssetType.LOAN]: {
-    bg: 'bg-gradient-to-br from-slate-600 to-slate-800',
+    bg: 'bg-slate-600',
     text: 'text-white',
     icon: '🏦',
-    border: 'border-slate-300'
+    border: 'border-slate-500'
   },
 };
 
@@ -132,11 +152,11 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
             <h4 className="text-sm font-bold text-rose-700 flex items-center gap-2"><span>💳</span> Credit Configuration</h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-bold text-rose-500 uppercase">Limit</label>
+                <label className="text-[10px] font-bold text-destructive uppercase">Limit</label>
                 <input type="number" value={creditForm.limit} onChange={e => setCreditForm({ ...creditForm, limit: Number(e.target.value) })} className="w-full p-2 bg-white rounded-lg border border-rose-200 text-sm" />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-rose-500 uppercase">APR %</label>
+                <label className="text-[10px] font-bold text-destructive uppercase">APR %</label>
                 <input type="number" value={creditForm.apr} onChange={e => setCreditForm({ ...creditForm, apr: Number(e.target.value) })} className="w-full p-2 bg-white rounded-lg border border-rose-200 text-sm" />
               </div>
             </div>
@@ -181,7 +201,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
         )}
 
         <div className="pt-4 mt-auto">
-          <button onClick={handleSubmit} className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95">Save Asset</button>
+          <Button onClick={handleSubmit} className="w-full">Save Asset</Button>
         </div>
       </div>
     </div>
@@ -285,11 +305,11 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
                 {asset.type === AssetType.CREDIT_CARD && asset.creditDetails && (
                   <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100 col-span-2">
                     <div className="flex justify-between items-center mb-2">
-                      <p className="text-xs text-rose-500 font-bold uppercase">Usage Period</p>
+                      <p className="text-xs text-destructive font-bold uppercase">Usage Period</p>
                       <p className="text-xs font-bold text-rose-800">{asset.creditDetails.billingCycle.usageStartDay}st ~ End of Month</p>
                     </div>
                     <div className="flex justify-between items-center">
-                      <p className="text-xs text-rose-500 font-bold uppercase">Pays On</p>
+                      <p className="text-xs text-destructive font-bold uppercase">Pays On</p>
                       <p className="text-xs font-bold text-rose-800">{asset.creditDetails.billingCycle.paymentDay}th</p>
                     </div>
                   </div>
@@ -320,9 +340,9 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
                           <p className="text-xs text-slate-400">{tx.date}</p>
                         </div>
                         <div className="text-right flex flex-col items-end">
-                          <p className="font-bold text-rose-600">-{tx.amount.toLocaleString()}</p>
+                          <p className="font-bold text-destructive">-{tx.amount.toLocaleString()}</p>
                           <p className="text-[11px] font-bold text-slate-500 mb-1">(월 {Math.round(tx.amount / tx.installment.totalMonths).toLocaleString()})</p>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${tx.installment.isInterestFree ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>{tx.installment.isInterestFree ? '무이자' : '이자'}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${tx.installment.isInterestFree ? 'bg-emerald-50 text-secondary border-emerald-100' : 'bg-rose-50 text-destructive border-rose-100'}`}>{tx.installment.isInterestFree ? '무이자' : '이자'}</span>
                         </div>
                       </div>
                       <div className="mt-3">
@@ -344,10 +364,10 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
 
         <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-3">
           {asset.type === AssetType.CREDIT_CARD && onPay && (
-            <button onClick={() => onPay(asset)} className="flex-1 py-3 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-200">💸 Pay Bill</button>
+            <Button onClick={() => onPay(asset)} variant="secondary" className="flex-1">💸 Pay Bill</Button>
           )}
-          <button onClick={onEdit} className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors">Edit Details</button>
-          <button onClick={onDelete} className="px-6 py-3 bg-rose-100 text-rose-600 font-bold rounded-xl hover:bg-rose-200 transition-colors">Delete Asset</button>
+          <Button onClick={onEdit} variant="outline" className="flex-1">Edit Details</Button>
+          <Button onClick={onDelete} variant="destructive" className="px-6">Delete Asset</Button>
         </div>
       </div>
     </div>
@@ -436,8 +456,8 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-5 py-2.5 rounded-full text-sm font-bold uppercase tracking-wide transition-all ${activeTab === tab
-                ? 'bg-slate-900 text-white shadow-lg scale-105'
-                : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'
+              ? 'bg-primary text-white shadow-lg scale-105'
+              : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'
               }`}
           >
             {tab}
@@ -522,10 +542,11 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
         )}
 
         {activeTab === 'tools' && (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-400 bg-slate-50 rounded-3xl border border-slate-100 border-dashed">
-            <div className="text-4xl mb-2">🚧</div>
-            <p className="font-bold">Tools & Simulators coming soon</p>
-          </div>
+          <EmptyState
+            icon="🚧"
+            title="Tools & Simulators coming soon"
+            className="py-20 border-dashed border border-slate-100 rounded-3xl bg-slate-50"
+          />
         )}
       </div>
 

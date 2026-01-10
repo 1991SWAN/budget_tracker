@@ -14,6 +14,7 @@ import { ImportService } from './services/importService';
 import Dashboard from './components/Dashboard';
 import AssetManager from './components/AssetManager';
 import SmartInput from './components/SmartInput';
+import { AppShell } from './components/layout/AppShell';
 
 
 import { useTransactionManager } from './hooks/useTransactionManager';
@@ -30,7 +31,7 @@ const App: React.FC = () => {
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [monthlyBudget, setMonthlyBudget] = useState<number>(2500000);
   const [showSmartInput, setShowSmartInput] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
 
   const [filterType, setFilterType] = useState<TransactionType | 'ALL'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -321,7 +322,7 @@ const App: React.FC = () => {
                     <span className="text-2xl">{isDragging ? '📥' : '📂'}</span>
                   </div>
                   <div className="text-center">
-                    <p className={`font-bold transition-colors ${isDragging ? 'text-blue-600' : 'text-slate-700'}`}>
+                    <p className={`font-bold transition-colors ${isDragging ? 'text-primary' : 'text-slate-700'}`}>
                       {isDragging ? 'Drop file here' : 'Drop your file here'}
                     </p>
                     <p className="text-[10px] text-slate-400 font-medium">or click to browse files</p>
@@ -398,7 +399,7 @@ const App: React.FC = () => {
             )}
 
             {paymentError && (
-              <div className="bg-rose-50 text-rose-600 p-2 rounded-lg text-xs font-bold border border-rose-100 flex items-center gap-2">
+              <div className="bg-rose-50 text-destructive p-2 rounded-lg text-xs font-bold border border-rose-100 flex items-center gap-2">
                 <span>⚠️</span> {paymentError}
               </div>
             )}
@@ -409,9 +410,9 @@ const App: React.FC = () => {
                   if (modalType === 'bill') { SupabaseService.deleteRecurring(selectedItem.id); setRecurring(prev => prev.filter(r => r.id !== selectedItem.id)); }
                   if (modalType === 'goal') { SupabaseService.deleteGoal(selectedItem.id); setGoals(prev => prev.filter(g => g.id !== selectedItem.id)); }
                   closeModal();
-                }} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg mr-auto text-xl">🗑️</button>}
+                }} className="p-2 text-destructive hover:bg-rose-50 rounded-lg mr-auto text-xl">🗑️</button>}
                 <button onClick={closeModal} className="flex-1 py-2 text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>
-                <button onClick={handleSubmit} className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">
+                <button onClick={handleSubmit} className="flex-1 py-2 bg-primary text-white rounded-lg font-bold hover:bg-blue-700">
                   {modalType === 'pay-bill' || modalType === 'pay-card' ? 'Confirm Payment' : modalType === 'fund-goal' ? 'Add Funds' : 'Save'}
                 </button>
               </div>
@@ -428,168 +429,147 @@ const App: React.FC = () => {
     );
   };
 
-  const NavItem = ({ v, emoji, label }: { v: View, emoji: string, label: string }) => (
-    <button onClick={() => { setView(v); setIsSidebarOpen(false); }} className={`flex items-center space-x-3 w-full p-3 rounded-xl transition-all ${view === v ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}><span className="text-xl">{emoji}</span><span className="font-medium">{label}</span></button>
-  );
-
   return (
-    <div className="flex min-h-screen bg-[#f8fafc]">
+    <AppShell
+      view={view}
+      onNavigate={setView}
+      onImportClick={triggerImport}
+      onQuickAddClick={() => setShowSmartInput(true)}
+    >
       {renderModals()}
-      {isSidebarOpen && <div className="fixed inset-0 bg-black/20 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
-      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-100 p-6 flex flex-col transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-        <div className="flex items-center space-x-2 mb-10 text-blue-600"><span className="text-3xl">🪙</span><span className="text-xl font-bold tracking-tight text-slate-900">SmartPenny</span></div>
-        <nav className="space-y-2 flex-1">
-          <NavItem v="dashboard" emoji="📊" label="Dashboard" />
-          <NavItem v="transactions" emoji="🧾" label="Transactions" />
-          <NavItem v="assets" emoji="💰" label="Assets" />
-          <NavItem v="analysis" emoji="🤖" label="AI Analysis" />
-        </nav>
+      {/* Hidden File Input (Kept in App as it is bound to ref) */}
+      <input type="file" ref={fileInputRef} onChange={handleFileImport} className="hidden" accept=".csv, .xlsx, .xls" />
 
-        {/* Hidden File Input */}
-        <input type="file" ref={fileInputRef} onChange={handleFileImport} className="hidden" accept=".csv, .xlsx, .xls" />
+      {showSmartInput && (
+        <SmartInput
+          onTransactionsParsed={editingTransaction ? handleUpdateParsed : handleSmartParsed}
+          onCancel={() => { setShowSmartInput(false); setEditingTransaction(null); }}
+          assets={assets}
+          initialData={editingTransaction}
+          transactions={transactions}
+        />
+      )}
 
-        <div className="pt-6 border-t border-slate-100 space-y-3">
-          <button onClick={triggerImport} className="w-full bg-slate-100 text-slate-600 hover:bg-slate-200 p-3 rounded-xl flex items-center justify-center space-x-2 font-semibold text-sm transition-colors">
-            <span>📂</span><span>Import CSV</span>
-          </button>
-          <button onClick={() => setShowSmartInput(true)} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3 rounded-xl shadow-lg flex items-center justify-center space-x-2"><span>➕</span><span className="font-semibold">Quick Add</span></button>
-        </div>
-      </aside>
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="lg:hidden bg-white border-b border-slate-100 p-4 flex justify-between items-center sticky top-0 z-30"><div className="flex items-center space-x-2 text-blue-600"><span className="text-2xl">🪙</span><span className="font-bold text-slate-900">SmartPenny</span></div><button onClick={() => setIsSidebarOpen(true)} className="p-2 text-slate-600 text-2xl">☰</button></header>
-        <div className="flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth"><div className="max-w-5xl mx-auto">
-          {showSmartInput && (
-            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-              <SmartInput
-                onTransactionsParsed={editingTransaction ? handleUpdateParsed : handleSmartParsed}
-                onCancel={() => { setShowSmartInput(false); setEditingTransaction(null); }}
-                assets={assets}
-                initialData={editingTransaction}
-                transactions={transactions} // Pass history for autocomplete
-              />
+      {view === 'dashboard' && <Dashboard
+        transactions={transactions}
+        assets={assets}
+        recurring={recurring}
+        goals={goals}
+        onRecurringChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteRecurring(item.id); setRecurring(prev => prev.filter(r => r.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveRecurring(newItem); setRecurring(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveRecurring(item); setRecurring(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r)); } else if (action === 'pay') { handleAddTransaction({ id: 'bp-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.EXPENSE, category: item.category, memo: `Bill Pay: ${item.name}`, assetId: item.assetId, emoji: '⚡' }); } }}
+        onGoalChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteGoal(item.id); setGoals(prev => prev.filter(g => g.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveGoal(newItem); setGoals(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveGoal(item); setGoals(prev => prev.map(g => g.id === item.id ? { ...g, ...item } : g)); } else if (action === 'contribute') { const updated = { ...item, currentAmount: item.currentAmount + item.amount }; SupabaseService.saveGoal(updated); setGoals(prev => prev.map(g => g.id === item.id ? updated : g)); handleAddTransaction({ id: 'gc-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.TRANSFER, category: Category.INVESTMENT, memo: `Goal: ${item.name}`, assetId: item.assetId, toAssetId: item.toAssetId, emoji: '💰' }); } }}
+        onAddTransaction={handleAddTransaction}
+        onEditTransaction={(tx) => { setEditingTransaction(tx); setShowSmartInput(true); }} // Re-use smart input for editing
+        onDeleteTransaction={handleDeleteTransaction}
+        monthlyBudget={monthlyBudget}
+        onBudgetChange={setMonthlyBudget}
+        onNavigateToTransactions={(range) => { if (range) setDateRange(range); setView('transactions'); }}
+        onAddBillToGroup={(group) => {
+          setModalType('bill');
+          setSelectedItem(null);
+          setFormData({ name: '', amount: '', dayOfMonth: 1, category: Category.UTILITIES, billType: BillType.SUBSCRIPTION, groupName: group });
+          // Optional: switch to transactions view if we want to show the modal there, but modal is global in App, so it opens over whatever view.
+          // However, user might expect to be in Transactions context.
+          // Given the design "Go to Transactions to add bills" inside the empty state message, 
+          // maybe we should switch view? 
+          // The empty state message says "Go to 'Transactions' to add bills."
+          // The button is shortcut. Let's just open modal, but maybe switch view to transactions so when they close they are there?
+          // The button says "+ Add Bill to {group}".
+          // Let's just open modal.
+        }}
+      />}
+      {view === 'assets' && <AssetManager assets={assets} transactions={transactions} onAdd={a => { SupabaseService.saveAsset(a); setAssets(prev => [...prev, a]); }} onDelete={id => { SupabaseService.deleteAsset(id); setAssets(prev => prev.filter(a => a.id !== id)); }} onEdit={async (editedAsset) => {
+        const oldAsset = assets.find(a => a.id === editedAsset.id);
+        if (!oldAsset) return;
+
+        const diff = editedAsset.balance - oldAsset.balance;
+        const metadataOnly = { ...editedAsset, balance: oldAsset.balance };
+
+        // 1. Update Metadata (if changed, or just always to be safe)
+        // We use the OLD balance here to ensure the transaction logic below is the sole source of balance truth.
+        await SupabaseService.saveAsset(metadataOnly);
+        setAssets(prev => prev.map(a => a.id === metadataOnly.id ? metadataOnly : a));
+
+        // 2. Handle Balance Adjustment via Transaction
+        if (diff !== 0) {
+          const tx: Transaction = {
+            id: 'adj-' + Date.now(),
+            date: new Date().toISOString().split('T')[0],
+            amount: Math.abs(diff),
+            type: diff > 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
+            category: Category.OTHER,
+            memo: 'Manual Balance Adjustment',
+            assetId: editedAsset.id,
+            // emoji: '🔧'
+          };
+          await handleAddTransaction(tx);
+        }
+      }} onPay={openPayCard} />}
+      {view === 'transactions' && <div className="space-y-4">
+        <div className="flex flex-col gap-4">
+          {/* Header & Actions */}
+          <div className="flex justify-between items-center px-1">
+            <h2 className="text-2xl font-bold text-slate-800">Transactions</h2>
+            <div className="flex gap-2">
+              <button onClick={openAddBill} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold hover:bg-indigo-100 transition-colors">
+                <span>🗓️</span> Bills
+              </button>
+              {dateRange && (
+                <button onClick={() => setDateRange(null)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full text-xs font-bold hover:bg-slate-200">
+                  Clear Date
+                </button>
+              )}
             </div>
-          )}    {view === 'dashboard' && <Dashboard
-            transactions={transactions}
+          </div>
+
+          {/* Search Box */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden px-4 py-3 flex gap-2 items-center">
+            <span className="text-slate-400">🔍</span>
+            <input
+              type="text"
+              placeholder="Search transactions..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full bg-transparent outline-none text-sm font-medium placeholder:text-slate-300"
+            />
+          </div>
+
+          {/* Filter Chips */}
+          <FilterBar
+            currentFilter={filterCategory}
+            onFilterChange={setFilterCategory}
             assets={assets}
-            recurring={recurring}
-            goals={goals}
-            onRecurringChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteRecurring(item.id); setRecurring(prev => prev.filter(r => r.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveRecurring(newItem); setRecurring(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveRecurring(item); setRecurring(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r)); } else if (action === 'pay') { handleAddTransaction({ id: 'bp-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.EXPENSE, category: item.category, memo: `Bill Pay: ${item.name}`, assetId: item.assetId, emoji: '⚡' }); } }}
-            onGoalChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteGoal(item.id); setGoals(prev => prev.filter(g => g.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveGoal(newItem); setGoals(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveGoal(item); setGoals(prev => prev.map(g => g.id === item.id ? { ...g, ...item } : g)); } else if (action === 'contribute') { const updated = { ...item, currentAmount: item.currentAmount + item.amount }; SupabaseService.saveGoal(updated); setGoals(prev => prev.map(g => g.id === item.id ? updated : g)); handleAddTransaction({ id: 'gc-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.TRANSFER, category: Category.INVESTMENT, memo: `Goal: ${item.name}`, assetId: item.assetId, toAssetId: item.toAssetId, emoji: '💰' }); } }}
-            onAddTransaction={handleAddTransaction}
-            onEditTransaction={(tx) => { setEditingTransaction(tx); setShowSmartInput(true); }} // Re-use smart input for editing
-            onDeleteTransaction={handleDeleteTransaction}
-            monthlyBudget={monthlyBudget}
-            onBudgetChange={setMonthlyBudget}
-            onNavigateToTransactions={(range) => { if (range) setDateRange(range); setView('transactions'); }}
-            onAddBillToGroup={(group) => {
-              setModalType('bill');
-              setSelectedItem(null);
-              setFormData({ name: '', amount: '', dayOfMonth: 1, category: Category.UTILITIES, billType: BillType.SUBSCRIPTION, groupName: group });
-              // Optional: switch to transactions view if we want to show the modal there, but modal is global in App, so it opens over whatever view.
-              // However, user might expect to be in Transactions context.
-              // Given the design "Go to Transactions to add bills" inside the empty state message, 
-              // maybe we should switch view? 
-              // The empty state message says "Go to 'Transactions' to add bills."
-              // The button is shortcut. Let's just open modal, but maybe switch view to transactions so when they close they are there?
-              // The button says "+ Add Bill to {group}".
-              // Let's just open modal.
-            }}
-          />}
-          {view === 'assets' && <AssetManager assets={assets} transactions={transactions} onAdd={a => { SupabaseService.saveAsset(a); setAssets(prev => [...prev, a]); }} onDelete={id => { SupabaseService.deleteAsset(id); setAssets(prev => prev.filter(a => a.id !== id)); }} onEdit={async (editedAsset) => {
-            const oldAsset = assets.find(a => a.id === editedAsset.id);
-            if (!oldAsset) return;
+          />
+        </div>
 
-            const diff = editedAsset.balance - oldAsset.balance;
-            const metadataOnly = { ...editedAsset, balance: oldAsset.balance };
+        {/* Transaction List */}
+        <ErrorBoundary>
+          <TransactionList
+            transactions={searchedTransactions.filter(t => {
+              // 1. (Search is now handled by hook above)
 
-            // 1. Update Metadata (if changed, or just always to be safe)
-            // We use the OLD balance here to ensure the transaction logic below is the sole source of balance truth.
-            await SupabaseService.saveAsset(metadataOnly);
-            setAssets(prev => prev.map(a => a.id === metadataOnly.id ? metadataOnly : a));
+              // 2. Date Filter
+              const matchesDate = dateRange ? (t.date >= dateRange.start && t.date <= dateRange.end) : true;
 
-            // 2. Handle Balance Adjustment via Transaction
-            if (diff !== 0) {
-              const tx: Transaction = {
-                id: 'adj-' + Date.now(),
-                date: new Date().toISOString().split('T')[0],
-                amount: Math.abs(diff),
-                type: diff > 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
-                category: Category.OTHER,
-                memo: 'Manual Balance Adjustment',
-                assetId: editedAsset.id,
-                // emoji: '🔧'
-              };
-              await handleAddTransaction(tx);
-            }
-          }} onPay={openPayCard} />}
-          {view === 'transactions' && <div className="space-y-4">
-            <div className="flex flex-col gap-4">
-              {/* Header & Actions */}
-              <div className="flex justify-between items-center px-1">
-                <h2 className="text-2xl font-bold text-slate-800">Transactions</h2>
-                <div className="flex gap-2">
-                  <button onClick={openAddBill} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold hover:bg-indigo-100 transition-colors">
-                    <span>🗓️</span> Bills
-                  </button>
-                  {dateRange && (
-                    <button onClick={() => setDateRange(null)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full text-xs font-bold hover:bg-slate-200">
-                      Clear Date
-                    </button>
-                  )}
-                </div>
-              </div>
+              // 3. Category/Type Filter
+              let matchesType = true;
+              if (filterCategory === 'ALL') matchesType = true;
+              else if (Object.values(TransactionType).includes(filterCategory as any)) {
+                matchesType = t.type === filterCategory;
+              } else {
+                // Assume it's an Asset ID
+                matchesType = t.assetId === filterCategory || t.toAssetId === filterCategory;
+              }
 
-              {/* Search Box */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden px-4 py-3 flex gap-2 items-center">
-                <span className="text-slate-400">🔍</span>
-                <input
-                  type="text"
-                  placeholder="Search transactions..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full bg-transparent outline-none text-sm font-medium placeholder:text-slate-300"
-                />
-              </div>
-
-              {/* Filter Chips */}
-              <FilterBar
-                currentFilter={filterCategory}
-                onFilterChange={setFilterCategory}
-                assets={assets}
-              />
-            </div>
-
-            {/* Transaction List */}
-            <ErrorBoundary>
-              <TransactionList
-                transactions={searchedTransactions.filter(t => {
-                  // 1. (Search is now handled by hook above)
-
-                  // 2. Date Filter
-                  const matchesDate = dateRange ? (t.date >= dateRange.start && t.date <= dateRange.end) : true;
-
-                  // 3. Category/Type Filter
-                  let matchesType = true;
-                  if (filterCategory === 'ALL') matchesType = true;
-                  else if (Object.values(TransactionType).includes(filterCategory as any)) {
-                    matchesType = t.type === filterCategory;
-                  } else {
-                    // Assume it's an Asset ID
-                    matchesType = t.assetId === filterCategory || t.toAssetId === filterCategory;
-                  }
-
-                  return matchesDate && matchesType;
-                })}
-                assets={assets}
-                onEdit={(t) => { setEditingTransaction(t); setShowSmartInput(true); }}
-                onDelete={handleDeleteTransaction}
-                searchTerm={searchTerm}
-              />
-            </ErrorBoundary>
-          </div>}
-        </div></div>
-      </main>
-    </div>
+              return matchesDate && matchesType;
+            })}
+            assets={assets}
+            onEdit={(t) => { setEditingTransaction(t); setShowSmartInput(true); }}
+            onDelete={handleDeleteTransaction}
+            searchTerm={searchTerm}
+          />
+        </ErrorBoundary>
+      </div>}
+    </AppShell>
   );
 };
 

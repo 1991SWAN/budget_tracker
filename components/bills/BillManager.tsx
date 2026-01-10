@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { RecurringTransaction, Category, BillType, Asset, AssetType } from '../../types';
+import { Card } from '../ui/Card';
+import { Button } from '../ui/Button';
+import { Dialog } from '../ui/Dialog';
+import { Input } from '../ui/Input';
+import { Select } from '../ui/Select';
+import { EmptyState } from '../ui/EmptyState';
 
 interface BillManagerProps {
     recurring: RecurringTransaction[];
@@ -97,7 +103,6 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
 
     const openPayBill = (bill: RecurringTransaction) => {
         setSelectedBill(bill);
-        // Default to first non-credit asset
         const defaultAsset = assets.find(a => a.type !== AssetType.CREDIT_CARD);
         setPaymentAssetId(defaultAsset?.id || '');
         setModalType('pay');
@@ -152,15 +157,14 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
             });
     }, [recurring, billGroup, today]);
 
-    // --- Render ---
     return (
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-full">
+        <Card className="flex flex-col h-full bg-surface" padding="lg">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2 text-slate-800">
+                <div className="flex items-center gap-2 text-primary">
                     <span>📫</span><h3 className="font-bold text-lg">Upcoming Bills</h3>
                 </div>
-                <button onClick={openAddBill} className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-lg hover:bg-indigo-100 transition-colors">➕</button>
+                <Button onClick={openAddBill} size="sm" variant="secondary">➕ Add Bill</Button>
             </div>
 
             {/* Group Tabs */}
@@ -170,15 +174,15 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
                         key={group}
                         onClick={() => setBillGroup(group)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 ${billGroup === group
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            ? 'bg-primary text-white shadow-md'
+                            : 'bg-slate-100 text-muted hover:bg-slate-200'
                             }`}
                     >
                         {group}
                         {group !== 'All' && billGroup === group && (
                             <span
                                 onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group); }}
-                                className="ml-1 hover:bg-indigo-500 rounded-full w-4 h-4 flex items-center justify-center text-[10px]"
+                                className="ml-1 hover:bg-primary/80 rounded-full w-4 h-4 flex items-center justify-center text-[10px]"
                             >
                                 ✕
                             </span>
@@ -204,7 +208,7 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddGroup(); if (e.key === 'Escape') setIsAddingGroup(false); }}
                                 className="w-full text-xs p-1.5 border border-slate-200 rounded-lg outline-none focus:border-indigo-500"
                             />
-                            <button onClick={handleAddGroup} className="bg-indigo-600 text-white p-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700">Add</button>
+                            <Button onClick={handleAddGroup} size="sm">Add</Button>
                         </div>
                     )}
                 </div>
@@ -213,93 +217,127 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
             {/* Bill List */}
             <div className="space-y-3 overflow-y-auto pr-2 scrollbar-thin flex-1 min-h-0">
                 {sortedBills.length === 0 ? (
-                    <div className="text-center text-slate-400 py-10 flex flex-col items-center gap-2">
-                        <p>No bills found.</p>
-                    </div>
+                    <EmptyState
+                        icon="📫"
+                        title="No bills found"
+                        description="Add your first bill subscription."
+                        className="py-10"
+                    />
                 ) : (
                     sortedBills.map((bill) => (
-                        <div key={bill.id} className="flex flex-col p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition-all cursor-pointer group" onClick={() => openEditBill(bill)}>
-                            <div className="flex items-center justify-between">
+                        <Card key={bill.id} className="p-3 hover:bg-slate-50 transition-all cursor-pointer group border-slate-100" noPadding onClick={() => openEditBill(bill)}>
+                            <div className="p-3 flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <div className={`w-10 h-10 flex flex-col items-center justify-center rounded-lg text-xs font-bold ${bill.dayOfMonth === today.getDate() ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'}`}>
+                                    <div className={`w-10 h-10 flex flex-col items-center justify-center rounded-lg text-xs font-bold ${bill.dayOfMonth === today.getDate() ? 'bg-destructive/10 text-destructive' : 'bg-slate-100 text-muted'}`}>
                                         <span className="text-[9px] uppercase">Day</span>{bill.dayOfMonth}
                                     </div>
                                     <div>
-                                        <p className="font-semibold text-slate-800">{bill.name}</p>
-                                        <p className="text-[10px] text-slate-500">{bill.groupName || 'Default'} • {bill.category}</p>
+                                        <p className="font-semibold text-primary">{bill.name}</p>
+                                        <p className="text-[10px] text-muted">{bill.groupName || 'Default'} • {bill.category}</p>
                                     </div>
                                 </div>
-                                <div className="text-right">
-                                    <span className="font-bold text-slate-800 block text-sm">{bill.amount.toLocaleString()}</span>
-                                    <button onClick={(e) => { e.stopPropagation(); openPayBill(bill); }} className="px-3 py-1 mt-1 bg-white border border-slate-200 text-[10px] font-bold text-slate-600 rounded-md hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors">Pay</button>
+                                <div className="text-right flex flex-col items-end gap-1">
+                                    <span className="font-bold text-primary block text-sm">{bill.amount.toLocaleString()}</span>
+                                    <Button onClick={(e) => { e.stopPropagation(); openPayBill(bill); }} size="sm" variant="outline" className="text-[10px] h-7 py-0 px-2">Pay</Button>
                                 </div>
                             </div>
-                        </div>
+                        </Card>
                     ))
                 )}
             </div>
 
-            {/* --- Modals --- */}
-            {modalType && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={closeModal}>
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-bold text-slate-800">
-                                {modalType === 'edit' ? (selectedBill ? 'Edit Bill' : 'Add New Bill') : `Pay: ${selectedBill?.name}`}
-                            </h3>
-                            <button onClick={closeModal} className="text-xl">✖️</button>
-                        </div>
+            {/* --- Modals: Refactored to use Dialog & Input --- */}
 
-                        <div className="space-y-4">
-                            {modalType === 'edit' && (
-                                <>
-                                    <input type="text" placeholder="Bill Name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full p-2 border rounded-lg" />
-                                    <input type="number" placeholder="Amount" value={formData.amount} onChange={e => setFormData({ ...formData, amount: e.target.value })} className="w-full p-2 border rounded-lg" />
-                                    <div className="flex gap-2">
-                                        <select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value as Category })} className="flex-1 p-2 border rounded-lg">
-                                            {Object.values(Category).map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
-                                        <select value={formData.billType} onChange={e => setFormData({ ...formData, billType: e.target.value as BillType })} className="flex-1 p-2 border rounded-lg">
-                                            {Object.values(BillType).map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <input type="text" placeholder="Group (e.g. Housing)" value={formData.groupName} onChange={e => setFormData({ ...formData, groupName: e.target.value })} className="flex-1 p-2 border rounded-lg" />
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm text-slate-500 whitespace-nowrap">Day:</span>
-                                            <input type="number" min="1" max="31" value={formData.dayOfMonth} onChange={e => setFormData({ ...formData, dayOfMonth: Number(e.target.value) })} className="w-16 p-2 border rounded-lg" />
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-
-                            {modalType === 'pay' && (
-                                <>
-                                    <div className="bg-slate-50 p-4 rounded-xl mb-2">
-                                        <p className="text-sm font-bold text-slate-700">{selectedBill?.name}</p>
-                                        <p className="text-2xl font-bold text-slate-900">{selectedBill?.amount.toLocaleString()} KRW</p>
-                                    </div>
-                                    <label className="block text-xs font-semibold text-slate-500 uppercase">Pay From</label>
-                                    <select value={paymentAssetId} onChange={e => setPaymentAssetId(e.target.value)} className="w-full p-2 border rounded-lg">
-                                        {assets.filter(a => a.type !== AssetType.CREDIT_CARD).map(a => <option key={a.id} value={a.id}>{a.name} ({a.balance.toLocaleString()})</option>)}
-                                    </select>
-                                </>
-                            )}
-
-                            <div className="flex gap-2 pt-4">
-                                {modalType === 'edit' && selectedBill && (
-                                    <button onClick={handleDelete} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg mr-auto text-xl">🗑️</button>
-                                )}
-                                <button onClick={closeModal} className="flex-1 py-2 text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>
-                                <button onClick={handleSave} className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">
-                                    {modalType === 'pay' ? 'Confirm Payment' : 'Save'}
-                                </button>
-                            </div>
+            {/* Edit/Add Modal */}
+            <Dialog
+                isOpen={modalType === 'edit'}
+                onClose={closeModal}
+                title={selectedBill ? 'Edit Bill' : 'Add New Bill'}
+                footer={
+                    <>
+                        {selectedBill && (
+                            <Button onClick={handleDelete} variant="destructive" size="icon" className="mr-auto w-10">🗑️</Button>
+                        )}
+                        <Button onClick={closeModal} variant="ghost">Cancel</Button>
+                        <Button onClick={handleSave} variant="primary">Save</Button>
+                    </>
+                }
+            >
+                <div className="space-y-4">
+                    <Input
+                        label="Bill Name"
+                        placeholder="e.g. Netflix"
+                        value={formData.name}
+                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                    />
+                    <Input
+                        label="Amount"
+                        type="number"
+                        placeholder="0"
+                        value={formData.amount}
+                        onChange={e => setFormData({ ...formData, amount: e.target.value })}
+                        leftIcon={<span>₩</span>}
+                    />
+                    <div className="flex gap-4">
+                        <Select
+                            label="Category"
+                            value={formData.category}
+                            onChange={e => setFormData({ ...formData, category: e.target.value as Category })}
+                            options={Object.values(Category).map(c => ({ label: c, value: c }))}
+                        />
+                        <Select
+                            label="Type"
+                            value={formData.billType}
+                            onChange={e => setFormData({ ...formData, billType: e.target.value as BillType })}
+                            options={Object.values(BillType).map(t => ({ label: t, value: t }))}
+                        />
+                    </div>
+                    <div className="flex gap-4">
+                        <Input
+                            label="Group"
+                            placeholder="e.g. Housing"
+                            value={formData.groupName}
+                            onChange={e => setFormData({ ...formData, groupName: e.target.value })}
+                        />
+                        <div className="w-24">
+                            <Input
+                                label="Day"
+                                type="number"
+                                min={1} max={31}
+                                value={formData.dayOfMonth}
+                                onChange={e => setFormData({ ...formData, dayOfMonth: Number(e.target.value) })}
+                            />
                         </div>
                     </div>
                 </div>
-            )}
-        </div>
+            </Dialog>
+
+            {/* Pay Modal */}
+            <Dialog
+                isOpen={modalType === 'pay'}
+                onClose={closeModal}
+                title={`Pay: ${selectedBill?.name}`}
+                footer={
+                    <>
+                        <Button onClick={closeModal} variant="ghost">Cancel</Button>
+                        <Button onClick={handleSave} variant="primary">Confirm Payment</Button>
+                    </>
+                }
+            >
+                <div className="bg-slate-50 p-4 rounded-xl mb-4 text-center border border-slate-100">
+                    <p className="text-sm font-bold text-muted mb-1">Payment Amount</p>
+                    <p className="text-3xl font-bold text-primary">{selectedBill?.amount.toLocaleString()} <span className="text-lg font-normal text-muted">KRW</span></p>
+                </div>
+                <Select
+                    label="Pay From"
+                    value={paymentAssetId}
+                    onChange={e => setPaymentAssetId(e.target.value)}
+                    options={assets
+                        .filter(a => a.type !== AssetType.CREDIT_CARD)
+                        .map(a => ({ label: `${a.name} (${a.balance.toLocaleString()})`, value: a.id }))}
+                />
+            </Dialog>
+        </Card>
     );
 };
 
