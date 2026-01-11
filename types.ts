@@ -111,6 +111,7 @@ export interface Transaction {
   hashKey?: string;
   linkedTransactionId?: string;
   originalText?: string;
+  merchant?: string; // Parsed Merchant Name
 
   installment?: {
     totalMonths: number;

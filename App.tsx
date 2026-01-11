@@ -462,6 +462,7 @@ const App: React.FC = () => {
           onTransactionsParsed={editingTransaction ? handleUpdateParsed : handleSmartParsed}
           onCancel={() => { setShowSmartInput(false); setEditingTransaction(null); }}
           assets={assets}
+          categories={categories}
           initialData={editingTransaction}
           transactions={transactions}
         />
