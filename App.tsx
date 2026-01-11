@@ -80,11 +80,15 @@ const App: React.FC = () => {
 
   const loadData = async () => {
     try {
-      // 1. Auth check will be handled by AuthContext in the future
+      // 1. Auth check
       const { data: { session } } = await supabase.auth.getSession();
+
+      console.log('[App] loadData called');
+      console.log('[App] Session:', session?.user?.id);
+
       if (!session) {
-        console.log("No session found. Please log in.");
-        // Future: Redirect to login
+        console.log("[App] No session found. Skipping data load.");
+        return;
       }
 
       const [txs, assts, recs, gls] = await Promise.all([
@@ -93,6 +97,9 @@ const App: React.FC = () => {
         SupabaseService.getRecurring(),
         SupabaseService.getGoals()
       ]);
+
+      console.log(`[App] Data Loaded: Txs=${txs.length}, Assets=${assts.length}`);
+
       setTransactions(txs);
       setAssets(assts);
       setRecurring(recs);
