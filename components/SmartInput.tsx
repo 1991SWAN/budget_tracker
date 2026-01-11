@@ -248,11 +248,11 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
           )}
 
           {mode === 'manual' && (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
               {/* 1. Hero Section: Amount & Type */}
-              <div className="flex flex-col gap-3 bg-slate-50 p-4 rounded-3xl border border-slate-100">
+              <div className="flex flex-col gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                 {/* Type Segmented Control */}
-                <div className="flex p-1 bg-slate-200/50 rounded-xl">
+                <div className="flex p-0.5 bg-slate-200/50 rounded-lg">
                   {Object.values(TransactionType).map((t) => (
                     <button
                       key={t}
@@ -261,7 +261,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                         type: t,
                         category: t === TransactionType.TRANSFER ? Category.TRANSFER : manualForm.category
                       })}
-                      className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all uppercase tracking-wide ${manualForm.type === t
+                      className={`flex-1 py-1.5 text-[10px] font-black rounded-md transition-all uppercase tracking-wide ${manualForm.type === t
                         ? (t === TransactionType.INCOME ? 'bg-white text-emerald-600 shadow-sm' : t === TransactionType.EXPENSE ? 'bg-white text-rose-600 shadow-sm' : 'bg-white text-blue-600 shadow-sm')
                         : 'text-slate-400 hover:text-slate-600'}`}
                     >
@@ -271,8 +271,8 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                 </div>
 
                 {/* Hero Amount Input */}
-                <div className="relative flex items-center justify-center py-2">
-                  <span className={`text-2xl font-bold mr-2 ${manualForm.type === TransactionType.EXPENSE ? 'text-rose-500' : manualForm.type === TransactionType.INCOME ? 'text-emerald-500' : 'text-blue-500'}`}>
+                <div className="relative flex items-center justify-center py-1">
+                  <span className={`text-xl font-bold mr-1 ${manualForm.type === TransactionType.EXPENSE ? 'text-rose-500' : manualForm.type === TransactionType.INCOME ? 'text-emerald-500' : 'text-blue-500'}`}>
                     {manualForm.type === TransactionType.EXPENSE ? '-' : manualForm.type === TransactionType.INCOME ? '+' : '→'}
                   </span>
                   <input
@@ -280,17 +280,17 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                     placeholder="0"
                     value={manualForm.amount}
                     onChange={e => setManualForm({ ...manualForm, amount: e.target.value })}
-                    className="w-full text-center bg-transparent text-4xl font-black text-slate-800 placeholder-slate-200 outline-none p-0"
+                    className="w-full text-center bg-transparent text-3xl font-black text-slate-800 placeholder-slate-200 outline-none p-0"
                     autoFocus={!initialData}
                   />
-                  <span className="text-xl font-bold text-slate-400 absolute right-4">₩</span>
+                  <span className="text-lg font-bold text-slate-400 absolute right-2">₩</span>
                 </div>
               </div>
 
               {/* 2. Horizontal Category List */}
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1.5 block">Category</label>
-                <div className="overflow-x-auto pb-4 -mx-4 px-5 scrollbar-hide flex gap-2 snap-x">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1 block">Category</label>
+                <div className="overflow-x-auto pb-2 -mx-4 px-5 scrollbar-hide flex gap-2 snap-x">
                   {categories.length > 0 ? (
                     // Dynamic Categories
                     categories
@@ -332,7 +332,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
               </div>
 
               {/* 3. Compact Inputs Grid */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <Input
                   label="Date"
                   type="date"
