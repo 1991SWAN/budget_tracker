@@ -24,11 +24,17 @@ import { useCategoryManager } from './hooks/useCategoryManager';
 import { useModalClose } from './hooks/useModalClose';
 
 
+import { useAuth } from './contexts/AuthContext';
+import { LoginView } from './components/LoginView';
+
 const App: React.FC = () => {
+  const { user, isLoading } = useAuth();
+
   const [view, setView] = useState<View>('dashboard');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const { addToast } = useToast();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+
   const [assets, setAssets] = useState<Asset[]>([]);
   const [recurring, setRecurring] = useState<RecurringTransaction[]>([]);
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
@@ -73,18 +79,11 @@ const App: React.FC = () => {
 
   const loadData = async () => {
     try {
-      // 1. Ensure Auth (Anonymous) for RLS
+      // 1. Auth check will be handled by AuthContext in the future
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        console.log("No session found. Signing in anonymously...");
-        const { error } = await supabase.auth.signInAnonymously();
-        if (error) {
-          console.error("Anonymous login failed:", error);
-          // Verify if 'signInAnonymously' is enabled in Supabase project. 
-          // If not, we might need a fallback or manual login.
-        } else {
-          console.log("Signed in anonymously.");
-        }
+        console.log("No session found. Please log in.");
+        // Future: Redirect to login
       }
 
       const [txs, assts, recs, gls] = await Promise.all([
@@ -446,9 +445,23 @@ const App: React.FC = () => {
     );
   };
 
+
+  // Auth Guard: Prevent rendering main app until authenticated
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginView />;
+  }
+
   return (
     <AppShell
-      view={view}
+      currentView={view}
       onNavigate={setView}
       onImportClick={triggerImport}
       onQuickAddClick={() => setShowSmartInput(true)}

@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { View } from '../../types';
 import { Button } from '../ui/Button';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface SidebarProps {
     view: View;
@@ -19,6 +20,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onImportClick,
     onQuickAddClick
 }) => {
+    const { signOut } = useAuth();
 
     const NavItem = ({ v, emoji, label }: { v: View, emoji: string, label: string }) => {
         const isActive = view === v;
@@ -75,6 +77,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="h-px bg-slate-100 my-2" />
 
                 <NavItem v="settings" emoji="⚙️" label="Settings" />
+
+                <button
+                    onClick={signOut}
+                    className="w-full flex items-center justify-start pl-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-100 hover:text-rose-600 transition-colors gap-0 group"
+                >
+                    <span className="text-xl w-8 flex justify-center shrink-0 grayscale group-hover:grayscale-0">🚪</span>
+                    <span className="font-medium">Log Out</span>
+                </button>
             </div>
         </aside>
     );
