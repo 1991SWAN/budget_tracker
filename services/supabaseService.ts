@@ -377,6 +377,18 @@ export const SupabaseService = {
         } catch (err) {
             console.error('Error upserting tag:', err);
         }
+    },
+    // --- Data Management ---
+    resetAllData: async () => {
+        // Order matters due to Foreign Keys
+        await supabase.from('tags').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('transactions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('recurring').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('goals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('assets').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('custom_categories').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('budgets').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        console.log("All data reset successfully.");
     }
 
 };

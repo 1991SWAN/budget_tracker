@@ -2,18 +2,19 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { RecurringTransaction, Category, BillType, Asset, AssetType } from '../../types';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Dialog } from '../ui/Dialog';
-import { Input } from '../ui/Input';
-import { Select } from '../ui/Select';
 import { EmptyState } from '../ui/EmptyState';
 
 interface BillManagerProps {
     recurring: RecurringTransaction[];
     assets: Asset[];
     onRecurringChange: (action: 'add' | 'update' | 'delete' | 'pay', item: any) => void;
+    // New handlers via props
+    onEditBill: (bill: RecurringTransaction) => void;
+    onPayBill: (bill: RecurringTransaction) => void;
+    onAddBill: () => void;
 }
 
-const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurringChange }) => {
+const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurringChange, onEditBill, onPayBill, onAddBill }) => {
     // --- Local State for Groups ---
     const [billGroup, setBillGroup] = useState<string>('All');
     const [billGroups, setBillGroups] = useState<string[]>(() => {
@@ -27,30 +28,6 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
     });
     const [isAddingGroup, setIsAddingGroup] = useState(false);
     const [newGroupInput, setNewGroupInput] = useState('');
-
-    // --- Modal State ---
-    const [modalType, setModalType] = useState<'edit' | 'pay' | null>(null);
-    const [selectedBill, setSelectedBill] = useState<RecurringTransaction | null>(null);
-
-    // Form Data for Edit/Add
-    const [formData, setFormData] = useState<{
-        name: string;
-        amount: string | number;
-        category: Category;
-        billType: BillType;
-        dayOfMonth: number;
-        groupName: string;
-    }>({
-        name: '',
-        amount: '',
-        category: Category.UTILITIES,
-        billType: BillType.SUBSCRIPTION,
-        dayOfMonth: 1,
-        groupName: ''
-    });
-
-    // Form Data for Payment
-    const [paymentAssetId, setPaymentAssetId] = useState<string>('');
 
     // --- Effects ---
     useEffect(() => {
@@ -74,76 +51,6 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
         if (billGroup === groupToDelete) setBillGroup('All');
     };
 
-    // --- Handlers: Modals ---
-    const openAddBill = () => {
-        setSelectedBill(null);
-        setFormData({
-            name: '',
-            amount: '',
-            category: Category.UTILITIES,
-            billType: BillType.SUBSCRIPTION,
-            dayOfMonth: 1,
-            groupName: billGroup === 'All' ? '' : billGroup
-        });
-        setModalType('edit');
-    };
-
-    const openEditBill = (bill: RecurringTransaction) => {
-        setSelectedBill(bill);
-        setFormData({
-            name: bill.name,
-            amount: bill.amount,
-            category: bill.category,
-            billType: bill.billType || BillType.SUBSCRIPTION,
-            dayOfMonth: bill.dayOfMonth,
-            groupName: bill.groupName || ''
-        });
-        setModalType('edit');
-    };
-
-    const openPayBill = (bill: RecurringTransaction) => {
-        setSelectedBill(bill);
-        const defaultAsset = assets.find(a => a.type !== AssetType.CREDIT_CARD);
-        setPaymentAssetId(defaultAsset?.id || '');
-        setModalType('pay');
-    };
-
-    const closeModal = () => {
-        setModalType(null);
-        setSelectedBill(null);
-    };
-
-    const handleSave = () => {
-        if (modalType === 'edit') {
-            const action = selectedBill ? 'update' : 'add';
-            onRecurringChange(action, {
-                id: selectedBill?.id,
-                name: formData.name,
-                amount: Number(formData.amount),
-                dayOfMonth: Number(formData.dayOfMonth),
-                category: formData.category,
-                billType: formData.billType,
-                groupName: formData.groupName
-            });
-        } else if (modalType === 'pay' && selectedBill) {
-            onRecurringChange('pay', {
-                id: selectedBill.id,
-                name: selectedBill.name,
-                amount: selectedBill.amount,
-                category: selectedBill.category,
-                assetId: paymentAssetId
-            });
-        }
-        closeModal();
-    };
-
-    const handleDelete = () => {
-        if (selectedBill) {
-            onRecurringChange('delete', { id: selectedBill.id });
-            closeModal();
-        }
-    };
-
     // --- Render Helpers ---
     const today = new Date();
     const sortedBills = useMemo(() => {
@@ -164,7 +71,7 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
                 <div className="flex items-center gap-2 text-primary">
                     <span>📫</span><h3 className="font-bold text-lg">Upcoming Bills</h3>
                 </div>
-                <Button onClick={openAddBill} size="sm" variant="secondary" className="rounded-2xl">➕ Add Bill</Button>
+                <Button onClick={onAddBill} size="sm" variant="secondary" className="rounded-2xl">➕ Add Bill</Button>
             </div>
 
             {/* Group Tabs */}
@@ -225,7 +132,7 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
                     />
                 ) : (
                     sortedBills.map((bill) => (
-                        <Card key={bill.id} className="p-3 hover:bg-slate-50 transition-all cursor-pointer group border-slate-100" noPadding onClick={() => openEditBill(bill)}>
+                        <Card key={bill.id} className="p-3 hover:bg-slate-50 transition-all cursor-pointer group border-slate-100" noPadding onClick={() => onEditBill(bill)}>
                             <div className="p-3 flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <div className={`w-10 h-10 flex flex-col items-center justify-center rounded-lg text-xs font-bold ${bill.dayOfMonth === today.getDate() ? 'bg-destructive/10 text-destructive' : 'bg-slate-100 text-muted'}`}>
@@ -238,105 +145,14 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
                                 </div>
                                 <div className="text-right flex flex-col items-end gap-1">
                                     <span className="font-bold text-primary block text-sm">{bill.amount.toLocaleString()}</span>
-                                    <Button onClick={(e) => { e.stopPropagation(); openPayBill(bill); }} size="sm" variant="outline" className="text-[10px] h-7 py-0 px-2">Pay</Button>
+                                    <Button onClick={(e) => { e.stopPropagation(); onPayBill(bill); }} size="sm" variant="outline" className="text-[10px] h-7 py-0 px-2">Pay</Button>
                                 </div>
                             </div>
                         </Card>
                     ))
                 )}
             </div>
-
-            {/* --- Modals: Refactored to use Dialog & Input --- */}
-
-            {/* Edit/Add Modal */}
-            <Dialog
-                isOpen={modalType === 'edit'}
-                onClose={closeModal}
-                title={selectedBill ? 'Edit Bill' : 'Add New Bill'}
-                footer={
-                    <>
-                        {selectedBill && (
-                            <Button onClick={handleDelete} variant="destructive" size="icon" className="mr-auto w-10">🗑️</Button>
-                        )}
-                        <Button onClick={closeModal} variant="ghost">Cancel</Button>
-                        <Button onClick={handleSave} variant="primary">Save</Button>
-                    </>
-                }
-            >
-                <div className="space-y-4">
-                    <Input
-                        label="Bill Name"
-                        placeholder="e.g. Netflix"
-                        value={formData.name}
-                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                    />
-                    <Input
-                        label="Amount"
-                        type="number"
-                        placeholder="0"
-                        value={formData.amount}
-                        onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                        leftIcon={<span>₩</span>}
-                    />
-                    <div className="flex gap-4">
-                        <Select
-                            label="Category"
-                            value={formData.category}
-                            onChange={e => setFormData({ ...formData, category: e.target.value as Category })}
-                            options={Object.values(Category).map(c => ({ label: c, value: c }))}
-                        />
-                        <Select
-                            label="Type"
-                            value={formData.billType}
-                            onChange={e => setFormData({ ...formData, billType: e.target.value as BillType })}
-                            options={Object.values(BillType).map(t => ({ label: t, value: t }))}
-                        />
-                    </div>
-                    <div className="flex gap-4">
-                        <Input
-                            label="Group"
-                            placeholder="e.g. Housing"
-                            value={formData.groupName}
-                            onChange={e => setFormData({ ...formData, groupName: e.target.value })}
-                        />
-                        <div className="w-24">
-                            <Input
-                                label="Day"
-                                type="number"
-                                min={1} max={31}
-                                value={formData.dayOfMonth}
-                                onChange={e => setFormData({ ...formData, dayOfMonth: Number(e.target.value) })}
-                            />
-                        </div>
-                    </div>
-                </div>
-            </Dialog>
-
-            {/* Pay Modal */}
-            <Dialog
-                isOpen={modalType === 'pay'}
-                onClose={closeModal}
-                title={`Pay: ${selectedBill?.name}`}
-                footer={
-                    <>
-                        <Button onClick={closeModal} variant="ghost">Cancel</Button>
-                        <Button onClick={handleSave} variant="primary">Confirm Payment</Button>
-                    </>
-                }
-            >
-                <div className="bg-slate-50 p-4 rounded-xl mb-4 text-center border border-slate-100">
-                    <p className="text-sm font-bold text-muted mb-1">Payment Amount</p>
-                    <p className="text-3xl font-bold text-primary">{selectedBill?.amount.toLocaleString()} <span className="text-lg font-normal text-muted">KRW</span></p>
-                </div>
-                <Select
-                    label="Pay From"
-                    value={paymentAssetId}
-                    onChange={e => setPaymentAssetId(e.target.value)}
-                    options={assets
-                        .filter(a => a.type !== AssetType.CREDIT_CARD)
-                        .map(a => ({ label: `${a.name} (${a.balance.toLocaleString()})`, value: a.id }))}
-                />
-            </Dialog>
+            {/* Note: Modals have been lifted to PlanningTab */}
         </Card>
     );
 };

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Asset, AssetType, Transaction, TransactionType, CreditCardDetails, LoanDetails } from '../types';
+import { Asset, AssetType, Transaction, TransactionType, CreditCardDetails, LoanDetails, BankDetails, InvestmentDetails } from '../types';
 import { useModalClose } from '../hooks/useModalClose';
 import { FinanceCalculator } from '../services/financeCalculator';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
@@ -117,7 +117,9 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
 
   // Local state for complex nested structures
   const [creditForm, setCreditForm] = useState<Partial<CreditCardDetails>>(initialData?.creditDetails || { limit: 0, apr: 15.0, billingCycle: { usageStartDay: 1, usageEndDay: 30, paymentDay: 14 } });
-  const [loanForm, setLoanForm] = useState<Partial<LoanDetails>>(initialData?.loanDetails || { principal: 0, interestRate: 5.0, startDate: new Date().toISOString().split('T')[0], termMonths: 12 });
+  const [loanForm, setLoanForm] = useState<Partial<LoanDetails>>(initialData?.loanDetails || { principal: 0, interestRate: 5.0, startDate: new Date().toISOString().split('T')[0], termMonths: 12, paymentType: 'AMORTIZATION' });
+  const [bankForm, setBankForm] = useState<Partial<BankDetails>>(initialData?.bankDetails || { interestRate: 2.0, isMainAccount: false });
+  const [investmentForm, setInvestmentForm] = useState<Partial<InvestmentDetails>>(initialData?.investmentDetails || { symbol: '', quantity: 0, purchasePrice: 0, currentPrice: 0, address: '' });
 
   // Ensure formData syncs if initialData changes while mounted (safety)
   useEffect(() => {
@@ -125,6 +127,8 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
       setFormData(prev => ({ ...prev, ...initialData }));
       setCreditForm(prev => ({ ...prev, ...initialData.creditDetails }));
       setLoanForm(prev => ({ ...prev, ...initialData.loanDetails }));
+      setBankForm(prev => ({ ...prev, ...initialData.bankDetails }));
+      setInvestmentForm(prev => ({ ...prev, ...initialData.investmentDetails }));
     }
   }, [initialData]);
 
@@ -147,17 +151,26 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
         balance: Number(formData.balance),
         currency: formData.currency || 'KRW',
         description: formData.description,
+        institution: formData.institution,
+        accountNumber: formData.accountNumber,
+        excludeFromTotal: formData.excludeFromTotal,
+        theme: formData.theme,
       };
 
-      if (formData.type === AssetType.CREDIT_CARD) {
+      if (formData.type === AssetType.CHECKING || formData.type === AssetType.SAVINGS) {
+        assetToSave.bankDetails = bankForm as BankDetails;
+        if (formData.type === AssetType.SAVINGS) assetToSave.interestRate = bankForm.interestRate;
+      } else if (formData.type === AssetType.INVESTMENT) {
+        assetToSave.investmentDetails = investmentForm as InvestmentDetails;
+        // Balance for investment is usually quantity * currentPrice, but we verify this logic later.
+        // For now, let user override balance or we can auto-calc. Defaulting to manual balance.
+      } else if (formData.type === AssetType.CREDIT_CARD) {
         assetToSave.creditDetails = creditForm as CreditCardDetails;
         assetToSave.limit = Number(creditForm.limit);
         if (assetToSave.balance > 0) assetToSave.balance = -assetToSave.balance;
       } else if (formData.type === AssetType.LOAN) {
         assetToSave.loanDetails = loanForm as LoanDetails;
         if (assetToSave.balance > 0) assetToSave.balance = -assetToSave.balance;
-      } else {
-        assetToSave.interestRate = formData.interestRate;
       }
 
       await onSave(assetToSave);
@@ -205,7 +218,63 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
             leftIcon="₩"
             className={`text-lg font-bold ${isEditing && formData.type === AssetType.CREDIT_CARD ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
           />
+          <div className="flex items-center justify-end mt-2">
+            <label className="flex items-center gap-2 text-sm text-slate-500 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.excludeFromTotal || false}
+                onChange={e => setFormData({ ...formData, excludeFromTotal: e.target.checked })}
+                className="rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+              />
+              Exclude from Net Worth
+            </label>
+          </div>
         </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Institution / Bank"
+            placeholder="e.g. Chase"
+            value={formData.institution || ''}
+            onChange={e => setFormData({ ...formData, institution: e.target.value })}
+            className="bg-white"
+          />
+          <Input
+            label="Account Number (Last 4)"
+            placeholder="1234"
+            value={formData.accountNumber || ''}
+            onChange={e => setFormData({ ...formData, accountNumber: e.target.value })}
+            maxLength={4}
+            className="bg-white"
+          />
+        </div>
+
+        {/* Bank Details */}
+        {(formData.type === AssetType.CHECKING || formData.type === AssetType.SAVINGS) && (
+          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-4">
+            <h4 className="text-sm font-bold text-slate-700">🏦 Bank Details</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Interest Rate %" type="number" value={bankForm.interestRate} onChange={e => setBankForm({ ...bankForm, interestRate: Number(e.target.value) })} className="bg-white" />
+              <Input label="Maturity Date" type="date" value={bankForm.maturityDate} onChange={e => setBankForm({ ...bankForm, maturityDate: e.target.value })} className="bg-white" />
+            </div>
+          </div>
+        )}
+
+        {/* Investment & Real Estate Details */}
+        {formData.type === AssetType.INVESTMENT && (
+          <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 space-y-4">
+            <h4 className="text-sm font-bold text-emerald-800">📈 Investment / Asset Details</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Symbol / Name" placeholder="AAPL" value={investmentForm.symbol} onChange={e => setInvestmentForm({ ...investmentForm, symbol: e.target.value })} className="bg-white" />
+              <Input label="Quantity" type="number" value={investmentForm.quantity} onChange={e => setInvestmentForm({ ...investmentForm, quantity: Number(e.target.value) })} className="bg-white" />
+              <Input label="Purchase Price" type="number" value={investmentForm.purchasePrice} onChange={e => setInvestmentForm({ ...investmentForm, purchasePrice: Number(e.target.value) })} className="bg-white" />
+              <Input label="Current Price" type="number" value={investmentForm.currentPrice} onChange={e => setInvestmentForm({ ...investmentForm, currentPrice: Number(e.target.value) })} className="bg-white" />
+            </div>
+            <Input label="Address / Model (Real Estate/Car)" placeholder="Optional" value={investmentForm.address} onChange={e => setInvestmentForm({ ...investmentForm, address: e.target.value })} className="bg-white" />
+          </div>
+        )}
+
+
 
         {formData.type === AssetType.CREDIT_CARD && (
           <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100 space-y-4">
@@ -226,6 +295,11 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
                 <input id="payment-day" type="number" min="1" max="31" value={creditForm.billingCycle?.paymentDay} onChange={e => setCreditForm({ ...creditForm, billingCycle: { ...creditForm.billingCycle!, paymentDay: Number(e.target.value) } })} className="w-12 p-1 border rounded text-center bg-rose-50 font-bold border-rose-200 text-rose-700" />
                 <span className="text-xs text-slate-400">th next month</span>
               </div>
+              <div className="flex items-center gap-2 text-sm mt-2">
+                <label className="w-16 font-bold text-slate-400 text-xs uppercase">Pay Date</label>
+                <input type="number" min="1" max="31" value={creditForm.paymentDate} onChange={e => setCreditForm({ ...creditForm, paymentDate: Number(e.target.value) })} className="w-12 p-1 border rounded text-center bg-white" />
+                <span className="text-xs text-slate-400">(Auto-payment date)</span>
+              </div>
             </div>
           </div>
         )}
@@ -238,6 +312,19 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
               <Input label="Rate %" type="number" value={loanForm.interestRate} onChange={e => setLoanForm({ ...loanForm, interestRate: Number(e.target.value) })} className="bg-white border-slate-300" />
               <Input label="Start Date" type="date" value={loanForm.startDate} onChange={e => setLoanForm({ ...loanForm, startDate: e.target.value })} className="bg-white border-slate-300" />
               <Input label="Term (Mo)" type="number" value={loanForm.termMonths} onChange={e => setLoanForm({ ...loanForm, termMonths: Number(e.target.value) })} className="bg-white border-slate-300" />
+              <Input label="End Date (Est)" type="date" value={loanForm.endDate} onChange={e => setLoanForm({ ...loanForm, endDate: e.target.value })} className="bg-white border-slate-300" />
+              <div className="col-span-2">
+                <label className="text-xs font-bold text-slate-500 block mb-1">Payment Type</label>
+                <select
+                  value={loanForm.paymentType}
+                  onChange={e => setLoanForm({ ...loanForm, paymentType: e.target.value as any })}
+                  className="w-full p-2 rounded-xl border border-slate-300 text-sm bg-white"
+                >
+                  <option value="AMORTIZATION">Amortization (원리금균등)</option>
+                  <option value="INTEREST_ONLY">Interest Only (만기일시)</option>
+                </select>
+              </div>
+
             </div>
           </div>
         )}
@@ -587,7 +674,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
             {/* Net Worth Summary */}
             <div className="bg-gradient-to-br from-slate-700 to-slate-900 rounded-3xl p-6 text-white shadow-xl mb-8">
               <p className="text-xs font-bold opacity-50 uppercase tracking-widest mb-1">Total Net Worth</p>
-              <h1 className="text-4xl font-black">{assets.reduce((sum, a) => sum + a.balance, 0).toLocaleString()} <span className="text-lg font-normal opacity-50">KRW</span></h1>
+              <h1 className="text-4xl font-black">{assets.filter(a => !a.excludeFromTotal).reduce((sum, a) => sum + a.balance, 0).toLocaleString()} <span className="text-lg font-normal opacity-50">KRW</span></h1>
             </div>
 
             {groupedAssets.bank.length > 0 && (
