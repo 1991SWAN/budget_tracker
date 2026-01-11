@@ -30,6 +30,8 @@ import { LoginView } from './components/LoginView';
 const App: React.FC = () => {
   const { user, isLoading } = useAuth();
 
+  console.log(`[App] Render: isLoading=${isLoading}, user=${user?.id}`);
+
   const [view, setView] = useState<View>('dashboard');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const { addToast } = useToast();

@@ -43,6 +43,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // 1. Initial Session Check
         const initAuth = async () => {
             const { data: { session } } = await supabase.auth.getSession();
+            console.log('[Auth] initAuth: session found?', !!session, 'user=', session?.user?.id);
+
             if (mounted) {
                 setSession(session);
                 setUser(session?.user ?? null);
