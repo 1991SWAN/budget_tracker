@@ -46,6 +46,9 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateRange, setDateRange] = useState<{ start: string, end: string } | null>(null);
 
+  // Reload data when user changes (Login/Logout)
+
+
   // Added 'import' to modal types
   const [modalType, setModalType] = useState<'bill' | 'goal' | 'pay-bill' | 'fund-goal' | 'budget' | 'pay-card' | 'import' | null>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -70,9 +73,7 @@ const App: React.FC = () => {
   const searchedTransactions = useTransactionSearch(transactions, searchTerm);
 
 
-  useEffect(() => {
-    loadData();
-  }, []);
+
 
   const { addTransaction: handleAddTransaction, addTransactions: handleAddTransactions, updateTransaction: handleUpdateTransaction, deleteTransaction: handleDeleteTransaction } = useTransactionManager(transactions, setTransactions, assets, setAssets);
   const { categories } = useCategoryManager();
@@ -101,6 +102,19 @@ const App: React.FC = () => {
       addToast('Failed to load data from cloud', 'error');
     }
   };
+
+  // Reload data when user changes (Login/Logout)
+  useEffect(() => {
+    if (user) {
+      loadData();
+    } else {
+      // Clear data on logout
+      setTransactions([]);
+      setAssets([]);
+      setRecurring([]);
+      setGoals([]);
+    }
+  }, [user]);
 
   // Optimistic updates are handled in state, but we need to persist changes
   // We will wrap state setters or call Service directly in handlers

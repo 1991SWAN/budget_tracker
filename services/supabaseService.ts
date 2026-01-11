@@ -45,9 +45,11 @@ export const SupabaseService = {
     },
 
     saveAsset: async (asset: Asset) => {
+        const { data: { user } } = await supabase.auth.getUser();
         // Map domain model to DB Row
         const row = {
             id: asset.id,
+            user_id: user?.id,
             name: asset.name,
             type: asset.type,
             balance: asset.balance,
@@ -103,8 +105,10 @@ export const SupabaseService = {
     },
 
     saveTransaction: async (tx: Transaction) => {
+        const { data: { user } } = await supabase.auth.getUser();
         const row = {
             id: tx.id,
+            user_id: user?.id,
             date: tx.date,
             timestamp: tx.timestamp,
             amount: tx.amount,
@@ -132,8 +136,10 @@ export const SupabaseService = {
     },
 
     saveTransactions: async (txs: Transaction[]) => {
+        const { data: { user } } = await supabase.auth.getUser();
         const rows = txs.map(tx => ({
             id: tx.id,
+            user_id: user?.id,
             date: tx.date,
             timestamp: tx.timestamp,
             amount: tx.amount,
@@ -186,8 +192,10 @@ export const SupabaseService = {
     },
 
     saveRecurring: async (item: RecurringTransaction) => {
+        const { data: { user } } = await supabase.auth.getUser();
         const row = {
             id: item.id,
+            user_id: user?.id,
             name: item.name,
             amount: item.amount,
             day_of_month: item.dayOfMonth,
@@ -219,8 +227,10 @@ export const SupabaseService = {
     },
 
     saveGoal: async (item: SavingsGoal) => {
+        const { data: { user } } = await supabase.auth.getUser();
         const row = {
             id: item.id,
+            user_id: user?.id,
             name: item.name,
             target_amount: item.targetAmount,
             current_amount: item.currentAmount,
