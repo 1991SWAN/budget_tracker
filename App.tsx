@@ -82,14 +82,12 @@ const App: React.FC = () => {
 
   const loadData = async () => {
     try {
-      // 1. Auth check
-      const { data: { session } } = await supabase.auth.getSession();
+      console.log('[App] loadData called. User ID:', user?.id);
 
-      console.log('[App] loadData called');
-      console.log('[App] Session:', session?.user?.id);
-
-      if (!session) {
-        console.log("[App] No session found. Skipping data load.");
+      // 1. Auth check - We already have 'user' from Context, so we can skip a blocking getSession() call
+      // preventing potential hangs on refresh.
+      if (!user) {
+        console.log("[App] No user in context. Skipping data load.");
         return;
       }
 
