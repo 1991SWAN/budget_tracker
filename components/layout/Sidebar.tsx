@@ -20,7 +20,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onImportClick,
     onQuickAddClick
 }) => {
-    const { signOut } = useAuth();
+    const { signOut, user } = useAuth();
 
     const NavItem = ({ v, emoji, label }: { v: View, emoji: string, label: string }) => {
         const isActive = view === v;
@@ -77,6 +77,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="h-px bg-slate-100 my-2" />
 
                 <NavItem v="settings" emoji="⚙️" label="Settings" />
+
+                <div className="px-4 py-2 mb-2 bg-slate-50 rounded-2xl flex items-center space-x-3">
+                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold shrink-0">
+                        {user?.email?.[0].toUpperCase() || 'U'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">
+                            {user?.email?.split('@')[0]}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate">
+                            {user?.email}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="h-px bg-slate-100 my-2" />
 
                 <button
                     onClick={(e) => {
