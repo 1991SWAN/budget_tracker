@@ -1,11 +1,12 @@
 import React from 'react';
-import { Transaction, TransactionType, Asset } from '../types';
+import { Transaction, TransactionType, Asset, CategoryItem } from '../types';
 import { Button } from './ui/Button';
 
 interface TransactionItemProps {
     transaction: Transaction;
     asset?: Asset;
     toAsset?: Asset; // For transfers
+    categories: CategoryItem[];
     onEdit: (tx: Transaction) => void;
     onDelete: (tx: Transaction) => void;
 }
@@ -14,6 +15,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     transaction,
     asset,
     toAsset,
+    categories = [],
     onEdit,
     onDelete
 }) => {
@@ -25,6 +27,15 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     const isTransfer = transaction.type === TransactionType.TRANSFER;
 
     const formattedAmount = transaction.amount.toLocaleString();
+
+    // Find Category Info
+    const categoryItem = categories.find(c => c.id === transaction.category) ||
+        categories.find(c => c.name === transaction.category); // Fallback for legacy names
+
+    const categoryName = categoryItem ? categoryItem.name : transaction.category;
+    const categoryEmoji = categoryItem ? categoryItem.emoji : '🏷️';
+    // Use category color if available, default to slate
+    const categoryColorClass = categoryItem?.color ? categoryItem.color.replace('bg-', 'text-') : 'text-slate-600';
 
     // Determine sign and color
     let amountSign = '';
@@ -45,6 +56,48 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         const d = new Date(transaction.timestamp);
         return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     }, [transaction.timestamp]);
+
+    // VIEW PARSING LOGIC: Handle @Mentions and #Tags
+    const { mainText, subText, isMention, tags } = React.useMemo(() => {
+        const rawMemo = transaction.memo || '';
+        let cleanMemo = rawMemo;
+
+        // 1. Extract Tags (#)
+        const tagMatches = rawMemo.match(/#(\S+)/g);
+        const tags = tagMatches ? tagMatches.map(t => t) : [];
+        if (tagMatches) {
+            tagMatches.forEach(tag => {
+                cleanMemo = cleanMemo.replace(tag, ''); // Remove tag from text
+            });
+        }
+
+        // 2. Legacy Merchant Check
+        const legacyMerchant = (transaction as any).merchant;
+        if (legacyMerchant) {
+            return {
+                mainText: legacyMerchant,
+                subText: cleanMemo.trim(),
+                isMention: false,
+                tags
+            };
+        }
+
+        // 3. Extract Merchant (@)
+        const mentionMatch = cleanMemo.match(/@(\S+)/);
+        let merchantName = null;
+
+        if (mentionMatch) {
+            merchantName = mentionMatch[1];
+            cleanMemo = cleanMemo.replace(mentionMatch[0], '');
+        }
+
+        return {
+            mainText: cleanMemo.trim() || (merchantName ? '' : 'No Description'),
+            subText: merchantName,
+            isMention: !!merchantName,
+            tags
+        };
+    }, [transaction.memo, (transaction as any).merchant]);
 
     const handleRowClick = () => {
         // Desktop: Edit directly
@@ -73,17 +126,57 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                     {/* Inner Col 1: Text Info */}
                     <div className="flex flex-col overflow-hidden">
                         <p className="font-bold text-slate-900 text-[15px] truncate leading-tight">
-                            {transaction.merchant || transaction.memo}
+                            {mainText || <span className="text-slate-400 font-normal italic">No Description</span>}
                         </p>
-                        {/* Mobile: Category instead of Memo */}
-                        <p className="text-xs text-slate-500 truncate mt-0.5 lg:hidden">
-                            {transaction.category}
-                        </p>
-                        {/* Desktop: Memo */}
-                        {transaction.merchant && transaction.memo && (
-                            <p className="text-xs text-slate-500 truncate mt-0.5 hidden lg:block">{transaction.memo}</p>
-                        )}
+
+                        {/* Mobile Subtext Row: Category/Merchant + Tags */}
+                        <div className="text-xs text-slate-500 truncate mt-0.5 lg:hidden flex items-center gap-1.5 flex-wrap">
+                            {/* Merchant or Category */}
+                            {subText ? (
+                                isMention ? (
+                                    <span className="text-slate-500 text-[11px] font-medium flex items-center gap-0.5">
+                                        <span className="text-purple-400">@</span>{subText}
+                                    </span>
+                                ) : (
+                                    <span className="text-slate-600">{subText}</span>
+                                )
+                            ) : (
+                                <div className="flex items-center gap-1">
+                                    <span>{categoryEmoji}</span>
+                                    <span>{categoryName}</span>
+                                </div>
+                            )}
+
+                            {/* Tags Display */}
+                            {tags.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                    {tags.map((tag, idx) => (
+                                        <span key={idx} className="text-[11px] text-blue-500 font-medium bg-blue-50 px-1 rounded-md">
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Desktop: SubText Row */}
+                        <div className="mt-0.5 hidden lg:flex items-center gap-2">
+                            {subText && (
+                                isMention ? (
+                                    <span className="text-[11px] text-slate-400 font-medium">@{subText}</span>
+                                ) : (
+                                    <span className="text-xs text-slate-500 truncate">{subText}</span>
+                                )
+                            )}
+                            {/* Tags Display (Desktop) */}
+                            {tags.map((tag, idx) => (
+                                <span key={idx} className="text-[11px] text-blue-500 font-medium bg-blue-50 px-1 rounded-md cursor-pointer hover:bg-blue-100 transition-colors">
+                                    {tag}
+                                </span>
+                            ))}
+                        </div>
                     </div>
+
 
                     {/* Inner Col 2: Asset Name Badge (Mobile Only) */}
                     <div className="lg:hidden shrink-0">
@@ -95,8 +188,9 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
                 {/* Col 3: Center 2 (Desktop Only - Category, Asset, Installment Badge) */}
                 <div className="hidden lg:flex flex-nowrap gap-2 items-center">
-                    <span className="px-2 py-1 bg-white border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold whitespace-nowrap flex items-center h-fit shrink-0">
-                        {transaction.category}
+                    <span className={`px-2 py-1 bg-white border border-slate-200 ${categoryColorClass} rounded-lg text-[10px] font-bold whitespace-nowrap flex items-center h-fit shrink-0 gap-1`}>
+                        <span>{categoryEmoji}</span>
+                        <span>{categoryName}</span>
                     </span>
                     {transaction.installment && (
                         <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold whitespace-nowrap border border-blue-100 flex items-center h-fit shrink-0">

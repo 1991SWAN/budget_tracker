@@ -4,6 +4,8 @@ import TransactionItem from '../TransactionItem';
 import { FinanceCalculator } from '../../services/financeCalculator';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { useCategoryManager } from '../../hooks/useCategoryManager';
+import { useBudgetManager } from '../../hooks/useBudgetManager';
 
 interface OverviewTabProps {
     transactions: Transaction[];
@@ -19,6 +21,69 @@ interface OverviewTabProps {
     onFilterChange: (filter: 'today' | 'week' | 'month') => void;
     activityFilter: 'today' | 'week' | 'month';
 }
+
+const BudgetStatusWidget = ({ transactions }: { transactions: Transaction[] }) => {
+    const { categories } = useCategoryManager();
+    const { budgets } = useBudgetManager();
+
+    const budgetStatus = useMemo(() => {
+        const currentMonth = new Date().toISOString().slice(0, 7);
+
+        return categories
+            .map(category => {
+                const budget = budgets.find(b => b.category_id === category.id);
+                if (!budget) return null;
+
+                const spent = transactions
+                    .filter(t =>
+                        t.type === TransactionType.EXPENSE &&
+                        t.date.startsWith(currentMonth) &&
+                        (t.category === category.id || t.category === category.name)
+                    )
+                    .reduce((sum, t) => sum + t.amount, 0);
+
+                return {
+                    category,
+                    budget: budget.amount,
+                    spent,
+                    percent: Math.min((spent / budget.amount) * 100, 100),
+                    isOver: spent > budget.amount
+                };
+            })
+            .filter((item): item is NonNullable<typeof item> => item !== null)
+            .sort((a, b) => b.percent - a.percent); // Sort by usage % descending
+    }, [categories, budgets, transactions]);
+
+    if (budgetStatus.length === 0) return null;
+
+    return (
+        <Card className="p-6">
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Budget Status</h3>
+            <div className="space-y-4">
+                {budgetStatus.map((item) => (
+                    <div key={item.category.id} className="space-y-1">
+                        <div className="flex justify-between text-sm">
+                            <span className="font-medium text-slate-700 flex items-center gap-2">
+                                <span>{item.category.emoji}</span> {item.category.name}
+                            </span>
+                            <span className={item.isOver ? 'text-red-500 font-bold' : 'text-slate-500'}>
+                                {item.spent.toLocaleString()} / {item.budget.toLocaleString()}
+                            </span>
+                        </div>
+                        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all duration-500 ${item.isOver ? 'bg-red-500' :
+                                        item.percent > 90 ? 'bg-amber-500' : 'bg-emerald-500'
+                                    }`}
+                                style={{ width: `${item.percent}%` }}
+                            />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </Card>
+    );
+};
 
 const OverviewTab: React.FC<OverviewTabProps> = ({
     transactions, assets, recurring, monthlyBudget,
@@ -83,7 +148,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
         return budget - monthlyStats.expense - remainingFixedBills - upcomingCardPayments;
     }, [monthlyBudget, monthlyStats.expense, recurring, assets, transactions, today]);
 
-    // --- Activity List ---
+    // --- Activity List Helpers ---
     const getStartOfWeek = (d: Date) => {
         const date = new Date(d);
         const day = date.getDay();
@@ -144,50 +209,122 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
                 </div>
             </div>
 
-            {/* Activity Feed */}
-            <div>
-                <div className="flex items-center justify-between mb-4 px-1">
-                    <div className="flex items-center gap-2">
-                        <span className="text-2xl">⚡</span>
-                        <h3 className="text-xl font-bold text-primary">Activity</h3>
-                    </div>
-                    <div className="flex bg-slate-100 p-1 rounded-full">
-                        {(['today', 'week', 'month'] as const).map(f => (
-                            <Button
-                                key={f}
-                                onClick={() => onFilterChange(f)}
-                                variant="ghost"
-                                className={`px-3 py-1 text-xs font-bold rounded-full capitalize transition-all shadow-none ${activityFilter === f ? 'bg-white text-primary shadow-sm' : 'text-muted hover:text-slate-600'}`}
-                            >
-                                {f}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Left Column: Activity & Budget */}
+                <div className="lg:col-span-2 space-y-6">
+                    {/* Budget Status Widget (NEW) */}
+                    <BudgetStatusWidget transactions={transactions} />
+
+                    {/* Activity Feed */}
+                    <div>
+                        <div className="flex items-center justify-between mb-4 px-1">
+                            <div className="flex items-center gap-2">
+                                <span className="text-2xl">⚡</span>
+                                <h3 className="text-xl font-bold text-primary">Activity</h3>
+                            </div>
+                            <div className="flex bg-slate-100 p-1 rounded-full">
+                                {(['today', 'week', 'month'] as const).map(f => (
+                                    <Button
+                                        key={f}
+                                        onClick={() => onFilterChange(f)}
+                                        variant="ghost"
+                                        className={`px-3 py-1 text-xs font-bold rounded-full capitalize transition-all shadow-none ${activityFilter === f ? 'bg-white text-primary shadow-sm' : 'text-muted hover:text-slate-600'}`}
+                                    >
+                                        {f}
+                                    </Button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            {filteredActivityTransactions.slice(0, 5).map(tx => (
+                                <Card key={tx.id} className="border-slate-100 overflow-hidden" noPadding>
+                                    <TransactionItem
+                                        transaction={tx}
+                                        asset={assets.find(a => a.id === tx.assetId)}
+                                        toAsset={tx.toAssetId ? assets.find(a => a.id === tx.toAssetId) : undefined}
+                                        onEdit={onEditTransaction}
+                                        onDelete={onDeleteTransaction}
+                                    />
+                                </Card>
+                            ))}
+                            {filteredActivityTransactions.length === 0 && (
+                                <Card className="text-center py-10 text-muted border-slate-100 border-dashed bg-slate-50/50">
+                                    No activity found for this period.
+                                </Card>
+                            )}
+                        </div>
+
+                        <div className="mt-4 text-center">
+                            <Button variant="ghost" size="sm" onClick={onNavigateToTransactions} className="w-full">
+                                View All Transactions →
                             </Button>
-                        ))}
+                        </div>
                     </div>
                 </div>
 
-                <div className="space-y-2">
-                    {filteredActivityTransactions.slice(0, 5).map(tx => (
-                        <Card key={tx.id} className="border-slate-100 overflow-hidden" noPadding>
-                            <TransactionItem
-                                transaction={tx}
-                                asset={assets.find(a => a.id === tx.assetId)}
-                                toAsset={tx.toAssetId ? assets.find(a => a.id === tx.toAssetId) : undefined}
-                                onEdit={onEditTransaction}
-                                onDelete={onDeleteTransaction}
-                            />
-                        </Card>
-                    ))}
-                    {filteredActivityTransactions.length === 0 && (
-                        <Card className="text-center py-10 text-muted border-slate-100 border-dashed bg-slate-50/50">
-                            No activity found for this period.
-                        </Card>
-                    )}
-                </div>
+                {/* Right Column: Monthly Overview */}
+                <div className="space-y-6">
+                    <Card className="p-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-bold text-slate-800">Monthly Flow</h3>
+                            <button onClick={onOpenBudgetModal} className="text-xs text-primary font-bold hover:underline">
+                                Edit Budget
+                            </button>
+                        </div>
 
-                <div className="mt-4 text-center">
-                    <Button variant="ghost" size="sm" onClick={onNavigateToTransactions} className="w-full">
-                        View All Transactions →
-                    </Button>
+                        <div className="space-y-4">
+                            <div>
+                                <div className="flex justify-between text-sm mb-1">
+                                    <span className="text-slate-500">Income</span>
+                                    <span className="font-bold text-emerald-600">{monthlyStats.income.toLocaleString()}</span>
+                                </div>
+                                <div className="h-2 bg-emerald-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-emerald-500 w-full opacity-80" />
+                                </div>
+                            </div>
+                            <div>
+                                <div className="flex justify-between text-sm mb-1">
+                                    <span className="text-slate-500">Expenses</span>
+                                    <span className="font-bold text-red-500">{monthlyStats.expense.toLocaleString()}</span>
+                                </div>
+                                <div className="h-2 bg-red-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-red-500 w-full opacity-80" />
+                                </div>
+                            </div>
+                            <div>
+                                <div className="flex justify-between text-sm mb-1">
+                                    <span className="text-slate-500">Budget Limit</span>
+                                    <span className="font-bold text-slate-900">{monthlyBudget.toLocaleString()}</span>
+                                </div>
+                                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full w-full opacity-80 ${monthlyStats.expense > monthlyBudget ? 'bg-red-500' : 'bg-blue-500'}`}
+                                        style={{ width: `${Math.min((monthlyStats.expense / monthlyBudget) * 100, 100)}%` }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/* Top Spending Categories */}
+                    <Card className="p-6">
+                        <h3 className="text-lg font-bold text-slate-800 mb-4">Top Spending</h3>
+                        <div className="space-y-3">
+                            {categoryDataOverview.slice(0, 5).map((cat, idx) => (
+                                <div key={idx} className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-slate-300" />
+                                        <span className="text-slate-600 font-medium text-sm">{cat.name}</span>
+                                    </div>
+                                    <span className="font-bold text-slate-900 text-sm">{cat.value.toLocaleString()}</span>
+                                </div>
+                            ))}
+                            {categoryDataOverview.length === 0 && (
+                                <div className="text-center py-4 text-slate-400 text-sm">No expenses yet.</div>
+                            )}
+                        </div>
+                    </Card>
                 </div>
             </div>
         </div>

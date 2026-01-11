@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Transaction, TransactionType, Category, Asset } from '../types';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Transaction, TransactionType, Category, Asset, CategoryItem, Tag } from '../types';
+import { SupabaseService } from '../services/supabaseService';
 import { Dialog } from './ui/Dialog';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
@@ -9,11 +10,12 @@ interface SmartInputProps {
   onTransactionsParsed: (transactions: Partial<Transaction>[]) => void;
   onCancel: () => void;
   assets: Asset[];
+  categories: CategoryItem[];
   initialData?: Transaction | null;
   transactions?: Transaction[]; // For Autocomplete history
 }
 
-const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel, assets, initialData, transactions = [] }) => {
+const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel, assets, categories = [], initialData, transactions = [] }) => {
   const [mode, setMode] = useState<'select' | 'ocr' | 'text' | 'manual'>(initialData ? 'manual' : 'select');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +29,49 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
   const [installmentMonths, setInstallmentMonths] = useState(() => initialData?.installment?.totalMonths || 2);
   const [isInterestFree, setIsInterestFree] = useState(() => initialData?.installment?.isInterestFree ?? true);
 
+  // TAGGING SYSTEM STATE
+  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
+  const [tagSuggestions, setTagSuggestions] = useState<Tag[]>([]);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+
+  // Load Tags on Mount
+  useEffect(() => {
+    const loadTags = async () => {
+      const tags = await SupabaseService.getTags();
+      setAvailableTags(tags);
+    };
+    loadTags();
+  }, []);
+
+  // Handle Memo Change with Tag Detection
+  const handleMemoChange = (text: string) => {
+    setManualForm(prev => ({ ...prev, memo: text }));
+
+    // Detect if typing a tag (last word starts with #)
+    const words = text.split(' ');
+    const lastWord = words[words.length - 1];
+
+    if (lastWord.startsWith('#')) {
+      const query = lastWord.slice(1).toLowerCase();
+      const filtered = availableTags
+        .filter(t => t.name.toLowerCase().includes(query))
+        .slice(0, 5); // Limit to 5 suggestions
+      setTagSuggestions(filtered);
+      setShowTagSuggestions(filtered.length > 0);
+    } else {
+      setShowTagSuggestions(false);
+    }
+  };
+
+  const insertTag = (tagName: string) => {
+    const words = manualForm.memo.split(' ');
+    words.pop(); // Remove partial tag
+    const newMemo = [...words, `#${tagName} `].join(' '); // Add full tag
+    setManualForm(prev => ({ ...prev, memo: newMemo }));
+    setShowTagSuggestions(false);
+  };
+
+
   const [manualForm, setManualForm] = useState(() => {
     if (initialData) {
       return {
@@ -34,8 +79,15 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
         amount: initialData.amount.toString(),
         type: initialData.type,
         category: initialData.category as Category,
-        memo: initialData.memo,
-        merchant: initialData.merchant || '',
+        // BUG FIX: Prevent duplicate @Tagging if already present
+        memo: (() => {
+          const legacy = (initialData as any).merchant;
+          const currentMemo = initialData.memo || '';
+          if (legacy && !currentMemo.includes(`@${legacy}`)) {
+            return currentMemo ? `${currentMemo} @${legacy}` : `@${legacy}`;
+          }
+          return currentMemo;
+        })(),
         assetId: initialData.assetId,
         toAssetId: initialData.toAssetId || ''
       };
@@ -44,7 +96,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
       date: new Date().toISOString().split('T')[0],
       amount: '',
       type: TransactionType.EXPENSE,
-      category: Category.FOOD,
+      category: categories.length > 0 ? categories[0].id : Category.FOOD, // Default to first category or legacy
       memo: '',
       merchant: '',
       assetId: assets[0]?.id || '',
@@ -52,14 +104,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     };
   });
 
-  // Unique Merchants for Autocomplete
-  const uniqueMerchants = useMemo(() => {
-    const merchants = new Set<string>();
-    transactions.forEach(t => {
-      if (t.merchant) merchants.add(t.merchant);
-    });
-    return Array.from(merchants).sort();
-  }, [transactions]);
+
 
 
   useEffect(() => {
@@ -79,15 +124,22 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
         amount: initialData.amount.toString(),
         type: initialData.type,
         category: initialData.category as Category,
-        memo: initialData.memo,
-        merchant: initialData.merchant || '',
+        // BUG FIX: Prevent duplicate @Tagging if already present
+        memo: (() => {
+          const legacy = (initialData as any).merchant;
+          const currentMemo = initialData.memo || '';
+          if (legacy && !currentMemo.includes(`@${legacy}`)) {
+            return currentMemo ? `${currentMemo} @${legacy}` : `@${legacy}`;
+          }
+          return currentMemo;
+        })(),
         assetId: initialData.assetId,
         toAssetId: initialData.toAssetId || ''
       });
     }
   }, [initialData]);
 
-  const handleCategoryChange = (cat: Category) => {
+  const handleCategoryChange = (cat: Category | string) => {
     setManualForm(prev => ({
       ...prev,
       category: cat
@@ -111,7 +163,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
       type: manualForm.type,
       category: manualForm.category,
       memo: manualForm.memo,
-      merchant: manualForm.merchant,
+      // Merchant is now fully integrated into Memo via @ tags
       assetId: manualForm.assetId,
       toAssetId: (manualForm.type === TransactionType.TRANSFER && !isExternalTransfer) ? manualForm.toAssetId : undefined
     };
@@ -130,6 +182,15 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
 
     } else if (initialData?.installment && !isInstallment) {
       transactionData.installment = null as any;
+    }
+
+    // HYBRID TAGGING: Scan for new tags and update dictionary in background
+    const tags = manualForm.memo?.match(/#\S+/g); // Find all #hashtags
+    if (tags) {
+      tags.forEach(tag => {
+        // Remove # and upsert
+        SupabaseService.upsertTag(tag.slice(1));
+      });
     }
 
     onTransactionsParsed([transactionData]);
@@ -230,20 +291,43 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1.5 block">Category</label>
                 <div className="overflow-x-auto pb-4 -mx-4 px-5 scrollbar-hide flex gap-2 snap-x">
-                  {Object.values(Category).map(cat => {
-                    const isSelected = manualForm.category === cat;
-                    return (
-                      <button
-                        key={cat}
-                        onClick={() => handleCategoryChange(cat)}
-                        className={`snap-start shrink-0 px-4 py-2 rounded-xl border transition-all text-xs font-bold whitespace-nowrap ${isSelected
-                          ? 'bg-slate-800 text-white border-slate-800 shadow-lg shadow-slate-200 scale-105'
-                          : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}
-                      >
-                        {cat.replace('&', '').split(' ')[0]}
-                      </button>
-                    );
-                  })}
+                  {categories.length > 0 ? (
+                    // Dynamic Categories
+                    categories
+                      .filter(c => c.type === manualForm.type)
+                      .map(cat => {
+                        const isSelected = manualForm.category === cat.id; // Match by ID
+                        return (
+                          <button
+                            key={cat.id}
+                            onClick={() => setManualForm({ ...manualForm, category: cat.id })}
+                            className={`snap-start shrink-0 px-4 py-2 rounded-xl border transition-all text-xs font-bold whitespace-nowrap flex items-center gap-2 ${isSelected
+                              ? `bg-slate-800 text-white border-slate-800 shadow-lg shadow-slate-200 scale-105`
+                              : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}
+                          >
+                            <span>{cat.emoji}</span>
+                            <span>{cat.name}</span>
+                          </button>
+                        );
+                      })
+                  ) : (
+                    // Legacy Fallback
+                    Object.values(Category).map(cat => {
+                      const isSelected = manualForm.category === cat;
+                      return (
+                        <button
+                          key={cat}
+                          onClick={() => handleCategoryChange(cat)}
+                          className={`snap-start shrink-0 px-4 py-2 rounded-xl border transition-all text-xs font-bold whitespace-nowrap ${isSelected
+                            ? 'bg-slate-800 text-white border-slate-800 shadow-lg shadow-slate-200 scale-105'
+                            : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}
+                        >
+                          {cat.replace('&', '').split(' ')[0]}
+                        </button>
+                      );
+                    })
+                  )}
+                  {/* Append 'Others' or Allow Add New? For now just list available */}
                 </div>
               </div>
 
@@ -279,26 +363,33 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                   </div>
                 )}
 
-                <div className="col-span-1">
-                  <Input
-                    label={manualForm.type === TransactionType.TRANSFER ? 'Recipient' : 'Merchant'}
-                    type="text"
-                    list="merchant-suggestions"
-                    value={manualForm.merchant}
-                    onChange={e => setManualForm({ ...manualForm, merchant: e.target.value })}
-                    placeholder="Where?"
-                  />
-                  <datalist id="merchant-suggestions">
-                    {uniqueMerchants.map((m, i) => <option key={i} value={m} />)}
-                  </datalist>
+                <div className="col-span-2">
+                  <div className="relative">
+                    <Input
+                      label="Description"
+                      value={manualForm.memo}
+                      onChange={e => handleMemoChange(e.target.value)}
+                      placeholder="Description @Merchant #Tag"
+                      className="placeholder:text-slate-300"
+                    />
+                    {showTagSuggestions && (
+                      <div className="absolute z-[100] left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 max-h-48 overflow-y-auto">
+                        {tagSuggestions.map(tag => (
+                          <button
+                            key={tag.id}
+                            type="button"
+                            onClick={() => insertTag(tag.name)}
+                            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 flex justify-between items-center"
+                          >
+                            <span className="font-bold text-blue-500">#{tag.name}</span>
+                            <span className="text-xs text-slate-400">{tag.usage_count} used</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1 pl-1 text-right font-medium">Use <span className="text-purple-500 font-bold bg-purple-50 px-1 rounded mx-0.5">@</span> Merchant, <span className="text-blue-500 font-bold bg-blue-50 px-1 rounded mx-0.5">#</span> Tag</p>
                 </div>
-
-                <Input
-                  label="Memo"
-                  value={manualForm.memo}
-                  onChange={e => setManualForm({ ...manualForm, memo: e.target.value })}
-                  placeholder="Note"
-                />
               </div>
 
               {/* 4. Options Row (Installment / Internal) */}

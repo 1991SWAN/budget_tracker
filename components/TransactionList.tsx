@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { GroupedVirtuoso } from 'react-virtuoso';
-import { Transaction, Asset } from '../types';
+import { Transaction, Asset, CategoryItem } from '../types';
 import TransactionItem from './TransactionItem';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
@@ -8,6 +8,7 @@ import { EmptyState } from './ui/EmptyState';
 interface TransactionListProps {
     transactions: Transaction[];
     assets: Asset[];
+    categories: CategoryItem[];
     onEdit: (tx: Transaction) => void;
     onDelete: (tx: Transaction) => void;
     searchTerm: string;
@@ -33,6 +34,7 @@ const getDateLabel = (dateStr: string) => {
 const TransactionList: React.FC<TransactionListProps> = ({
     transactions,
     assets,
+    categories,
     onEdit,
     onDelete
 }) => {
@@ -99,6 +101,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
             <GroupedVirtuoso
                 style={{ height: '100%' }}
                 groupCounts={groupCounts}
+                context={{ categories, assets, onEdit, onDelete }}
                 groupContent={(index) => {
                     const dateStr = groupLabels[index];
                     const dateLabel = getDateLabel(dateStr);
@@ -115,9 +118,10 @@ const TransactionList: React.FC<TransactionListProps> = ({
                         </div>
                     );
                 }}
-                itemContent={(index) => {
+                itemContent={(index, _, __, context) => {
                     const tx = sortedData[index];
                     if (!tx) return <></>; // Safety fallback
+                    const { categories, assets, onEdit, onDelete } = context;
 
                     return (
                         <Card className="mx-3 my-1 border-slate-100 overflow-hidden first:mt-2 last:mb-4" noPadding>
@@ -125,6 +129,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                 transaction={tx}
                                 asset={assets.find(a => a.id === tx.assetId)}
                                 toAsset={tx.toAssetId ? assets.find(a => a.id === tx.toAssetId) : undefined}
+                                categories={categories}
                                 onEdit={onEdit}
                                 onDelete={onDelete}
                             />

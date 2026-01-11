@@ -9,15 +9,18 @@ import TransactionList from "./components/TransactionList";
 
 import { Transaction, Asset, View, TransactionType, Category, RecurringTransaction, SavingsGoal, BillType, AssetType } from './types';
 import { StorageService } from './services/storageService';
-import { SupabaseService } from './services/supabaseService';
+import { SupabaseService, supabase } from './services/supabaseService';
 import { ImportService } from './services/importService';
 import Dashboard from './components/Dashboard';
 import AssetManager from './components/AssetManager';
 import SmartInput from './components/SmartInput';
 import { AppShell } from './components/layout/AppShell';
+import { SettingsView } from './components/settings/SettingsView';
+import { CategorySettings } from './components/settings/CategorySettings';
 
 
 import { useTransactionManager } from './hooks/useTransactionManager';
+import { useCategoryManager } from './hooks/useCategoryManager';
 import { useModalClose } from './hooks/useModalClose';
 
 
@@ -66,9 +69,24 @@ const App: React.FC = () => {
   }, []);
 
   const { addTransaction: handleAddTransaction, addTransactions: handleAddTransactions, updateTransaction: handleUpdateTransaction, deleteTransaction: handleDeleteTransaction } = useTransactionManager(transactions, setTransactions, assets, setAssets);
+  const { categories } = useCategoryManager();
 
   const loadData = async () => {
     try {
+      // 1. Ensure Auth (Anonymous) for RLS
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.log("No session found. Signing in anonymously...");
+        const { error } = await supabase.auth.signInAnonymously();
+        if (error) {
+          console.error("Anonymous login failed:", error);
+          // Verify if 'signInAnonymously' is enabled in Supabase project. 
+          // If not, we might need a fallback or manual login.
+        } else {
+          console.log("Signed in anonymously.");
+        }
+      }
+
       const [txs, assts, recs, gls] = await Promise.all([
         SupabaseService.getTransactions(),
         SupabaseService.getAssets(),
@@ -101,7 +119,7 @@ const App: React.FC = () => {
     } else {
       parsedTxs.forEach(ptx => {
         const tx: Transaction = {
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          id: crypto.randomUUID(),
           date: ptx.date || new Date().toISOString().split('T')[0],
           timestamp: ptx.timestamp || Date.now(),
           amount: ptx.amount || 0,
@@ -505,6 +523,7 @@ const App: React.FC = () => {
         }
       }} onPay={openPayCard} />}
       {view === 'transactions' && <div className="space-y-4">
+        {/* ... existing transaction view code ... */}
         <div className="flex flex-col gap-4">
           {/* Header & Actions */}
           <div className="flex justify-between items-center px-1">
@@ -538,6 +557,7 @@ const App: React.FC = () => {
             currentFilter={filterCategory}
             onFilterChange={setFilterCategory}
             assets={assets}
+            categories={categories}
           />
         </div>
 
@@ -556,8 +576,14 @@ const App: React.FC = () => {
               else if (Object.values(TransactionType).includes(filterCategory as any)) {
                 matchesType = t.type === filterCategory;
               } else {
-                // Assume it's an Asset ID
-                matchesType = t.assetId === filterCategory || t.toAssetId === filterCategory;
+                // Check if it's an Asset ID
+                const isAsset = assets.some(a => a.id === filterCategory);
+                if (isAsset) {
+                  matchesType = t.assetId === filterCategory || t.toAssetId === filterCategory;
+                } else {
+                  // Assume it's a Category ID (or legacy category name)
+                  matchesType = t.category === filterCategory;
+                }
               }
 
               return matchesDate && matchesType;
@@ -566,9 +592,13 @@ const App: React.FC = () => {
             onEdit={(t) => { setEditingTransaction(t); setShowSmartInput(true); }}
             onDelete={handleDeleteTransaction}
             searchTerm={searchTerm}
+            categories={categories}
           />
         </ErrorBoundary>
       </div>}
+
+      {view === 'settings' && <SettingsView onNavigate={setView} />}
+      {view === 'settings-categories' && <CategorySettings onNavigate={setView} />}
     </AppShell>
   );
 };

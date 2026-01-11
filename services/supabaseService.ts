@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Asset, Transaction, RecurringTransaction, SavingsGoal, AssetType, Category, BillType } from '../types';
+import { Asset, Transaction, RecurringTransaction, SavingsGoal, AssetType, Category, BillType, CategoryItem, Budget, Tag } from '../types';
 
 // Initialize Supabase Client
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -75,7 +75,6 @@ export const SupabaseService = {
             assetId: row.asset_id,
             toAssetId: row.to_asset_id,
             linkedTransactionId: row.linked_transaction_id,
-            merchant: row.merchant, // Map new merchant column
 
             // Reconstruct Installment Object from Flat Columns (Preferred) or JSON (Fallback)
             installment: (row.installment_total_months > 1 || row.installment) ? {
@@ -98,7 +97,6 @@ export const SupabaseService = {
             memo: tx.memo,
 
             // New Columns
-            merchant: tx.merchant,
             asset_id: tx.assetId,
             to_asset_id: tx.toAssetId,
             linked_transaction_id: tx.linkedTransactionId,
@@ -128,7 +126,6 @@ export const SupabaseService = {
             memo: tx.memo,
 
             // emoji: tx.emoji,
-            merchant: tx.merchant,
             asset_id: tx.assetId,
             to_asset_id: tx.toAssetId,
             linked_transaction_id: tx.linkedTransactionId,
@@ -221,5 +218,149 @@ export const SupabaseService = {
     deleteGoal: async (id: string) => {
         const { error } = await supabase.from('savings_goals').delete().eq('id', id);
         if (error) console.error('Error deleting goal:', error);
+    },
+
+    // --- Categories ---
+    getCategories: async (): Promise<CategoryItem[]> => {
+        const { data, error } = await supabase
+            .from('categories')
+            .select('*')
+            .order('sort_order', { ascending: true }); // Default to sort order
+
+        if (error) {
+            console.error('Error fetching categories:', error);
+            return [];
+        }
+        return data.map((row: any) => ({
+            id: row.id,
+            user_id: row.user_id,
+            name: row.name,
+            emoji: row.emoji,
+            type: row.type,
+            is_default: row.is_default,
+            sort_order: row.sort_order,
+            color: row.color,
+            created_at: row.created_at
+        })) as CategoryItem[];
+    },
+
+    saveCategory: async (item: CategoryItem) => {
+        const row: any = {
+            id: item.id,
+            user_id: item.user_id,
+            name: item.name,
+            emoji: item.emoji,
+            type: item.type,
+            is_default: item.is_default,
+            sort_order: item.sort_order,
+            color: item.color
+        };
+
+        // Ensure we have a valid user_id
+        if (!row.user_id) {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user?.id) {
+                row.user_id = session.user.id;
+            } else {
+                // Try getUser as backup
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user?.id) {
+                    row.user_id = user.id;
+                } else {
+                    console.warn("[Dev Mode] Using fallback UUID");
+                    // Fallback to a placeholder UUID to satisfy NOT NULL constraint.
+                    // Note: This will fail if RLS enforces auth.uid() = user_id strict check without a session.
+                    row.user_id = '00000000-0000-0000-0000-000000000000';
+                }
+            }
+        }
+
+        // Remove ID if it's an empty string or nullish to allow DB generation 
+        // (though robust client usually generates it)
+        if (!row.id) delete row.id;
+
+        const { error } = await supabase.from('categories').upsert(row);
+        if (error) console.error('Error saving category:', error);
+    },
+
+    deleteCategory: async (id: string) => {
+        const { error } = await supabase.from('categories').delete().eq('id', id);
+        if (error) console.error('Error deleting category:', error);
+    },
+
+    // --- Budgets ---
+    getBudgets: async () => {
+        const { data, error } = await supabase.from('budgets').select('*');
+        if (error) console.error('Error fetching budgets:', error);
+        return (data as Budget[]) || [];
+    },
+
+    saveBudget: async (budget: Partial<Budget>) => {
+        const row: any = { ...budget };
+
+        if (!row.user_id) {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user?.id) {
+                row.user_id = session.user.id;
+            }
+        }
+
+        if (!row.id) delete row.id;
+
+        const { error } = await supabase.from('budgets').upsert(row);
+        if (error) console.error('Error saving budget:', error);
+        return { error };
+    },
+
+    deleteBudget: async (id: string) => {
+        const { error } = await supabase.from('budgets').delete().eq('id', id);
+        if (error) console.error('Error deleting budget:', error);
+        return { error };
+    },
+    /* -------------------------------------------------------------------------- */
+    /*                                 TAGS (DICTIONARY)                          */
+    /* -------------------------------------------------------------------------- */
+
+    getTags: async (): Promise<Tag[]> => {
+        const { data, error } = await supabase
+            .from('tags')
+            .select('*')
+            .order('usage_count', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching tags:', error);
+            return [];
+        }
+        return data as Tag[];
+    },
+
+    upsertTag: async (tagName: string): Promise<void> => {
+        if (!tagName) return;
+        const cleanName = tagName.trim();
+
+        try {
+            // Check if tag exists
+            const { data: existing } = await supabase
+                .from('tags')
+                .select('id, usage_count')
+                .eq('name', cleanName)
+                .maybeSingle();
+
+            if (existing) {
+                // Increment usage
+                await supabase
+                    .from('tags')
+                    .update({ usage_count: existing.usage_count + 1 })
+                    .eq('id', existing.id);
+            } else {
+                // Insert new
+                await supabase
+                    .from('tags')
+                    .insert({ name: cleanName, usage_count: 1 });
+            }
+        } catch (err) {
+            console.error('Error upserting tag:', err);
+        }
     }
+
 };

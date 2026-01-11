@@ -71,6 +71,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                     <span>➕</span><span className="font-semibold">Quick Add</span>
                 </Button>
+
+                <div className="h-px bg-slate-100 my-2" />
+
+                <NavItem v="settings" emoji="⚙️" label="Settings" />
             </div>
         </aside>
     );

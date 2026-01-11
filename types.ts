@@ -14,6 +14,21 @@ export enum AssetType {
   LOAN = 'LOAN'
 }
 
+export interface CategoryItem {
+  id: string;
+  user_id: string;
+  name: string;
+  emoji: string;
+  type: 'EXPENSE' | 'INCOME' | 'TRANSFER';
+  is_default: boolean;
+  sort_order: number;
+  color?: string;
+  created_at?: string;
+}
+
+/**
+ * @deprecated Use CategoryItem interface instead. Keeping for legacy data migration.
+ */
 export enum Category {
   FOOD = 'Food & Dining',
   TRANSPORT = 'Transportation',
@@ -73,15 +88,23 @@ export interface Asset {
   limit?: number; // Deprecated, move to creditDetails
 }
 
+
+
+// Dictionary for Tag Autocomplete
+export interface Tag {
+  id: string;
+  name: string;
+  usage_count: number;
+}
+
 export interface Transaction {
   id: string;
   date: string;
   timestamp?: number;
   amount: number;
   type: TransactionType;
-  category: Category | string;
+  category: string; // Stores Category ID (UUID) or Name (Legacy)
   memo: string;
-  merchant?: string;
   assetId: string;
   toAssetId?: string;
 
@@ -123,4 +146,14 @@ export interface SavingsGoal {
   deadline?: string;
 }
 
-export type View = 'dashboard' | 'transactions' | 'assets' | 'add' | 'analysis';
+export type View = 'dashboard' | 'transactions' | 'assets' | 'add' | 'analysis' | 'settings' | 'settings-categories';
+
+export interface Budget {
+  id: string;
+  user_id: string;
+  category_id: string;
+  amount: number;
+  year?: number;
+  month?: number;
+  created_at?: string;
+}
