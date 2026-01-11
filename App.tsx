@@ -306,7 +306,6 @@ const App: React.FC = () => {
                         modalType === 'import' ? 'Import Transactions' :
                           `Add Funds: ${selectedItem?.name}`}
             </h3>
-            <button onClick={closeModal} className="text-xl">✖️</button>
           </div>
           <div className="space-y-4">
             {modalType === 'import' && (

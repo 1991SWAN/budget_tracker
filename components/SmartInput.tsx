@@ -198,7 +198,9 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
 
   const getTitle = () => {
     if (loading) return "Processing...";
-    if (mode === 'manual') return initialData ? 'Edit Entry' : 'New Entry';
+    // Option A: Invisible Header for Manual Mode (Edit/New)
+    // We return undefined to hide the header bar entirely
+    if (mode === 'manual') return undefined;
     return 'Smart Input';
   };
 
@@ -291,7 +293,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
               {/* 2. Horizontal Category List */}
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1 block">Category</label>
-                <div className="overflow-x-auto pb-2 -mx-4 px-5 scrollbar-hide flex gap-2 snap-x">
+                <div className="overflow-x-auto py-2 -mx-4 px-5 scrollbar-hide flex gap-2 snap-x">
                   {categories.length > 0 ? (
                     // Dynamic Categories
                     categories
@@ -333,18 +335,21 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
               </div>
 
               {/* 3. Compact Inputs Grid */}
-              <div className="grid grid-cols-2 gap-2">
+              {/* 3. Compact Inputs Grid (Flex Column forced for persistent vertical stack) */}
+              <div className="flex flex-col gap-3">
                 <Input
                   label="Date"
                   type="date"
                   value={manualForm.date}
                   onChange={e => setManualForm({ ...manualForm, date: e.target.value })}
+                  className="h-10 appearance-none py-0"
                 />
                 <Select
                   label={manualForm.type === TransactionType.TRANSFER ? 'From' : 'Account'}
                   value={manualForm.assetId}
                   onChange={e => setManualForm({ ...manualForm, assetId: e.target.value })}
                   options={assets.map(a => ({ label: a.name, value: a.id }))}
+                  className="h-10 py-0"
                 />
 
                 {manualForm.type === TransactionType.TRANSFER && !isExternalTransfer && (
@@ -400,12 +405,12 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                     <button onClick={() => setIsExternalTransfer(false)} className={`px-2 py-1 text-[9px] font-black rounded-md transition-all ${!isExternalTransfer ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>INT</button>
                     <button onClick={() => setIsExternalTransfer(true)} className={`px-2 py-1 text-[9px] font-black rounded-md transition-all ${isExternalTransfer ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>EXT</button>
                   </div>
-                ) : (
+                ) : manualForm.type === TransactionType.EXPENSE ? (
                   <div className="flex bg-slate-100 p-0.5 rounded-lg shrink-0">
                     <button onClick={() => setIsInstallment(false)} className={`px-2 py-1 text-[9px] font-black rounded-md transition-all ${!isInstallment ? 'bg-white shadow-sm text-slate-700' : 'text-slate-400'}`}>LUMP</button>
                     <button onClick={() => setIsInstallment(true)} className={`px-2 py-1 text-[9px] font-black rounded-md transition-all ${isInstallment ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>INST</button>
                   </div>
-                )}
+                ) : null}
 
                 {/* Installment Slider (Inline) */}
                 {isInstallment && manualForm.type === TransactionType.EXPENSE && (

@@ -59,9 +59,10 @@ export const DesktopDialog: React.FC<DesktopDialogProps> = ({
                 className={`relative w-full ${maxWidthClasses[maxWidth]} bg-white rounded-2xl shadow-2xl flex flex-col max-h-[85vh] transition-all duration-200 transform ${isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}
             >
                 {/* Header */}
-                {(title || onClose) && (
+                {/* Header (Conditional) */}
+                {title && (
                     <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center">
-                        {title && <h3 className="text-xl font-bold text-slate-900">{title}</h3>}
+                        <h3 className="text-xl font-bold text-slate-900">{title}</h3>
                         <button onClick={onClose} className="p-2 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
                         </button>

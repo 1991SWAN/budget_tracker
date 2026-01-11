@@ -170,11 +170,8 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
   };
 
   return (
-    <div className="bg-white p-6 rounded-3xl shadow-2xl border border-slate-100 flex flex-col h-full animate-in zoom-in-95 duration-300 overflow-y-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="font-bold text-xl text-slate-800">{isEditing ? 'Edit Asset' : 'Add New Asset'}</h3>
-        <Button variant="ghost" size="icon" onClick={onCancel} className="rounded-full h-8 w-8">✕</Button>
-      </div>
+    <div className="space-y-6 pb-6 h-full flex flex-col">
+      {/* Internal Header Removed for Headless/Dialog Integration */}
 
       <div className="space-y-6 pb-6">
         <div className="grid grid-cols-3 gap-3">
@@ -245,8 +242,9 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
           </div>
         )}
 
-        <div className="pt-4 mt-auto">
-          <Button onClick={handleSubmit} className="w-full" size="lg" isLoading={isSaving} disabled={isSaving}>Save Asset</Button>
+        <div className="pt-4 mt-auto flex gap-3">
+          <Button onClick={onCancel} variant="ghost" size="lg" className="flex-1">Cancel</Button>
+          <Button onClick={handleSubmit} className="flex-1" size="lg" isLoading={isSaving} disabled={isSaving}>Save Asset</Button>
         </div>
       </div>
     </div>
@@ -313,7 +311,7 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
               <h2 className="text-3xl font-bold mb-2">{asset.name}</h2>
               <h1 className="text-4xl font-extrabold tracking-tight">{asset.balance.toLocaleString()} <span className="text-lg opacity-70 font-normal">KRW</span></h1>
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full bg-white/20 hover:bg-white/30 text-white border-0">✕</Button>
+            {/* X Button Removed */}
           </div>
         </div>
 
@@ -667,7 +665,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
         <Dialog
           isOpen={showForm}
           onClose={() => { setShowForm(false); setIsEditing(false); }}
-          title={isEditing ? 'Edit Asset' : 'Add New Asset'}
+          title=""
           maxWidth="lg"
         >
           <AssetForm initialData={selectedAsset || undefined} isEditing={isEditing} onSave={handleSave} onCancel={() => { setShowForm(false); setIsEditing(false); }} />
