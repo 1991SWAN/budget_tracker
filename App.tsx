@@ -114,10 +114,12 @@ const App: React.FC = () => {
 
   // Reload data when user changes (Login/Logout)
   useEffect(() => {
+    console.log('[App] useEffect triggered. User:', user?.id);
     if (user) {
       // Add a small delay to ensure Auth Session is fully propagated to Supabase Client headers
       // This prevents "Data 0" issues on page refresh
       const timer = setTimeout(() => {
+        console.log('[App] Timeout finished. Calling loadData...');
         loadData();
       }, 500);
       return () => clearTimeout(timer);
