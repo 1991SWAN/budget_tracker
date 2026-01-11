@@ -33,6 +33,14 @@ export const SupabaseService = {
             // but we kept most columns consistent or use renaming below
             interestRate: row.interest_rate,
             billingCycle: row.credit_details?.billingCycle, // Legacy support if needed
+
+            // New Mappings
+            bankDetails: row.bank_details,
+            investmentDetails: row.investment_details,
+            institution: row.institution,
+            accountNumber: row.account_number,
+            excludeFromTotal: row.exclude_from_total,
+            theme: row.theme,
         })) as Asset[];
     },
 
@@ -50,6 +58,14 @@ export const SupabaseService = {
             // Store complex objects as JSON
             credit_details: asset.creditDetails,
             loan_details: asset.loanDetails,
+            bank_details: asset.bankDetails,
+            investment_details: asset.investmentDetails,
+
+            // Common Extended Fields
+            institution: asset.institution,
+            account_number: asset.accountNumber,
+            exclude_from_total: asset.excludeFromTotal,
+            theme: asset.theme,
         };
 
         // Upsert (Insert or Update)
