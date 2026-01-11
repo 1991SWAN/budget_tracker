@@ -79,7 +79,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <NavItem v="settings" emoji="⚙️" label="Settings" />
 
                 <button
-                    onClick={signOut}
+                    onClick={(e) => {
+                        e.preventDefault();
+                        signOut();
+                    }}
                     className="w-full flex items-center justify-start pl-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-100 hover:text-rose-600 transition-colors gap-0 group"
                 >
                     <span className="text-xl w-8 flex justify-center shrink-0 grayscale group-hover:grayscale-0">🚪</span>

@@ -15,34 +15,135 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    // Safe UUID generator for non-secure contexts (mobile dev via IP)
+    const generateSessionId = () => {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            return crypto.randomUUID();
+        }
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    };
+
+    // Local unique ID for this browser tab/session
+    const [deviceSessionId] = useState(() => generateSessionId());
 
     useEffect(() => {
-        // Initial Session Check
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            setIsLoading(false);
+        let mounted = true;
+
+        // 1. Initial Session Check
+        const initAuth = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (mounted) {
+                setSession(session);
+                setUser(session?.user ?? null);
+                setIsLoading(false);
+
+                // If logged in, register this device as the active session
+                if (session?.user) {
+                    await registerDeviceSession(session.user.id);
+                }
+            }
+        };
+        initAuth();
+
+        // 2. Listen for Auth Changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (mounted) {
+                setSession(session);
+                setUser(session?.user ?? null);
+                setIsLoading(false);
+
+                if (event === 'SIGNED_IN' && session?.user) {
+                    await registerDeviceSession(session.user.id);
+                }
+            }
         });
 
-        // Listen for Auth Changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            setIsLoading(false);
-        });
-
-        return () => subscription.unsubscribe();
+        return () => {
+            mounted = false;
+            subscription.unsubscribe();
+        };
     }, []);
 
-    const signOut = async () => {
-        await supabase.auth.signOut();
+    // 3. Realtime Subscription for Force Logout
+    useEffect(() => {
+        if (!user) return;
+
+        const channel = supabase
+            .channel('public:profiles')
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+                (payload) => {
+                    const newSessionId = payload.new.last_session_id;
+                    if (newSessionId && newSessionId !== deviceSessionId) {
+                        // Another device took over
+                        console.warn('Session expired: New login detected on another device.');
+                        signOut(true); // true = force logout with message
+                    }
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+                (payload) => {
+                    const newSessionId = payload.new.last_session_id;
+                    if (newSessionId && newSessionId !== deviceSessionId) {
+                        signOut(true);
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, deviceSessionId]);
+
+    const registerDeviceSession = async (userId: string) => {
+        console.log('[Auth] Registering session:', deviceSessionId);
+        // Update DB with my session ID
+        const { error } = await supabase.from('profiles').upsert({
+            id: userId,
+            last_session_id: deviceSessionId,
+            updated_at: new Date().toISOString()
+        });
+        if (error) console.error('[Auth] Failed to register session:', error);
+        else console.log('[Auth] Session registered successfully');
+    };
+
+    const signOut = async (force: boolean = false) => {
+        console.log('[Auth] signOut called. Force:', force);
+        try {
+            // Race Supabase signOut against a 500ms timeout to prevent hanging
+            await Promise.race([
+                supabase.auth.signOut(),
+                new Promise(resolve => setTimeout(resolve, 500))
+            ]);
+            console.log('[Auth] Supabase signOut attempted');
+        } catch (error) {
+            console.error("[Auth] Error signing out:", error);
+        }
+
+        // Manual cleanup
+        console.log('[Auth] Clearing localStorage...');
+        localStorage.clear();
+
+        if (force) {
+            sessionStorage.setItem('logout_reason', 'concurrent_login');
+        }
+
+        console.log('[Auth] Reloading page...');
+        window.location.reload();
     };
 
     const value = {
         user,
         session,
         isLoading,
-        signOut,
+        signOut: () => signOut(false),
     };
 
     return (

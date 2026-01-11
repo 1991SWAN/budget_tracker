@@ -11,6 +11,15 @@ export const LoginView: React.FC = () => {
     const [mode, setMode] = useState<'LOGIN' | 'SIGNUP'>('LOGIN');
     const { addToast } = useToast();
 
+    // Check for forced logout reason
+    React.useEffect(() => {
+        const reason = sessionStorage.getItem('logout_reason');
+        if (reason === 'concurrent_login') {
+            addToast('Logged out because account was accessed from another device.', 'error');
+            sessionStorage.removeItem('logout_reason');
+        }
+    }, [addToast]);
+
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
