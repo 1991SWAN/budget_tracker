@@ -50,9 +50,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUser(session?.user ?? null);
                 setIsLoading(false);
 
-                // If logged in, register this device as the active session
+                // If logged in, register this device as the active session (Fire and forget)
                 if (session?.user) {
-                    await registerDeviceSession(session.user.id);
+                    registerDeviceSession(session.user.id).catch(err => {
+                        console.error('[Auth] Background session registration failed:', err);
+                    });
                 }
             }
         };
@@ -65,8 +67,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUser(session?.user ?? null);
                 setIsLoading(false);
 
-                if (event === 'SIGNED_IN' && session?.user) {
-                    await registerDeviceSession(session.user.id);
+                // If logged in, register this device as the active session (Fire and forget)
+                if (session?.user) {
+                    registerDeviceSession(session.user.id).catch(err => {
+                        console.error('[Auth] Background session registration failed:', err);
+                    });
                 }
             }
         });
