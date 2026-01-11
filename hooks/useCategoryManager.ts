@@ -105,9 +105,12 @@ export const useCategoryManager = () => {
                 color: d.color
             }));
 
-            const { error } = await supabase.from('categories').insert(newCategories);
+            const { error } = await supabase.from('categories').upsert(newCategories, {
+                onConflict: 'user_id, name, type',
+                ignoreDuplicates: true
+            });
             if (!error) {
-                console.log('Auto-seeded default categories.');
+                console.log('Auto-seeded default categories (Upsert completed).');
                 // Refresh categories
                 const data = await SupabaseService.getCategories();
                 setCategories(data);
