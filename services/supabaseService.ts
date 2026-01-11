@@ -18,11 +18,13 @@ export const supabase = createClient(supabaseUrl || '', supabaseKey || '');
 export const SupabaseService = {
     // --- Assets ---
     getAssets: async (): Promise<Asset[]> => {
+        console.log('[Supabase] getAssets called');
         const { data, error } = await supabase.from('assets').select('*');
         if (error) {
             console.error('Error fetching assets:', error);
             return [];
         }
+        console.log('[Supabase] getAssets done. Count:', data?.length);
         return data.map((row: any) => ({
             ...row,
             balance: Number(row.balance), // Ensure number
@@ -82,11 +84,13 @@ export const SupabaseService = {
 
     // --- Transactions ---
     getTransactions: async (): Promise<Transaction[]> => {
+        console.log('[Supabase] getTransactions called');
         const { data, error } = await supabase.from('transactions').select('*').order('date', { ascending: false });
         if (error) {
             console.error('Error fetching transactions:', error);
             return [];
         }
+        console.log('[Supabase] getTransactions done. Count:', data?.length);
         return data.map((row: any) => ({
             ...row,
             amount: Number(row.amount),
