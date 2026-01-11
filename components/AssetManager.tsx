@@ -9,6 +9,7 @@ import { Badge } from './ui/Badge';
 import { EmptyState } from './ui/EmptyState';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
+import { Dialog } from './ui/Dialog';
 
 const ASSET_THEMES: Record<AssetType, { bg: string, text: string, icon: string, border: string }> = {
   [AssetType.CASH]: {
@@ -49,6 +50,58 @@ const ASSET_THEMES: Record<AssetType, { bg: string, text: string, icon: string, 
   },
 };
 
+// --- SafeChart Component ---
+// Prevents Recharts from rendering with invalid dimensions (width/height <= 0) which causes console warnings.
+const SafeChart = ({ data }: { data: any[] }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [shouldRender, setShouldRender] = useState(false);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // Use contentRect for broader compatibility
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          // Double RAF to ensure layout is fully stable
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              setShouldRender(true);
+            });
+          });
+        }
+      }
+    });
+
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  return (
+    <div ref={containerRef} className="w-full h-full min-h-[1px] min-w-[1px]">
+      {shouldRender ? (
+        <ResponsiveContainer width="100%" height="100%" style={{ minWidth: 100, minHeight: 100 }}>
+          <AreaChart data={data}>
+            <defs>
+              <linearGradient id="colorBal" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1} />
+                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+            <Area type="monotone" dataKey="balance" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorBal)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      ) : (
+        <div className="w-full h-full bg-slate-50 animate-pulse rounded-xl flex items-center justify-center text-xs text-slate-300">
+          Loading Chart...
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- Asset Form ---
 interface AssetFormProps {
   initialData?: Partial<Asset>;
@@ -58,8 +111,6 @@ interface AssetFormProps {
 }
 
 const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, isEditing = false }) => {
-  console.log('[AssetForm] Rendering. isEditing:', isEditing, 'initialData:', initialData);
-
   const [formData, setFormData] = useState<Partial<Asset>>({
     name: '', type: AssetType.CHECKING, balance: 0, currency: 'KRW', description: '', ...initialData
   });
@@ -154,7 +205,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
             value={formData.type === AssetType.LOAN ? Math.abs(formData.balance || 0) : formData.balance}
             onChange={e => setFormData({ ...formData, balance: formData.type === AssetType.LOAN ? -Number(e.target.value) : Number(e.target.value) })}
             disabled={isEditing && formData.type === AssetType.CREDIT_CARD}
-            startIcon="₩"
+            leftIcon="₩"
             className={`text-lg font-bold ${isEditing && formData.type === AssetType.CREDIT_CARD ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
           />
         </div>
@@ -169,13 +220,13 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
             <div className="bg-white p-3 rounded-xl border border-rose-100">
               <p className="text-xs font-bold text-slate-500 mb-2">Billing Cycle</p>
               <div className="flex items-center gap-2 text-sm mb-2">
-                <span className="w-16 font-bold text-slate-400 text-xs uppercase">Usage</span>
-                <input type="number" min="1" max="31" value={creditForm.billingCycle?.usageStartDay} onChange={e => setCreditForm({ ...creditForm, billingCycle: { ...creditForm.billingCycle!, usageStartDay: Number(e.target.value) } })} className="w-12 p-1 border rounded text-center bg-slate-50" />
+                <label htmlFor="usage-start-day" className="w-16 font-bold text-slate-400 text-xs uppercase">Usage</label>
+                <input id="usage-start-day" type="number" min="1" max="31" value={creditForm.billingCycle?.usageStartDay} onChange={e => setCreditForm({ ...creditForm, billingCycle: { ...creditForm.billingCycle!, usageStartDay: Number(e.target.value) } })} className="w-12 p-1 border rounded text-center bg-slate-50" />
                 <span className="text-xs text-slate-400">st ~ End of Month</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="w-16 font-bold text-slate-400 text-xs uppercase">Pays On</span>
-                <input type="number" min="1" max="31" value={creditForm.billingCycle?.paymentDay} onChange={e => setCreditForm({ ...creditForm, billingCycle: { ...creditForm.billingCycle!, paymentDay: Number(e.target.value) } })} className="w-12 p-1 border rounded text-center bg-rose-50 font-bold border-rose-200 text-rose-700" />
+                <label htmlFor="payment-day" className="w-16 font-bold text-slate-400 text-xs uppercase">Pays On</label>
+                <input id="payment-day" type="number" min="1" max="31" value={creditForm.billingCycle?.paymentDay} onChange={e => setCreditForm({ ...creditForm, billingCycle: { ...creditForm.billingCycle!, paymentDay: Number(e.target.value) } })} className="w-12 p-1 border rounded text-center bg-rose-50 font-bold border-rose-200 text-rose-700" />
                 <span className="text-xs text-slate-400">th next month</span>
               </div>
             </div>
@@ -205,7 +256,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
 // --- Asset Detail Modal ---
 const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], onClose: () => void, onEdit: () => void, onDelete: () => void, onPay?: (asset: Asset) => void }> = ({ asset, transactions, onClose, onEdit, onDelete, onPay }) => {
   const modalRef = useRef<HTMLDivElement>(null);
-  // ... (chart/history logic preserved)
+
   const chartData = useMemo(() => {
     const relevantTxs = transactions
       .filter(t => t.assetId === asset.id || t.toAssetId === asset.id)
@@ -232,11 +283,28 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
 
   const theme = ASSET_THEMES[asset.type];
   const [activeTab, setActiveTab] = useState<'overview' | 'simulation' | 'installments'>('overview');
-  useModalClose(true, onClose, modalRef);
+  // The system prompt says "To edit multiple, non-adjacent lines ... make a single call to the multi_replace_file_content tool".
+  // I will use multi_replace_file_content.
+
+  const footerContent = (
+    <>
+      {asset.type === AssetType.CREDIT_CARD && onPay && (
+        <Button onClick={() => onPay(asset)} variant="secondary" className="flex-1">💸 Pay Bill</Button>
+      )}
+      <Button onClick={onEdit} variant="outline" className="flex-1">Edit Details</Button>
+      <Button onClick={onDelete} variant="destructive" className="px-6">Delete Asset</Button>
+    </>
+  );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div ref={modalRef} className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-5">
+    <Dialog
+      isOpen={true}
+      onClose={onClose}
+      title=""
+      maxWidth="2xl"
+      footer={footerContent}
+    >
+      <div className="-m-6">
         <div className={`p-6 ${theme.bg} text-white relative overflow-hidden`}>
           <div className="absolute top-0 right-0 p-10 opacity-10 text-9xl transform translate-x-10 -translate-y-10 pointer-events-none">{theme.icon}</div>
           <div className="relative z-10 flex justify-between items-start">
@@ -250,7 +318,7 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
         </div>
 
         {(asset.type === AssetType.LOAN || asset.type === AssetType.CREDIT_CARD) && (
-          <div className="flex border-b border-slate-100 px-4 pt-2 gap-2">
+          <div className="flex border-b border-slate-100 px-4 pt-2 gap-2 bg-white">
             <Button
               variant="ghost"
               onClick={() => setActiveTab('overview')}
@@ -278,11 +346,10 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
             )}
           </div>
         )}
-        {/* ... (rest of modal content preserved, closing divs below) */}
-        <div className="p-6 overflow-y-auto custom-scrollbar space-y-8">
+
+        <div className="p-6 space-y-8 bg-white min-h-[300px]">
           {activeTab === 'overview' && (
             <>
-              {/* ... (charts & stats preserved) */}
               {asset.type === AssetType.CREDIT_CARD && creditStats && (
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div className="col-span-2 bg-slate-800 p-5 rounded-2xl text-white shadow-lg flex justify-between items-center">
@@ -303,20 +370,12 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
                 </div>
               )}
 
-              <div className="h-48 w-full">
+              <div className="w-full">
                 <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><span>📉</span> Balance Trend (30 Days)</h4>
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
-                    <defs>
-                      <linearGradient id="colorBal" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1} />
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                    <Area type="monotone" dataKey="balance" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorBal)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <div className="h-48 w-full min-w-0">
+                  {/* SafeChart prevents 0-size warnings */}
+                  <SafeChart data={chartData} />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -338,19 +397,12 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
 
           {activeTab === 'installments' && asset.type === AssetType.CREDIT_CARD && (
             <div className="space-y-4">
-              {/* ... (installment list preserved) */}
               <h3 className="font-bold text-lg text-slate-800 mb-4">Active Installments</h3>
               {transactions.filter(t => t.assetId === asset.id && t.installment).length === 0 ? (
                 <p className="text-center text-slate-400 py-10 italic">No active installments found.</p>
               ) : (
                 transactions.filter(t => t.assetId === asset.id && t.installment).map(tx => {
                   if (!tx.installment) return null;
-                  const txDate = new Date(tx.date);
-                  const today = new Date();
-                  const monthDiff = (today.getFullYear() - txDate.getFullYear()) * 12 + (today.getMonth() - txDate.getMonth());
-                  const current = Math.min(tx.installment.totalMonths, Math.max(1, monthDiff + 1));
-                  const percent = (current / tx.installment.totalMonths) * 100;
-
                   return (
                     <div key={tx.id} className="bg-white border border-slate-100 p-4 rounded-2xl shadow-sm">
                       <div className="flex justify-between items-start mb-2">
@@ -366,11 +418,16 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
                       </div>
                       <div className="mt-3">
                         <div className="flex justify-between text-xs font-bold mb-1">
-                          <span className="text-blue-600">{current} / {tx.installment.totalMonths} Month</span>
-                          <span className="text-slate-400">{Math.round(percent)}%</span>
+                          <span className="text-blue-600">
+                            {/* Calculated Progress */}
+                            {Math.min(tx.installment.totalMonths, Math.max(1, (new Date().getFullYear() - new Date(tx.date).getFullYear()) * 12 + (new Date().getMonth() - new Date(tx.date).getMonth()) + 1))} / {tx.installment.totalMonths} Month
+                          </span>
+                          <span className="text-slate-400">
+                            {Math.round((Math.min(tx.installment.totalMonths, Math.max(1, (new Date().getFullYear() - new Date(tx.date).getFullYear()) * 12 + (new Date().getMonth() - new Date(tx.date).getMonth()) + 1)) / tx.installment.totalMonths) * 100)}%
+                          </span>
                         </div>
                         <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${percent}%` }}></div>
+                          <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${(Math.min(tx.installment.totalMonths, Math.max(1, (new Date().getFullYear() - new Date(tx.date).getFullYear()) * 12 + (new Date().getMonth() - new Date(tx.date).getMonth()) + 1)) / tx.installment.totalMonths) * 100}%` }}></div>
                         </div>
                       </div>
                     </div>
@@ -380,16 +437,8 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
             </div>
           )}
         </div>
-
-        <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-3">
-          {asset.type === AssetType.CREDIT_CARD && onPay && (
-            <Button onClick={() => onPay(asset)} variant="secondary" className="flex-1">💸 Pay Bill</Button>
-          )}
-          <Button onClick={onEdit} variant="outline" className="flex-1">Edit Details</Button>
-          <Button onClick={onDelete} variant="destructive" className="px-6">Delete Asset</Button>
-        </div>
       </div>
-    </div>
+    </Dialog>
   );
 };
 
@@ -613,12 +662,16 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
       </div>
 
       {/* Modals */}
+      {/* Modals */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => { setShowForm(false); setIsEditing(false); }}>
-          <div className="w-full max-w-lg max-h-[80vh] h-auto flex flex-col" onClick={e => e.stopPropagation()}>
-            <AssetForm initialData={selectedAsset || undefined} isEditing={isEditing} onSave={handleSave} onCancel={() => { setShowForm(false); setIsEditing(false); }} />
-          </div>
-        </div>
+        <Dialog
+          isOpen={showForm}
+          onClose={() => { setShowForm(false); setIsEditing(false); }}
+          title={isEditing ? 'Edit Asset' : 'Add New Asset'}
+          maxWidth="lg"
+        >
+          <AssetForm initialData={selectedAsset || undefined} isEditing={isEditing} onSave={handleSave} onCancel={() => { setShowForm(false); setIsEditing(false); }} />
+        </Dialog>
       )}
 
       {selectedAsset && !isEditing && (

@@ -278,6 +278,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                   <input
                     type="number"
                     placeholder="0"
+                    aria-label="Transaction Amount"
                     value={manualForm.amount}
                     onChange={e => setManualForm({ ...manualForm, amount: e.target.value })}
                     className="w-full text-center bg-transparent text-3xl font-black text-slate-800 placeholder-slate-200 outline-none p-0"
@@ -410,7 +411,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                 {isInstallment && manualForm.type === TransactionType.EXPENSE && (
                   <div className="flex-1 flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-left-2">
                     <span className="text-[9px] font-bold text-blue-500 whitespace-nowrap">{installmentMonths}M</span>
-                    <input type="range" min="2" max="24" value={installmentMonths} onChange={e => setInstallmentMonths(Number(e.target.value))} className="flex-1 h-1.5 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                    <input type="range" min="2" max="24" aria-label="Installment Months" value={installmentMonths} onChange={e => setInstallmentMonths(Number(e.target.value))} className="flex-1 h-1.5 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                     <div className={`cursor-pointer px-1.5 py-0.5 rounded text-[8px] font-black uppercase border ${isInterestFree ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-400 border-slate-200'}`} onClick={() => setIsInterestFree(!isInterestFree)}>
                       {isInterestFree ? 'Free' : 'Fee'}
                     </div>

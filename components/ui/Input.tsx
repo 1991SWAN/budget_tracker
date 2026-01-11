@@ -13,10 +13,13 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(({
     className = '',
     ...props
 }, ref) => {
+    const generatedId = React.useId();
+    const id = props.id || generatedId;
+
     return (
         <div className="w-full">
             {label && (
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">
+                <label htmlFor={id} className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">
                     {label}
                 </label>
             )}
@@ -27,6 +30,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(({
                     </div>
                 )}
                 <input
+                    id={id}
                     ref={ref}
                     className={`
                         w-full rounded-xl border bg-white p-3 text-sm font-medium transition-all outline-none

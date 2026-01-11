@@ -19,15 +19,19 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(({
     className = '',
     ...props
 }, ref) => {
+    const generatedId = React.useId();
+    const id = props.id || generatedId;
+
     return (
         <div className="w-full">
             {label && (
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">
+                <label htmlFor={id} className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">
                     {label}
                 </label>
             )}
             <div className="relative">
                 <select
+                    id={id}
                     ref={ref}
                     className={`
                         w-full appearance-none rounded-xl border bg-white p-3 pr-10 text-sm font-medium transition-all outline-none
