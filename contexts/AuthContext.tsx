@@ -26,8 +26,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
     };
 
-    // Local unique ID for this browser tab/session
-    const [deviceSessionId] = useState(() => generateSessionId());
+    // Local unique ID for this browser tab/session (Persisted to allow refreshes/tabs)
+    const [deviceSessionId] = useState(() => {
+        const STORAGE_KEY = 'smartpenny_device_id';
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) return stored;
+
+        const newId = generateSessionId();
+        localStorage.setItem(STORAGE_KEY, newId);
+        return newId;
+    });
 
     useEffect(() => {
         let mounted = true;
