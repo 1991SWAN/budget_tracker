@@ -459,13 +459,16 @@ const App: React.FC = () => {
       {renderModals()}
 
       {/* New Import Wizard */}
-      <ImportWizardModal
-        isOpen={modalType === 'import'}
-        onClose={() => setModalType(null)}
-        onConfirm={handleImportConfirm}
-        assetId={importAssetId}
-        assetName={assets.find(a => a.id === importAssetId)?.name || 'Account'}
-      />
+      {/* New Import Wizard */}
+      {modalType === 'import' && (
+        <ImportWizardModal
+          isOpen={true}
+          onClose={() => setModalType(null)}
+          onConfirm={handleImportConfirm}
+          assetId={importAssetId}
+          assetName={assets.find(a => a.id === importAssetId)?.name || 'Account'}
+        />
+      )}
 
       {/* Hidden File Input (Ref kept for legacy compatibility if needed, but not used by Wizard) */}
       <input type="file" ref={fileInputRef} className="hidden" accept=".csv, .xlsx, .xls" />

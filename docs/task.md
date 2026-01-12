@@ -128,3 +128,8 @@
             - [x] `ImportPreview`: 유효 데이터/중복 데이터 요약 리포트 UI.
         - [ ] **3단계: 프리셋 시스템 (Future)**
             - [ ] 매핑 설정 저장/불러오기 기능 (localStorage 활용).
+
+    - [x] **8순위: 디자인 일관성 폴리싱 (Design Polish)**
+        - [x] **Import Wizard**: 블루 컬러 제거 -> Slate/Emerald 적용.
+        - [x] **Modal**: 헤더 제거 및 버튼 둥글기(Rounded-2xl) 표준화.
+        - [x] **Typography**: 하드코딩된 폰트 크기/색상 토큰화.
