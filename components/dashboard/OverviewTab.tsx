@@ -6,6 +6,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { useCategoryManager } from '../../hooks/useCategoryManager';
 import { useBudgetManager } from '../../hooks/useBudgetManager';
+import { FinancialHealthWidget } from './FinancialHealthWidget';
 
 interface OverviewTabProps {
     transactions: Transaction[];
@@ -73,7 +74,7 @@ const BudgetStatusWidget = ({ transactions }: { transactions: Transaction[] }) =
                         <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
                             <div
                                 className={`h-full rounded-full transition-all duration-500 ${item.isOver ? 'bg-red-500' :
-                                        item.percent > 90 ? 'bg-amber-500' : 'bg-emerald-500'
+                                    item.percent > 90 ? 'bg-amber-500' : 'bg-emerald-500'
                                     }`}
                                 style={{ width: `${item.percent}%` }}
                             />
@@ -147,6 +148,34 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
 
         return budget - monthlyStats.expense - remainingFixedBills - upcomingCardPayments;
     }, [monthlyBudget, monthlyStats.expense, recurring, assets, transactions, today]);
+    // --- Daily Pacing & Burn Rate ---
+    const { dailyCap, burnRateStatus, burnRateColor } = useMemo(() => {
+        const now = new Date();
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const remainingDays = Math.max(1, daysInMonth - now.getDate() + 1); // Include today
+
+        const cap = Math.floor(Math.max(0, safeToSpend) / remainingDays);
+
+        // Burn Rate (Simple 10% buffer logic)
+        const budgetUsage = monthlyStats.expense / Math.max(1, monthlyBudget);
+        const timeProgress = now.getDate() / daysInMonth;
+
+        let status = 'On Track';
+        let color = 'text-emerald-400';
+
+        if (budgetUsage > timeProgress + 0.05) {
+            status = 'Burning Fast 🔥';
+            color = 'text-orange-400';
+        } else if (budgetUsage < timeProgress - 0.05) {
+            status = 'Saving 💰';
+            color = 'text-blue-400';
+        } else {
+            status = 'On Track 👍';
+            color = 'text-emerald-400';
+        }
+
+        return { dailyCap: cap, burnRateStatus: status, burnRateColor: color };
+    }, [safeToSpend, monthlyStats.expense, monthlyBudget]);
 
     // --- Activity List Helpers ---
     const getStartOfWeek = (d: Date) => {
@@ -176,157 +205,203 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Safe to Spend Card */}
-                {/* Hero card uses custom gradient background but wraps content safely */}
-                <div onClick={onOpenBudgetModal} className="bg-gradient-to-br from-indigo-600 to-blue-600 text-white p-6 rounded-3xl shadow-lg relative overflow-hidden group cursor-pointer hover:shadow-xl transition-all">
-                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><span className="text-8xl">🛡️</span></div>
-                    <div className="relative z-10">
-                        <div className="flex items-center justify-between mb-2 text-blue-100"><div className="flex items-center gap-2"><span>🛡️</span><span className="font-semibold text-sm uppercase tracking-wider">Safe to Spend</span></div></div>
-                        <h2 className="text-4xl font-bold mb-1">{safeToSpend.toLocaleString()} <span className="text-xl font-normal opacity-80">KRW</span></h2>
-                        <p className="text-sm text-blue-100 opacity-90">Remaining after upcoming bills & card payments.</p>
+            {/* Bento Grid Layout - Hero Section */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 auto-rows-[minmax(160px,auto)]">
+
+                {/* Safe to Spend - Hero Widget (2x2) */}
+                <div
+                    onClick={onOpenBudgetModal}
+                    className="col-span-2 row-span-2 bg-gradient-to-br from-slate-900 to-slate-800 text-white p-8 rounded-3xl shadow-xl relative overflow-hidden group cursor-pointer hover:scale-[1.01] transition-all duration-300"
+                >
+                    <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:rotate-12 duration-500">
+                        <span className="text-9xl">🛡️</span>
+                    </div>
+
+                    <div className="relative z-10 flex flex-col h-full justify-between">
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2 text-emerald-400">
+                                    <span className="bg-emerald-400/20 p-1.5 rounded-full"><span className="text-sm">🛡️</span></span>
+                                    <span className="font-bold text-xs uppercase tracking-widest">Safe to Spend</span>
+                                </div>
+                                <span className={`text-xs font-bold px-2 py-1 rounded-full bg-white/10 ${burnRateColor}`}>
+                                    {burnRateStatus}
+                                </span>
+                            </div>
+                            <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-2">
+                                {safeToSpend.toLocaleString()}
+                                <span className="text-2xl lg:text-3xl font-medium opacity-60 ml-2">KRW</span>
+                            </h2>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm">
+                                <div className="flex justify-between items-end mb-1">
+                                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Daily Cap</span>
+                                    <span className="text-xl font-bold text-white">{dailyCap.toLocaleString()} <span className="text-xs opacity-60 font-normal">KRW / day</span></span>
+                                </div>
+                                <div className="h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
+                                    <div className="h-full bg-emerald-500 w-full" style={{ width: '100%' }} />
+                                </div>
+                            </div>
+
+                            <p className="text-xs text-slate-500 font-medium ml-1">
+                                Remaining after setting aside fixed bills.
+                            </p>
+                        </div>
                     </div>
                 </div>
 
-                {/* Info Grid */}
-                <div className="grid grid-cols-2 gap-4">
-                    <Card className="flex flex-col justify-center cursor-pointer hover:bg-slate-50 border-slate-100" padding="default" onClick={onNavigateToAssets}>
-                        <div className="flex items-center gap-2 text-muted mb-2"><span>💼</span><span className="text-xs font-bold uppercase">Net Worth</span></div>
-                        <p className="text-xl font-bold text-primary">{totalNetWorth.toLocaleString()}</p>
-                    </Card>
-                    <Card className="flex flex-col justify-center border-slate-100">
-                        <div className="flex items-center gap-2 text-muted mb-2"><span>📉</span><span className="text-xs font-bold uppercase">Expenses</span></div>
-                        <p className="text-xl font-bold text-primary">{monthlyStats.expense.toLocaleString()}</p>
-                    </Card>
-                    <Card className="flex flex-col justify-center border-slate-100">
-                        <div className="flex items-center gap-2 text-muted mb-2"><span>🗓️</span><span className="text-xs font-bold uppercase">Fixed Bills</span></div>
-                        <p className="text-xl font-bold text-primary">{totalMonthlyFixed.toLocaleString()}</p>
-                    </Card>
-                    <Card className="flex flex-col justify-center border-slate-100">
-                        <div className="flex items-center gap-2 text-muted mb-2"><span>📊</span><span className="text-xs font-bold uppercase">Top Category</span></div>
-                        <p className="text-lg font-bold text-primary truncate">{categoryDataOverview[0]?.name || 'N/A'}</p>
-                    </Card>
+
+
+                {/* Info Widgets (1x1) */}
+                <div className="col-span-1 row-span-2">
+                    <FinancialHealthWidget
+                        monthlyBudget={monthlyBudget}
+                        monthlyExpense={monthlyStats.expense}
+                        assets={assets}
+                        transactions={transactions}
+                    />
                 </div>
+
+                <Card className="col-span-1 flex flex-col justify-center cursor-pointer hover:bg-slate-50 border-slate-100 group" onClick={onNavigateToAssets}>
+                    <div className="flex items-center gap-2 text-slate-400 mb-3">
+                        <span className="bg-slate-100 p-1.5 rounded-full group-hover:bg-indigo-100 transition-colors">💼</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Net Worth</span>
+                    </div>
+                    <p className="text-xl lg:text-2xl font-black text-slate-900 tracking-tight">{totalNetWorth.toLocaleString()}</p>
+                </Card>
+
+                {/* Replaced Expenses with generic filler or remove if layout shifts */}
+                {/* We need to fill the grid. We have 4x2 grid (8 cells).
+                    Hero uses 2x2 (4 cells).
+                    FinancialHealth uses 1x2 (2 cells).
+                    Remaining: 2 cells.
+                    We have Net Worth, Fixed Bills, Top Category. One must go or we adjust layout.
+                    Let's keep Net Worth and Fixed Bills.
+                */}
+
+                <Card className="col-span-1 flex flex-col justify-center border-slate-100 group">
+                    <div className="flex items-center gap-2 text-slate-400 mb-3">
+                        <span className="bg-slate-100 p-1.5 rounded-full group-hover:bg-amber-100 transition-colors">🗓️</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Fixed Bills</span>
+                    </div>
+                    <p className="text-xl lg:text-2xl font-black text-slate-900 tracking-tight">{totalMonthlyFixed.toLocaleString()}</p>
+                </Card>
+
+                <Card className="col-span-1 flex flex-col justify-center border-slate-100 group">
+                    <div className="flex items-center gap-2 text-slate-400 mb-3">
+                        <span className="bg-slate-100 p-1.5 rounded-full group-hover:bg-emerald-100 transition-colors">📊</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Top Category</span>
+                    </div>
+                    <p className="text-lg lg:text-xl font-bold text-slate-900 truncate tracking-tight">{categoryDataOverview[0]?.name || 'N/A'}</p>
+                </Card>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left Column: Activity & Budget */}
-                <div className="lg:col-span-2 space-y-6">
-                    {/* Budget Status Widget (NEW) */}
-                    <BudgetStatusWidget transactions={transactions} />
+            {/* Middle Section: Flow & Budget */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+                {/* Monthly Flow */}
+                <Card className="p-6 lg:p-8">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span className="bg-slate-100 p-1 rounded-lg">🌊</span> Monthly Flow
+                        </h3>
+                        <Button
+                            onClick={onOpenBudgetModal}
+                            variant="ghost"
+                            size="sm"
+                            className="bg-slate-100 hover:bg-slate-200 text-xs rounded-full px-3"
+                        >
+                            Edit Budget
+                        </Button>
+                    </div>
 
-                    {/* Activity Feed */}
-                    <div>
-                        <div className="flex items-center justify-between mb-4 px-1">
-                            <div className="flex items-center gap-2">
-                                <span className="text-2xl">⚡</span>
-                                <h3 className="text-xl font-bold text-primary">Activity</h3>
+                    <div className="space-y-5">
+                        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <div className="flex justify-between text-sm mb-2">
+                                <span className="text-slate-500 font-bold text-xs uppercase">Income vs Expense</span>
                             </div>
-                            <div className="flex bg-slate-100 p-1 rounded-full">
-                                {(['today', 'week', 'month'] as const).map(f => (
-                                    <Button
-                                        key={f}
-                                        onClick={() => onFilterChange(f)}
-                                        variant="ghost"
-                                        className={`px-3 py-1 text-xs font-bold rounded-full capitalize transition-all shadow-none ${activityFilter === f ? 'bg-white text-primary shadow-sm' : 'text-muted hover:text-slate-600'}`}
-                                    >
-                                        {f}
-                                    </Button>
-                                ))}
+                            <div className="flex items-end gap-2 h-24 mt-2">
+                                <div className="w-1/2 bg-emerald-100 rounded-t-xl relative group flex flex-col justify-end overflow-hidden">
+                                    <div className="w-full bg-emerald-500 absolute bottom-0 transition-all duration-500" style={{ height: '70%' }}></div>
+                                    <span className="relative z-10 p-2 text-xs font-bold text-emerald-900 text-center">{monthlyStats.income.toLocaleString()}</span>
+                                </div>
+                                <div className="w-1/2 bg-rose-100 rounded-t-xl relative group flex flex-col justify-end overflow-hidden">
+                                    <div className="w-full bg-rose-500 absolute bottom-0 transition-all duration-500 transform translate-y-0" style={{ height: `${Math.min((monthlyStats.expense / monthlyStats.income) * 100, 100)}%` }}></div>
+                                    <span className="relative z-10 p-2 text-xs font-bold text-rose-900 text-center">{monthlyStats.expense.toLocaleString()}</span>
+                                </div>
                             </div>
                         </div>
 
                         <div className="space-y-2">
-                            {filteredActivityTransactions.slice(0, 5).map(tx => (
-                                <Card key={tx.id} className="border-slate-100 overflow-hidden" noPadding>
-                                    <TransactionItem
-                                        transaction={tx}
-                                        asset={assets.find(a => a.id === tx.assetId)}
-                                        toAsset={tx.toAssetId ? assets.find(a => a.id === tx.toAssetId) : undefined}
-                                        onEdit={onEditTransaction}
-                                        onDelete={onDeleteTransaction}
-                                    />
-                                </Card>
-                            ))}
-                            {filteredActivityTransactions.length === 0 && (
-                                <Card className="text-center py-10 text-muted border-slate-100 border-dashed bg-slate-50/50">
-                                    No activity found for this period.
-                                </Card>
-                            )}
+                            <div className="flex justify-between text-xs font-bold text-slate-500 uppercase">
+                                <span>Budget Usage</span>
+                                <span>{Math.round((monthlyStats.expense / monthlyBudget) * 100)}%</span>
+                            </div>
+                            <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                    className={`h-full w-full opacity-90 transition-all duration-700 ${monthlyStats.expense > monthlyBudget ? 'bg-rose-500' : 'bg-slate-800'}`}
+                                    style={{ width: `${Math.min((monthlyStats.expense / monthlyBudget) * 100, 100)}%` }}
+                                />
+                            </div>
+                            <div className="text-right text-xs text-slate-400 font-medium">
+                                limit: {monthlyBudget.toLocaleString()}
+                            </div>
                         </div>
+                    </div>
+                </Card>
 
-                        <div className="mt-4 text-center">
-                            <Button variant="ghost" size="sm" onClick={onNavigateToTransactions} className="w-full">
-                                View All Transactions →
+                {/* Budget Status Widget */}
+                <BudgetStatusWidget transactions={transactions} />
+            </div>
+
+            {/* Activity Feed (Full Width) */}
+            <Card className="p-0 overflow-hidden">
+                <div className="p-6 pb-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <span className="text-2xl">⚡</span>
+                        <h3 className="text-xl font-bold text-slate-900">Recent Activity</h3>
+                    </div>
+                    <div className="flex bg-slate-100 p-1.5 rounded-full">
+                        {(['today', 'week', 'month'] as const).map(f => (
+                            <Button
+                                key={f}
+                                onClick={() => onFilterChange(f)}
+                                variant="ghost"
+                                className={`px-4 py-1.5 text-xs font-bold rounded-full capitalize transition-all shadow-none ${activityFilter === f ? 'bg-white text-slate-900 shadow-sm hover:bg-white' : 'text-slate-500 hover:text-slate-800'}`}
+                            >
+                                {f}
                             </Button>
-                        </div>
+                        ))}
                     </div>
                 </div>
 
-                {/* Right Column: Monthly Overview */}
-                <div className="space-y-6">
-                    <Card className="p-6">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold text-slate-800">Monthly Flow</h3>
-                            <button onClick={onOpenBudgetModal} className="text-xs text-primary font-bold hover:underline">
-                                Edit Budget
-                            </button>
+                <div className="px-2">
+                    {filteredActivityTransactions.slice(0, 5).map(tx => (
+                        <div key={tx.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors rounded-xl mx-2">
+                            <TransactionItem
+                                transaction={tx}
+                                asset={assets.find(a => a.id === tx.assetId)}
+                                toAsset={tx.toAssetId ? assets.find(a => a.id === tx.toAssetId) : undefined}
+                                onEdit={onEditTransaction}
+                                onDelete={onDeleteTransaction}
+                            />
                         </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <div className="flex justify-between text-sm mb-1">
-                                    <span className="text-slate-500">Income</span>
-                                    <span className="font-bold text-emerald-600">{monthlyStats.income.toLocaleString()}</span>
-                                </div>
-                                <div className="h-2 bg-emerald-100 rounded-full overflow-hidden">
-                                    <div className="h-full bg-emerald-500 w-full opacity-80" />
-                                </div>
-                            </div>
-                            <div>
-                                <div className="flex justify-between text-sm mb-1">
-                                    <span className="text-slate-500">Expenses</span>
-                                    <span className="font-bold text-red-500">{monthlyStats.expense.toLocaleString()}</span>
-                                </div>
-                                <div className="h-2 bg-red-100 rounded-full overflow-hidden">
-                                    <div className="h-full bg-red-500 w-full opacity-80" />
-                                </div>
-                            </div>
-                            <div>
-                                <div className="flex justify-between text-sm mb-1">
-                                    <span className="text-slate-500">Budget Limit</span>
-                                    <span className="font-bold text-slate-900">{monthlyBudget.toLocaleString()}</span>
-                                </div>
-                                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                                    <div
-                                        className={`h-full w-full opacity-80 ${monthlyStats.expense > monthlyBudget ? 'bg-red-500' : 'bg-blue-500'}`}
-                                        style={{ width: `${Math.min((monthlyStats.expense / monthlyBudget) * 100, 100)}%` }}
-                                    />
-                                </div>
-                            </div>
+                    ))}
+                    {filteredActivityTransactions.length === 0 && (
+                        <div className="text-center py-16 text-slate-400 border-slate-100 border-dashed bg-slate-50/30 m-4 rounded-2xl">
+                            <span className="text-2xl block mb-2">📭</span>
+                            <span className="text-sm font-medium">No activity found for this period.</span>
                         </div>
-                    </Card>
-
-                    {/* Top Spending Categories */}
-                    <Card className="p-6">
-                        <h3 className="text-lg font-bold text-slate-800 mb-4">Top Spending</h3>
-                        <div className="space-y-3">
-                            {categoryDataOverview.slice(0, 5).map((cat, idx) => (
-                                <div key={idx} className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-slate-300" />
-                                        <span className="text-slate-600 font-medium text-sm">{cat.name}</span>
-                                    </div>
-                                    <span className="font-bold text-slate-900 text-sm">{cat.value.toLocaleString()}</span>
-                                </div>
-                            ))}
-                            {categoryDataOverview.length === 0 && (
-                                <div className="text-center py-4 text-slate-400 text-sm">No expenses yet.</div>
-                            )}
-                        </div>
-                    </Card>
+                    )}
                 </div>
-            </div>
+
+                <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
+                    <Button variant="ghost" size="sm" onClick={onNavigateToTransactions} className="w-full text-slate-500 hover:text-slate-900 font-bold">
+                        View All Transactions →
+                    </Button>
+                </div>
+            </Card>
         </div>
     );
 };

@@ -14,8 +14,8 @@ export const Card: React.FC<CardProps> = ({
 }) => {
     const baseStyles = "rounded-3xl overflow-hidden transition-all duration-300";
     const variants = {
-        default: "bg-white shadow-card hover:shadow-card-hover border border-slate-100",
-        flat: "bg-surface text-text border border-transparent",
+        default: "bg-white shadow-sm hover:shadow-md border border-slate-100",
+        flat: "bg-slate-50 text-slate-900 border border-transparent",
         ghost: "bg-transparent border border-dashed border-slate-200"
     };
 

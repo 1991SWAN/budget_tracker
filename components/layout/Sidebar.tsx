@@ -46,64 +46,79 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
             `}
         >
-            <div className="flex items-center space-x-2 mb-10 text-primary">
+            {/* Logo */}
+            <div className="flex items-center space-x-2 mb-8 text-primary px-2">
                 <span className="text-3xl">🪙</span>
                 <span className="text-xl font-bold tracking-tight text-slate-900">SmartPenny</span>
             </div>
 
-            <nav className="space-y-2 flex-1">
-                <NavItem v="dashboard" emoji="📊" label="Dashboard" />
-                <NavItem v="transactions" emoji="🧾" label="Transactions" />
-                <NavItem v="assets" emoji="💰" label="Assets" />
-                <NavItem v="analysis" emoji="🤖" label="AI Analysis" />
-            </nav>
+            {/* Navigation Zone */}
+            <div className="flex-1 overflow-y-auto no-scrollbar space-y-6">
+                <div>
+                    <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Menu</p>
+                    <nav className="space-y-1">
+                        <NavItem v="dashboard" emoji="📊" label="Dashboard" />
+                        <NavItem v="transactions" emoji="🧾" label="Transactions" />
+                        <NavItem v="assets" emoji="💰" label="Assets" />
+                        <NavItem v="analysis" emoji="🤖" label="AI Analysis" />
+                    </nav>
+                </div>
 
-            <div className="pt-6 border-t border-slate-100 space-y-3">
-                <Button
-                    onClick={onImportClick}
-                    variant="secondary"
-                    className="w-full bg-slate-100 text-slate-600 hover:bg-slate-200 p-3 rounded-2xl font-semibold text-sm shadow-none h-auto justify-center"
-                >
-                    <span>📂</span><span>Import CSV</span>
-                </Button>
-                <Button
-                    onClick={onQuickAddClick}
-                    variant="primary"
-                    className="w-full p-3 rounded-2xl shadow-lg h-auto justify-center"
-                >
-                    <span>➕</span><span className="font-semibold">Quick Add</span>
-                </Button>
+                {/* Action Zone */}
+                <div>
+                    <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Actions</p>
+                    <div className="space-y-3 px-1">
+                        <Button
+                            onClick={onQuickAddClick}
+                            variant="primary"
+                            className="w-full p-3 rounded-full shadow-lg h-auto justify-center hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all"
+                        >
+                            <span>➕</span><span className="font-semibold">Quick Add</span>
+                        </Button>
+                        <Button
+                            onClick={onImportClick}
+                            variant="secondary"
+                            className="w-full bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 p-3 rounded-2xl font-semibold text-sm shadow-sm h-auto justify-center active:scale-95 transition-all"
+                        >
+                            <span>📂</span><span>Import CSV</span>
+                        </Button>
+                    </div>
+                </div>
+            </div>
 
-                <div className="h-px bg-slate-100 my-2" />
+            {/* Admin Zone */}
+            <div className="pt-4 mt-4 border-t border-slate-100">
+                <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">System</p>
+                <div className="space-y-1">
+                    <NavItem v="settings" emoji="⚙️" label="Settings" />
 
-                <NavItem v="settings" emoji="⚙️" label="Settings" />
+                    <Button
+                        variant="ghost"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            signOut();
+                        }}
+                        className="w-full !justify-start pl-4 py-3 rounded-xl text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors h-auto active:scale-95"
+                    >
+                        <span className="text-xl w-8 flex justify-center shrink-0">👋</span>
+                        <span className="font-medium">Sign Out</span>
+                    </Button>
+                </div>
 
-                <div className="px-4 py-2 mb-2 bg-slate-50 rounded-2xl flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold shrink-0">
+                {/* User Profile */}
+                <div className="mt-4 px-3 py-2 bg-slate-50 rounded-2xl flex items-center space-x-3 border border-slate-100/50">
+                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold shrink-0 text-xs shadow-inner">
                         {user?.email?.[0].toUpperCase() || 'U'}
                     </div>
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">
+                        <p className="text-sm font-bold text-slate-900 truncate">
                             {user?.email?.split('@')[0]}
                         </p>
-                        <p className="text-xs text-slate-500 truncate">
+                        <p className="text-[10px] text-slate-400 truncate">
                             {user?.email}
                         </p>
                     </div>
                 </div>
-
-                <div className="h-px bg-slate-100 my-2" />
-
-                <button
-                    onClick={(e) => {
-                        e.preventDefault();
-                        signOut();
-                    }}
-                    className="w-full flex items-center justify-start pl-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-100 hover:text-rose-600 transition-colors gap-0 group"
-                >
-                    <span className="text-xl w-8 flex justify-center shrink-0 grayscale group-hover:grayscale-0">🚪</span>
-                    <span className="font-medium">Log Out</span>
-                </button>
             </div>
         </aside>
     );
