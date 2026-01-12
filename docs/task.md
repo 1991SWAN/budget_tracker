@@ -146,10 +146,10 @@
         - [x] **Logic Analysis**: Existing "Inverse Amount + 5min Window" trigger verified.
         - [x] **New-to-New Matching**: Implemented matching within same import batch.
 
-    - [ ] **12순위: Import Wizard 고도화 (New 3-Track Strategy)** <!-- id: 11 -->
+    - [x] **12순위: Import Wizard 고도화 (New 3-Track Strategy)** <!-- id: 11 -->
         - [x] **Planning**: 3-Track Strategy (Manual, Preset, Migration) Analysis.
-        - [ ] **Track 1: Manual Mode**: "Save as Preset" flow.
-        - [ ] **Track 2: Preset Mode**: Auto-detect header & apply mapping.
+        - [x] **Track 1: Manual Mode**: "Save as Preset" flow.
+        - [x] **Track 2: Preset Mode**: Auto-detect header & apply mapping.
         - [ ] **Track 3: Migration Mode**: Source selection & dedicated parsers.
 
     - [ ] **13순위: 대시보드 데이터 고도화 (Dashboard Data Enhancements)** <!-- id: 12 -->

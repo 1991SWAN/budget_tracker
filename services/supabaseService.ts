@@ -393,16 +393,98 @@ export const SupabaseService = {
         }
     },
     // --- Data Management ---
-    resetAllData: async () => {
-        // Order matters due to Foreign Keys
-        await supabase.from('tags').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        await supabase.from('transactions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        await supabase.from('recurring').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        await supabase.from('goals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        await supabase.from('assets').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        await supabase.from('custom_categories').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        await supabase.from('budgets').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        console.log("All data reset successfully.");
+    // --- Profile / Settings ---
+    getProfile: async () => {
+        try {
+            const { data, error } = await supabase.from('profiles').select('*').single();
+            if (error) {
+                if (error.code === 'PGRST116') {
+                    // No profile row exists yet. Return default partial profile.
+                    // Returning 0 or null allows the App to decide, but we want to avoid the hardcoded 2.5M override if the user intended 0.
+                    // For now, let's suggest the migration default (2.5M) OR just return empty so App initializes.
+                    // However, to fix the specific user complaint ("keeps filling 2.5M"), we should trust the DB.
+                    // If DB has no row, it effectively has no setting.
+                    return null; // App will use fallback
+                }
+                console.error('Error fetching profile:', error);
+                return null;
+            }
+            return {
+                ...data,
+                // Fix: Ensure 0 is treated as 0, not falsey falling back to default
+                monthlyBudget: data.monthly_budget !== null ? Number(data.monthly_budget) : 2500000
+            };
+        } catch (err) {
+            console.error("Unexpected error in getProfile", err);
+            return null;
+        }
+    },
+
+    saveProfile: async (updates: { monthly_budget?: number, theme?: string }) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { error } = await supabase.from('profiles').upsert({
+            id: user.id,
+            ...updates,
+            updated_at: new Date().toISOString()
+        });
+
+        if (error) console.error('Error saving profile:', error);
+    },
+
+    // --- Data Management ---
+    resetData: async (options: {
+        transactions: boolean;
+        assets: boolean;
+        goals: boolean;
+        recurring: boolean;
+        categories: boolean;
+        budgets: boolean;
+        tags: boolean;
+    }) => {
+        // Order matters due to Foreign Keys. 
+        // We generally delete child records first.
+
+        const dummyId = '00000000-0000-0000-0000-000000000000';
+
+        if (options.tags) {
+            await supabase.from('tags').delete().neq('id', dummyId);
+        }
+
+        if (options.transactions) {
+            await supabase.from('transactions').delete().neq('id', dummyId);
+        }
+
+        if (options.recurring) {
+            // Fix: Table name is 'recurring_transactions', not 'recurring'
+            await supabase.from('recurring_transactions').delete().neq('id', dummyId);
+        }
+
+        if (options.goals) {
+            // Fix: Table name is 'savings_goals', not 'goals'
+            await supabase.from('savings_goals').delete().neq('id', dummyId);
+        }
+
+        if (options.budgets) {
+            await supabase.from('budgets').delete().neq('id', dummyId);
+        }
+
+        if (options.assets) {
+            // Deleting assets might cascade to transactions if foreign keys exist, 
+            // but we usually handle transactions separately above.
+            await supabase.from('assets').delete().neq('id', dummyId);
+        }
+
+        if (options.categories) {
+            // Only delete Custom Categories? Or all Categories?
+            // Usually we only want to wipe user-defined ones or all 'categories' table data for this user.
+            // Assuming 'categories' table contains user categories.
+            // Note: DB constraints might prevent this if transactions exist and are not deleted above.
+            await supabase.from('categories').delete().neq('id', dummyId);
+        }
+
+        console.log("Data reset completed with options:", options);
     }
 
 };

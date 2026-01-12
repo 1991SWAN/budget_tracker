@@ -1,14 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View } from '../../types';
 import { Card } from '../ui/Card';
 import { SupabaseService } from '../../services/supabaseService';
 import { ExportService } from '../../services/exportService';
+import { ResetDataModal } from './ResetDataModal'; // Import new modal
 
 interface SettingsViewProps {
     onNavigate: (view: View) => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
+    const [showResetModal, setShowResetModal] = useState(false);
 
     const handleExport = async () => {
         try {
@@ -26,13 +28,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
         }
     };
 
-    const handleReset = async () => {
-        if (window.confirm("⚠️ ARE YOU SURE?\n\nThis will PERMANENTLY DELETE all your data (Transactions, Assets, Goals, etc.).\nThis action cannot be undone.")) {
-            if (window.confirm("Really? All your financial data will be lost forever.")) {
-                await SupabaseService.resetAllData();
-                window.location.reload();
-            }
-        }
+    const handleResetConfirm = async (options: any) => {
+        await SupabaseService.resetData(options);
+        window.location.reload();
     };
 
     return (
@@ -80,6 +78,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                         </p>
                     </Card>
 
+                    {/* Import Configuration */}
+                    <Card
+                        className="p-6 cursor-pointer hover:shadow-md transition-all duration-200 group"
+                        onClick={() => onNavigate('settings-import')}
+                    >
+                        <div className="flex items-start justify-between mb-4">
+                            <span className="text-4xl group-hover:scale-110 transition-transform duration-200">📥</span>
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-900 mb-2">Import Config</h3>
+                        <p className="text-slate-500 text-sm">
+                            Manage CSV import presets and account links.
+                        </p>
+                    </Card>
+
                     {/* Data & Backup */}
                     <Card className="p-6 cursor-pointer hover:shadow-md transition-all duration-200 group">
                         <div className="flex items-start justify-between mb-4">
@@ -97,7 +109,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                                 Export Data
                             </button>
                             <button
-                                onClick={(e) => { e.stopPropagation(); handleReset(); }}
+                                onClick={(e) => { e.stopPropagation(); setShowResetModal(true); }}
                                 className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-100"
                             >
                                 Reset Data
@@ -106,6 +118,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                     </Card>
                 </div>
             </section>
+
+            {/* Reset Data Modal */}
+            <ResetDataModal
+                isOpen={showResetModal}
+                onClose={() => setShowResetModal(false)}
+                onConfirm={handleResetConfirm}
+            />
         </div>
     );
 };

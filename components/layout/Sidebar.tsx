@@ -7,10 +7,9 @@ interface SidebarProps {
     view: View;
     onNavigate: (view: View) => void;
     isOpen: boolean;
-    onImportClick: () => void;
+    onImportClick: () => void; // Kept for backward compatibility if needed, or we can reuse it
+    onImportFile: (file: File) => void; // New prop
     onQuickAddClick: () => void;
-    // We might need to handle file input ref here or pass a handler that triggers it
-    // For now, let's assume the parent handles the actual file input click via onImportClick
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -18,9 +17,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onNavigate,
     isOpen,
     onImportClick,
+    onImportFile,
     onQuickAddClick
 }) => {
     const { signOut, user } = useAuth();
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isDragging, setIsDragging] = React.useState(false);
 
     const NavItem = ({ v, emoji, label }: { v: View, emoji: string, label: string }) => {
         const isActive = view === v;
@@ -37,6 +39,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="font-medium">{label}</span>
             </Button>
         );
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            onImportFile(file);
+        }
+        // Reset input
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) {
+            onImportFile(file);
+        }
     };
 
     return (
@@ -75,13 +108,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         >
                             <span>➕</span><span className="font-semibold">Quick Add</span>
                         </Button>
-                        <Button
-                            onClick={onImportClick}
-                            variant="secondary"
-                            className="w-full bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 p-3 rounded-2xl font-semibold text-sm shadow-sm h-auto justify-center active:scale-95 transition-all"
+
+                        <div
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
                         >
-                            <span>📂</span><span>Import CSV</span>
-                        </Button>
+                            <Button
+                                onClick={() => fileInputRef.current?.click()}
+                                variant="secondary"
+                                className={`w-full bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 p-3 rounded-2xl font-semibold text-sm shadow-sm h-auto justify-center active:scale-95 transition-all
+                                    ${isDragging ? 'border-2 border-slate-900 bg-slate-100 ring-2 ring-slate-200' : ''}
+                                `}
+                            >
+                                <span>📂</span><span>{isDragging ? 'Drop CSV Here' : 'Import CSV'}</span>
+                            </Button>
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleFileChange}
+                                className="hidden"
+                                accept=".csv,.xls,.xlsx"
+                            />
+                        </div>
                     </div>
                 </div>
             </div>

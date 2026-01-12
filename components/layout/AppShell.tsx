@@ -8,6 +8,7 @@ interface AppShellProps {
     view: View;
     onNavigate: (view: View) => void;
     onImportClick: () => void;
+    onImportFile: (file: File) => void;
     onQuickAddClick: () => void;
 }
 
@@ -16,6 +17,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     view,
     onNavigate,
     onImportClick,
+    onImportFile,
     onQuickAddClick
 }) => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -41,6 +43,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 onNavigate={handleNavigate}
                 isOpen={isSidebarOpen}
                 onImportClick={onImportClick}
+                onImportFile={onImportFile}
                 onQuickAddClick={onQuickAddClick}
             />
 

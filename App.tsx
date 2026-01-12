@@ -17,7 +17,9 @@ import AssetManager from './components/AssetManager';
 import SmartInput from './components/SmartInput';
 import { AppShell } from './components/layout/AppShell';
 import { SettingsView } from './components/settings/SettingsView';
+
 import { CategorySettings } from './components/settings/CategorySettings';
+import { ImportSettings } from './components/settings/ImportSettings';
 
 
 import { useTransactionManager } from './hooks/useTransactionManager';
@@ -41,7 +43,7 @@ const App: React.FC = () => {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [recurring, setRecurring] = useState<RecurringTransaction[]>([]);
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
-  const [monthlyBudget, setMonthlyBudget] = useState<number>(2500000);
+  const [monthlyBudget, setMonthlyBudget] = useState<number>(0);
   const [showSmartInput, setShowSmartInput] = useState(false);
 
 
@@ -66,11 +68,38 @@ const App: React.FC = () => {
   // File Import Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importAssetId, setImportAssetId] = useState<string>('');
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   // Modal Close Support
   const modalRef = useRef<HTMLDivElement>(null);
-  useModalClose(!!modalType, () => setModalType(null), modalRef);
+  useModalClose(!!modalType, () => {
+    setModalType(null);
+    setPendingImportFile(null); // Clear file on close
+  }, modalRef);
+
+  // --- History / Navigation Handling ---
+  const navigateTo = useCallback((newView: View) => {
+    setView(newView);
+    window.history.pushState({ view: newView }, '', '');
+  }, []);
+
+  useEffect(() => {
+    // Initial history state
+    window.history.replaceState({ view: 'dashboard' }, '', '');
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state && event.state.view) {
+        setView(event.state.view);
+      } else {
+        // Fallback to dashboard if history is empty (e.g. first load)
+        setView('dashboard');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Hooks must be at top level
   const searchedTransactions = useTransactionSearch(transactions, searchTerm);
@@ -105,7 +134,15 @@ const App: React.FC = () => {
       setAssets(assts);
       setRecurring(recs);
       setGoals(gls);
-      setMonthlyBudget(StorageService.getBudget());
+
+      // Load Profile for Settings/Budget
+      const profile = await SupabaseService.getProfile();
+      if (profile) {
+        setMonthlyBudget(profile.monthlyBudget);
+      } else {
+        // Fallback to 0 if no profile set (User requested to remove 2.5M default)
+        setMonthlyBudget(0);
+      }
     } catch (e) {
       addToast('Failed to load data from cloud', 'error');
     }
@@ -191,6 +228,11 @@ const App: React.FC = () => {
     setModalType('import');
   };
 
+  const handleImportFile = (file: File) => {
+    setPendingImportFile(file);
+    triggerImport();
+  };
+
   const handleImportConfirm = async (newTxs: Transaction[]) => {
     // 1. Process for duplicates & transfers
     // We fetch ALL existing transactions to ensure duplicate check is robust
@@ -246,7 +288,7 @@ const App: React.FC = () => {
   const openFundGoal = (goal: SavingsGoal) => { setModalType('fund-goal'); setSelectedItem(goal); setFormData({ amount: '' }); setPaymentAsset(assets.find(a => a.type !== AssetType.CREDIT_CARD)?.id || ''); setDestinationAsset(''); };
   const openEditBudget = () => { setModalType('budget'); setFormData({ amount: monthlyBudget }); };
   const openPayCard = (card: Asset) => { setModalType('pay-card'); setSelectedItem(card); setFormData({ amount: Math.abs(card.balance) }); setPaymentAsset(assets.find(a => a.type !== AssetType.CREDIT_CARD)?.id || ''); };
-  const closeModal = () => { setModalType(null); setSelectedItem(null); setPaymentError(null); };
+  const closeModal = () => { setModalType(null); setSelectedItem(null); setPaymentError(null); setPendingImportFile(null); };
 
   const handleSubmit = () => {
     setPaymentError(null);
@@ -449,11 +491,17 @@ const App: React.FC = () => {
     return <LoginView />;
   }
 
+  const handleBudgetChange = async (amount: number) => {
+    setMonthlyBudget(amount);
+    await SupabaseService.saveProfile({ monthly_budget: amount });
+  };
+
   return (
     <AppShell
       currentView={view}
-      onNavigate={setView}
+      onNavigate={navigateTo}
       onImportClick={triggerImport}
+      onImportFile={handleImportFile}
       onQuickAddClick={() => setShowSmartInput(true)}
     >
       {renderModals()}
@@ -462,11 +510,14 @@ const App: React.FC = () => {
       {/* New Import Wizard */}
       {modalType === 'import' && (
         <ImportWizardModal
-          isOpen={true}
+          isOpen={modalType === 'import'}
           onClose={() => setModalType(null)}
           onConfirm={handleImportConfirm}
           assetId={importAssetId}
           assetName={assets.find(a => a.id === importAssetId)?.name || 'Account'}
+          assets={assets}
+          categories={categories}
+          initialFile={pendingImportFile || undefined}
         />
       )}
 
@@ -495,8 +546,8 @@ const App: React.FC = () => {
         onEditTransaction={(tx) => { setEditingTransaction(tx); setShowSmartInput(true); }} // Re-use smart input for editing
         onDeleteTransaction={handleDeleteTransaction}
         monthlyBudget={monthlyBudget}
-        onBudgetChange={setMonthlyBudget}
-        onNavigateToTransactions={(range) => { if (range) setDateRange(range); setView('transactions'); }}
+        onBudgetChange={handleBudgetChange}
+        onNavigateToTransactions={(range) => { if (range) setDateRange(range); navigateTo('transactions'); }}
         onAddBillToGroup={(group) => {
           setModalType('bill');
           setSelectedItem(null);
@@ -613,8 +664,10 @@ const App: React.FC = () => {
         </ErrorBoundary>
       </div>}
 
-      {view === 'settings' && <SettingsView onNavigate={setView} />}
-      {view === 'settings-categories' && <CategorySettings onNavigate={setView} />}
+      {view === 'settings' && <SettingsView onNavigate={navigateTo} />}
+
+      {view === 'settings-categories' && <CategorySettings onNavigate={navigateTo} />}
+      {view === 'settings-import' && <ImportSettings onNavigate={navigateTo} />}
     </AppShell>
   );
 };
