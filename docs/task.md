@@ -118,13 +118,13 @@
             - [x] **새로고침 시 앱 멈춤(Hang)**: 세션 등록 로직 비동기(Non-blocking) 처리.
             - [x] **세션 유지**: `localStorage`를 활용한 기기 ID 영구 보존.
 
-    - [ ] **7순위: CSV 가져오기 재구축 (CSV Import Refactor)**
-        - [ ] **1단계: 서비스 리팩토링 (Service Layer)**
-            - [ ] `ImportService`: `xlsx` 라이브러리 기반의 강력한 파싱 로직 구현.
-            - [ ] **Column Mapping**: 유동적인 컬럼 매핑(`parseRawData`) 로직 구현.
-        - [ ] **2단계: 마법사 UI 구현 (Wizard UI)**
-            - [ ] `ImportWizardModal`: 3단계(파일선택 -> 매핑 -> 미리보기) 스테퍼 UI.
-            - [ ] `ColumnMapper`: 데이터 그리드 및 드롭다운 매핑 UI.
-            - [ ] `ImportPreview`: 유효 데이터/중복 데이터 요약 리포트 UI.
+    - [/] **7순위: CSV 가져오기 재구축 (CSV Import Refactor)**
+        - [x] **1단계: 서비스 리팩토링 (Service Layer)**
+            - [x] `ImportService`: `xlsx` 라이브러리 기반의 강력한 파싱 로직 구현.
+            - [x] **Column Mapping**: 유동적인 컬럼 매핑(`parseRawData`) 로직 구현.
+        - [x] **2단계: 마법사 UI 구현 (Wizard UI)**
+            - [x] `ImportWizardModal`: 3단계(파일선택 -> 매핑 -> 미리보기) 스테퍼 UI.
+            - [x] `ColumnMapper`: 데이터 그리드 및 드롭다운 매핑 UI.
+            - [x] `ImportPreview`: 유효 데이터/중복 데이터 요약 리포트 UI.
         - [ ] **3단계: 프리셋 시스템 (Future)**
             - [ ] 매핑 설정 저장/불러오기 기능 (localStorage 활용).

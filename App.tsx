@@ -11,6 +11,7 @@ import { Transaction, Asset, View, TransactionType, Category, RecurringTransacti
 import { StorageService } from './services/storageService';
 import { SupabaseService, supabase } from './services/supabaseService';
 import { ImportService } from './services/importService';
+import { ImportWizardModal } from './components/import/ImportWizardModal';
 import Dashboard from './components/Dashboard';
 import AssetManager from './components/AssetManager';
 import SmartInput from './components/SmartInput';
@@ -180,54 +181,7 @@ const App: React.FC = () => {
     setEditingTransaction(null);
   };
 
-  const handleProcessFile = (file: File) => {
-    if (!importAssetId) return;
-
-    const reader = new FileReader();
-
-    reader.onload = (evt) => {
-      const result = evt.target?.result;
-      if (!result) return;
-
-      let parsedDrafts: Partial<Transaction>[] = [];
-
-      if (file.name.endsWith('.csv')) {
-        parsedDrafts = ImportService.parseCSV(result as string, importAssetId);
-      } else {
-        // Excel (xlsx/xls) - result is ArrayBuffer
-        parsedDrafts = ImportService.parseExcel(result as ArrayBuffer, importAssetId);
-      }
-
-      const { finalNewTxs, updatedExistingTxs } = ImportService.processImportedTransactions(parsedDrafts, transactions);
-
-      // Batch Add New Transactions (updates assets automatically via hook)
-      handleAddTransactions(finalNewTxs);
-
-      // Handle Updates (if any)
-      updatedExistingTxs.forEach(updatedTx => {
-        const original = transactions.find(t => t.id === updatedTx.id);
-        if (original) handleUpdateTransaction(original, updatedTx);
-      });
-
-      addToast(`Imported ${finalNewTxs.length} transactions (${updatedExistingTxs.length} matched)`, 'success');
-      setModalType(null); // Close modal on success
-    };
-
-    if (file.name.endsWith('.csv')) {
-      reader.readAsText(file);
-    } else {
-      reader.readAsArrayBuffer(file);
-    }
-  };
-
-  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleProcessFile(file);
-    }
-    e.target.value = ''; // Reset
-  };
-
+  // --- Import Handlers ---
   const triggerImport = () => {
     // Set default asset ID if not already set or invalid
     if (!importAssetId || !assets.find(a => a.id === importAssetId)) {
@@ -237,7 +191,54 @@ const App: React.FC = () => {
     setModalType('import');
   };
 
+  const handleImportConfirm = async (newTxs: Transaction[]) => {
+    // 1. Process for duplicates & transfers
+    // We fetch ALL existing transactions to ensure duplicate check is robust
+    const { finalNewTxs, updatedExistingTxs } = ImportService.processImportedTransactions(newTxs, transactions);
+
+    // 2. Save to Supabase (and State)
+    if (finalNewTxs.length > 0) {
+      await SupabaseService.saveTransactions(finalNewTxs);
+
+      // Update local state
+      setTransactions(prev => [...prev, ...finalNewTxs]);
+
+      // Update balances
+      const assetUpdates = new Map<string, number>();
+      finalNewTxs.forEach(tx => {
+        const val = tx.type === TransactionType.INCOME ? tx.amount : -tx.amount;
+        assetUpdates.set(tx.assetId, (assetUpdates.get(tx.assetId) || 0) + val);
+      });
+
+      // Update Assets locally & remote
+      const newAssets = [...assets];
+      for (const [aId, diff] of assetUpdates.entries()) {
+        const idx = newAssets.findIndex(a => a.id === aId);
+        if (idx >= 0) {
+          newAssets[idx] = { ...newAssets[idx], balance: newAssets[idx].balance + diff };
+          SupabaseService.saveAsset(newAssets[idx]);
+        }
+      }
+      setAssets(newAssets);
+    }
+
+    // 3. Handle Updates (Transfers Matched)
+    if (updatedExistingTxs.length > 0) {
+      for (const upTx of updatedExistingTxs) {
+        await SupabaseService.saveTransaction(upTx);
+      }
+      // Update local state using map
+      setTransactions(prev => prev.map(t => {
+        const found = updatedExistingTxs.find(u => u.id === t.id);
+        return found || t;
+      }));
+    }
+
+    addToast(`Imported ${finalNewTxs.length} transactions (${updatedExistingTxs.length} matched as transfers)`, 'success');
+  };
+
   const openAddBill = () => { setModalType('bill'); setSelectedItem(null); setFormData({ name: '', amount: '', dayOfMonth: 1, category: Category.UTILITIES, billType: BillType.SUBSCRIPTION }); };
+
   const openEditBill = (bill: RecurringTransaction) => { setModalType('bill'); setSelectedItem(bill); setFormData({ ...bill }); };
   const openPayBill = (bill: RecurringTransaction) => { setModalType('pay-bill'); setSelectedItem(bill); setPaymentAsset(assets.find(a => a.type !== AssetType.CREDIT_CARD)?.id || ''); };
   const openAddGoal = () => { setModalType('goal'); setSelectedItem(null); setFormData({ name: '', targetAmount: '', emoji: '🎯', deadline: '' }); };
@@ -319,7 +320,7 @@ const App: React.FC = () => {
   };
 
   const renderModals = () => {
-    if (!modalType) return null;
+    if (!modalType || modalType === 'import') return null; // Import uses its own standalone wizard modal
     return (
       <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
         <div ref={modalRef} className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 animate-in zoom-in-95">
@@ -335,46 +336,7 @@ const App: React.FC = () => {
             </h3>
           </div>
           <div className="space-y-4">
-            {modalType === 'import' && (
-              <div
-                className={`space-y-4 transition-all duration-200 ${isDragging ? 'scale-[1.02]' : ''}`}
-                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  const file = e.dataTransfer.files?.[0];
-                  if (file) handleProcessFile(file);
-                }}
-              >
-                <p className="text-sm text-slate-500 mb-2">Select the account to import transactions into.</p>
-                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-2">
-                  <p className="text-xs text-blue-800">💡 <strong>Tip:</strong> Duplicates will be automatically skipped based on date, amount, and memo.</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Target Account</label>
-                  <select value={importAssetId} onChange={e => setImportAssetId(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all">
-                    {assets.map(a => <option key={a.id} value={a.id}>{a.name} ({a.balance.toLocaleString()})</option>)}
-                  </select>
-                </div>
-
-                <div
-                  className={`relative group cursor-pointer border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center gap-3 transition-all duration-300 ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'}`}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isDragging ? 'bg-blue-500 text-white scale-110 shadow-lg' : 'bg-slate-100 text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-500'}`}>
-                    <span className="text-2xl">{isDragging ? '📥' : '📂'}</span>
-                  </div>
-                  <div className="text-center">
-                    <p className={`font-bold transition-colors ${isDragging ? 'text-primary' : 'text-slate-700'}`}>
-                      {isDragging ? 'Drop file here' : 'Drop your file here'}
-                    </p>
-                    <p className="text-[10px] text-slate-400 font-medium">or click to browse files</p>
-                  </div>
-                  <p className="text-[9px] text-slate-300 uppercase tracking-widest font-bold mt-2">CSV, XLSX, XLS supported</p>
-                </div>
-              </div>
-            )}
+            {/* Replaced by ImportWizardModal below, removing old UI block */}
 
             {modalType === 'bill' && (
               <>
@@ -495,8 +457,18 @@ const App: React.FC = () => {
       onQuickAddClick={() => setShowSmartInput(true)}
     >
       {renderModals()}
-      {/* Hidden File Input (Kept in App as it is bound to ref) */}
-      <input type="file" ref={fileInputRef} onChange={handleFileImport} className="hidden" accept=".csv, .xlsx, .xls" />
+
+      {/* New Import Wizard */}
+      <ImportWizardModal
+        isOpen={modalType === 'import'}
+        onClose={() => setModalType(null)}
+        onConfirm={handleImportConfirm}
+        assetId={importAssetId}
+        assetName={assets.find(a => a.id === importAssetId)?.name || 'Account'}
+      />
+
+      {/* Hidden File Input (Ref kept for legacy compatibility if needed, but not used by Wizard) */}
+      <input type="file" ref={fileInputRef} className="hidden" accept=".csv, .xlsx, .xls" />
 
       {showSmartInput && (
         <SmartInput

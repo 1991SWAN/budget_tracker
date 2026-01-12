@@ -1,6 +1,14 @@
 import { Transaction, TransactionType, Category } from '../types';
 import { read, utils } from 'xlsx';
 
+export interface ColumnMapping {
+  dateIndex: number;
+  amountIndex: number;
+  memoIndex: number;
+  // Optional: typeIndex for cases where Income/Expense is a separate column
+  typeIndex?: number;
+}
+
 export const ImportService = {
   /**
    * Generates a unique hash key for a transaction to prevent duplicates.
@@ -23,123 +31,105 @@ export const ImportService = {
   },
 
   /**
-   * Parses a CSV string into partial Transaction objects.
-   * Assumes columns: Date (YYYY-MM-DD HH:mm), Description, Amount
+   * Reads a file (CSV or Excel) and returns raw 2D array data.
+   * This is Step 1 of the wizard.
    */
-  parseCSV: (csvContent: string, assetId: string): Partial<Transaction>[] => {
-    const lines = csvContent.split('\n');
-    const parsed: Partial<Transaction>[] = [];
-
-    // Skip header row
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-
-      // Simple CSV split (Note: robust CSV parsing should handle quoted commas)
-      const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-
-      // Assuming Format: Date, Description, Amount
-      // Adjust indices based on actual bank CSV format
-      if (cols.length < 3) continue;
-
-      const dateStr = cols[0]; // Expecting YYYY-MM-DD HH:mm or similar
-      const memo = cols[1];
-      const amount = parseFloat(cols[2]);
-
-      if (isNaN(amount)) continue;
-
-      const dateObj = new Date(dateStr);
-      if (isNaN(dateObj.getTime())) continue;
-
-      const timestamp = dateObj.getTime();
-      const type = amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENSE;
-
-      const hashKey = ImportService.generateHashKey(assetId, timestamp, amount, memo);
-
-      parsed.push({
-        id: `imported-${Date.now()}-${i}`,
-        date: dateStr.split(' ')[0], // YYYY-MM-DD
-        timestamp: timestamp,
-        amount: amount,
-        type: type,
-        category: Category.OTHER, // Default, allow user to categorize later
-        memo: memo,
-        assetId: assetId,
-        hashKey: hashKey,
-        originalText: memo
-      });
-    }
-    return parsed;
-  },
-
-  /**
-   * Parses an Excel file buffer into partial Transaction objects.
-   * Supports .xlsx and .xls formats.
-   */
-  parseExcel: (fileBuffer: ArrayBuffer, assetId: string): Partial<Transaction>[] => {
-    const workbook = read(fileBuffer, { type: 'array', cellDates: true });
+  parseFileToGrid: async (file: File): Promise<any[][]> => {
+    const buffer = await file.arrayBuffer();
+    const workbook = read(buffer, { type: 'array', cellDates: true });
     const firstSheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[firstSheetName];
 
     // Convert to JSON array of arrays (header: 1)
-    const rows = utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-    const parsed: Partial<Transaction>[] = [];
+    // defval: '' limits issues with empty cells
+    const rows = utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][];
+    return rows;
+  },
 
-    // Skip header row
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      if (!row || row.length < 3) continue;
+  /**
+   * Converts raw grid data into Draft Transactions using the user's Column Mapping.
+   * This is Step 3 of the wizard (Preview).
+   */
+  mapRawDataToTransactions: (
+    rawData: any[][],
+    mapping: ColumnMapping,
+    assetId: string
+  ): { valid: Partial<Transaction>[], invalid: any[] } => {
+    const valid: Partial<Transaction>[] = [];
+    const invalid: any[] = [];
 
-      // Adaptable column mapping (Simple Assumption: Date, Memo, Amount)
-      // TODO: Add smarter column detection in future
-      let dateVal = row[0];
-      const memo = String(row[1] || '').trim();
-      const amountVal = row[2];
+    // Skip header row (index 0) - or maybe user selects if header exists?
+    // For now assume row 0 is header if it looks like strings, but better to just parse all selected rows.
+    // Let's assume the wizard passes DATA rows (slicing done in UI) or we just iterate from 1.
+    // SAFE DEFAULT: Iterate from 1, assume row 0 is header.
+    for (let i = 1; i < rawData.length; i++) {
+      const row = rawData[i];
+      if (!row || row.length === 0) continue;
 
-      let amount = 0;
-      if (typeof amountVal === 'number') {
-        amount = amountVal;
-      } else {
-        amount = parseFloat(String(amountVal).replace(/,/g, ''));
-      }
+      try {
+        // 1. Extract Values based on Mapping
+        const dateVal = row[mapping.dateIndex];
+        const memoVal = row[mapping.memoIndex];
+        const amountVal = row[mapping.amountIndex];
 
-      if (isNaN(amount)) continue;
+        // 2. Validate & Parse Date
+        let dateStr = '';
+        let timestamp = 0;
 
-      // Date Handling (cellDates: true makes Excel dates into JS Date objects)
-      let dateStr = '';
-      let timestamp = 0;
-
-      if (dateVal instanceof Date) {
-        dateStr = dateVal.toISOString().split('T')[0];
-        timestamp = dateVal.getTime();
-      } else {
-        // Fallback for string dates
-        const d = new Date(dateVal);
-        if (!isNaN(d.getTime())) {
-          dateStr = d.toISOString().split('T')[0];
-          timestamp = d.getTime();
+        if (dateVal instanceof Date) {
+          dateStr = dateVal.toISOString().split('T')[0];
+          timestamp = dateVal.getTime();
         } else {
-          continue; // Invalid date
+          const d = new Date(dateVal);
+          if (!isNaN(d.getTime())) {
+            dateStr = d.toISOString().split('T')[0];
+            timestamp = d.getTime();
+          } else {
+            throw new Error("Invalid Date");
+          }
         }
+
+        // 3. Validate & Parse Amount
+        let amount = 0;
+        if (typeof amountVal === 'number') {
+          amount = amountVal;
+        } else {
+          // Handle string inputs like "1,000", "-500", "$10.00"
+          const cleanAmt = String(amountVal).replace(/[^0-9.-]/g, '');
+          const parsedFloat = parseFloat(cleanAmt);
+          if (isNaN(parsedFloat)) throw new Error("Invalid Amount");
+          amount = parsedFloat;
+        }
+
+        // 4. Memo
+        const memo = String(memoVal || '').trim();
+        if (!memo) throw new Error("Empty Memo");
+
+        // 5. Build Object
+        const type = amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENSE;
+        // Normalize hash key
+        const hashKey = ImportService.generateHashKey(assetId, timestamp, amount, memo);
+
+        valid.push({
+          id: `imported-${Date.now()}-${i}`,
+          date: dateStr,
+          timestamp: timestamp,
+          amount: amount,
+          type: type,
+          category: Category.OTHER,
+          memo: memo,
+          assetId: assetId,
+          hashKey: hashKey,
+          originalText: memo
+        });
+
+      } catch (err) {
+        // Capture invalid rows for feedback
+        invalid.push({ row: i + 1, data: row, reason: (err as Error).message });
       }
-
-      const type = amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENSE;
-      const hashKey = ImportService.generateHashKey(assetId, timestamp, amount, memo);
-
-      parsed.push({
-        id: `imported-xls-${Date.now()}-${i}`,
-        date: dateStr,
-        timestamp: timestamp,
-        amount: amount,
-        type: type,
-        category: Category.OTHER,
-        memo: memo,
-        assetId: assetId,
-        hashKey: hashKey,
-        originalText: memo
-      });
     }
-    return parsed;
+
+    return { valid, invalid };
   },
 
   /**
