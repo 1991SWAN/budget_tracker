@@ -208,6 +208,54 @@ export const ImportService = {
       finalNewTxs.push(newTx);
     }
 
+    // 3. NEW-TO-NEW MATCHING (Self-Correction within the batch)
+    // For transactions that didn't find a match in DB, they might match each other in this file.
+    matchNewToNew(finalNewTxs);
+
     return { finalNewTxs, updatedExistingTxs };
   }
 };
+
+/**
+ * Helper to match unmatched New transactions against each other.
+ * (New-to-New Matching)
+ */
+function matchNewToNew(mainTxs: Transaction[]) {
+  const matchedIds = new Set<string>();
+
+  for (let i = 0; i < mainTxs.length; i++) {
+    const txA = mainTxs[i];
+    if (txA.linkedTransactionId || matchedIds.has(txA.id)) continue;
+
+    for (let j = i + 1; j < mainTxs.length; j++) {
+      const txB = mainTxs[j];
+      if (txB.linkedTransactionId || matchedIds.has(txB.id)) continue;
+
+      // 1. Amount Match (Inverse)
+      if (txA.amount !== -txB.amount) continue;
+
+      // 2. Time Match (5 mins)
+      const timeDiff = Math.abs((txA.timestamp || 0) - (txB.timestamp || 0));
+      if (timeDiff > 300000) continue;
+
+      // MATCH FOUND!
+      console.log(`New-to-New Match: ${txA.memo} <-> ${txB.memo}`);
+
+      // Link A -> B
+      txA.type = TransactionType.TRANSFER;
+      txA.category = Category.TRANSFER;
+      txA.linkedTransactionId = txB.id;
+      txA.toAssetId = txB.assetId;
+
+      // Link B -> A
+      txB.type = TransactionType.TRANSFER;
+      txB.category = Category.TRANSFER;
+      txB.linkedTransactionId = txA.id;
+      txB.toAssetId = txA.assetId;
+
+      matchedIds.add(txA.id);
+      matchedIds.add(txB.id);
+      break; // Move to next txA
+    }
+  }
+}

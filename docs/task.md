@@ -137,11 +137,21 @@
     - [x] **9순위: 모바일 대응 (Mobile Optimization)**
         - [x] **Import Wizard**: `grid-cols-3` -> `grid-cols-1`, 테이블 가로 스크롤, 버튼 스택 처리.
 
-    - [ ] **10순위: 대시보드 리팩토링 (Dashboard Refactor v2.0)** <!-- id: 9 -->
+    - [x] **10순위: 대시보드 리팩토링 (Dashboard Refactor v2.0)** <!-- id: 9 -->
         - [x] **Phase 1: Sidebar & Layout**: Zone 분리, 버튼 형태(Shape) 적용. `Sidebar.tsx`
-        - [ ] **Phase 2: Overview Widgets**: Bento Grid 레이아웃, 카드 스타일 통일 (`Rounded-3xl`). `OverviewTab.tsx`
-        - [ ] **Phase 3: Micro-interactions**: 버튼/카드 호버 및 클릭(Active) 효과 표준화.
+        - [x] **Phase 2: Overview Widgets**: Grid Layout Fix, Compact Widgets. `OverviewTab.tsx`
+        - [x] **Phase 3: Micro-interactions**: Widget unified filters & scrollable activity.
 
-    - [x] **11순위: 대시보드 데이터 고도화 (Dashboard Data Enhancements)** <!-- id: 10 -->
+    - [x] **11순위: 이체 로직 고도화 (Transfer Matching)** <!-- id: 10 -->
+        - [x] **Logic Analysis**: Existing "Inverse Amount + 5min Window" trigger verified.
+        - [x] **New-to-New Matching**: Implemented matching within same import batch.
+
+    - [ ] **12순위: Import Wizard 고도화 (New 3-Track Strategy)** <!-- id: 11 -->
+        - [x] **Planning**: 3-Track Strategy (Manual, Preset, Migration) Analysis.
+        - [ ] **Track 1: Manual Mode**: "Save as Preset" flow.
+        - [ ] **Track 2: Preset Mode**: Auto-detect header & apply mapping.
+        - [ ] **Track 3: Migration Mode**: Source selection & dedicated parsers.
+
+    - [ ] **13순위: 대시보드 데이터 고도화 (Dashboard Data Enhancements)** <!-- id: 12 -->
         - [x] **Safe to Spend Refinement**: Daily Pacing(일일 권장 지출) 및 Burn Rate(지출 속도) 시각화 추가. `OverviewTab.tsx`
         - [x] **Financial Health Score**: 재무 건강 점수 위젯 구현 (Alternative A). `FinancialHealthWidget.tsx`
