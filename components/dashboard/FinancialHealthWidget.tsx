@@ -64,44 +64,44 @@ export const FinancialHealthWidget: React.FC<FinancialHealthWidgetProps> = ({
     const dashoffset = circumference - (scoreData.totalScore / 100) * circumference;
 
     return (
-        <Card className="p-6 flex flex-col items-center justify-center relative overflow-hidden">
+        <Card className="p-6 flex flex-col items-center justify-center relative overflow-hidden h-full">
 
             {/* Background Blob */}
-            <div className={`absolute top-0 right-0 w-32 h-32 bg-current opacity-5 rounded-full blur-3xl -mr-10 -mt-10 ${scoreData.color}`} />
+            <div className={`absolute top-0 right-0 w-24 h-24 bg-current opacity-5 rounded-full blur-3xl -mr-6 -mt-6 ${scoreData.color}`} />
 
-            <div className="relative w-32 h-32 flex items-center justify-center mb-4">
+            <div className="relative w-24 h-24 flex items-center justify-center mb-2">
                 {/* SVG Radial Progress */}
                 <svg className="w-full h-full transform -rotate-90">
                     <circle
-                        cx="64"
-                        cy="64"
-                        r="40"
+                        cx="48"
+                        cy="48"
+                        r="36"
                         stroke="currentColor"
-                        strokeWidth="8"
+                        strokeWidth="6"
                         fill="transparent"
                         className="text-slate-100"
                     />
                     <circle
-                        cx="64"
-                        cy="64"
-                        r="40"
+                        cx="48"
+                        cy="48"
+                        r="36"
                         stroke="currentColor"
-                        strokeWidth="8"
+                        strokeWidth="6"
                         fill="transparent"
-                        strokeDasharray={circumference}
-                        strokeDashoffset={dashoffset}
+                        strokeDasharray={2 * Math.PI * 36}
+                        strokeDashoffset={(2 * Math.PI * 36) - (scoreData.totalScore / 100) * (2 * Math.PI * 36)}
                         strokeLinecap="round"
                         className={`${scoreData.color} transition-all duration-1000 ease-out`}
                     />
                 </svg>
                 <div className="absolute flex flex-col items-center">
-                    <span className={`text-4xl font-black ${scoreData.color}`}>{scoreData.grade}</span>
-                    <span className="text-xs font-bold text-slate-400">CLASS</span>
+                    <span className={`text-2xl font-black ${scoreData.color}`}>{scoreData.grade}</span>
+                    <span className="text-[10px] font-bold text-slate-400">RANK</span>
                 </div>
             </div>
 
-            <div className="text-center">
-                <div className="text-2xl font-bold text-slate-800 mb-1">{scoreData.totalScore} <span className="text-sm font-medium text-slate-400">/ 100</span></div>
+            <div className="text-center w-full">
+                <div className="text-lg font-bold text-slate-800 mb-0">{scoreData.totalScore} <span className="text-xs font-medium text-slate-400">/ 100</span></div>
                 <div className={`text-sm font-bold opacity-80 mb-4 ${scoreData.color}`}>{scoreData.message}</div>
 
                 {/* Micro Stats */}

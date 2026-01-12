@@ -55,32 +55,43 @@ const BudgetStatusWidget = ({ transactions }: { transactions: Transaction[] }) =
             .sort((a, b) => b.percent - a.percent); // Sort by usage % descending
     }, [categories, budgets, transactions]);
 
-    if (budgetStatus.length === 0) return null;
+    // If no budgets, show empty state (do not return null)
+    const hasBudgets = budgetStatus.length > 0;
 
     return (
-        <Card className="p-6">
-            <h3 className="text-lg font-bold text-slate-800 mb-4">Budget Status</h3>
+        <Card className="p-6 h-full flex flex-col">
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Category Budgets</h3>
             <div className="space-y-4">
-                {budgetStatus.map((item) => (
-                    <div key={item.category.id} className="space-y-1">
-                        <div className="flex justify-between text-sm">
-                            <span className="font-medium text-slate-700 flex items-center gap-2">
-                                <span>{item.category.emoji}</span> {item.category.name}
-                            </span>
-                            <span className={item.isOver ? 'text-red-500 font-bold' : 'text-slate-500'}>
-                                {item.spent.toLocaleString()} / {item.budget.toLocaleString()}
-                            </span>
+                <div className="space-y-4">
+                    {hasBudgets ? (
+                        budgetStatus.map((item) => (
+                            <div key={item.category.id} className="space-y-1">
+                                <div className="flex justify-between text-sm">
+                                    <span className="font-medium text-slate-700 flex items-center gap-2">
+                                        <span>{item.category.emoji}</span> {item.category.name}
+                                    </span>
+                                    <span className={item.isOver ? 'text-red-500 font-bold' : 'text-slate-500'}>
+                                        {item.spent.toLocaleString()} / {item.budget.toLocaleString()}
+                                    </span>
+                                </div>
+                                <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all duration-500 ${item.isOver ? 'bg-red-500' :
+                                            item.percent > 90 ? 'bg-amber-500' : 'bg-emerald-500'
+                                            }`}
+                                        style={{ width: `${item.percent}%` }}
+                                    />
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="text-center py-8 text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                            <span className="text-2xl block mb-2">🏷️</span>
+                            <p className="text-sm font-medium">No budgets set.</p>
+                            <p className="text-xs text-slate-400 mt-1">Add budgets in Settings.</p>
                         </div>
-                        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                                className={`h-full rounded-full transition-all duration-500 ${item.isOver ? 'bg-red-500' :
-                                    item.percent > 90 ? 'bg-amber-500' : 'bg-emerald-500'
-                                    }`}
-                                style={{ width: `${item.percent}%` }}
-                            />
-                        </div>
-                    </div>
-                ))}
+                    )}
+                </div>
             </div>
         </Card>
     );
@@ -208,10 +219,10 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
             {/* Bento Grid Layout - Hero Section */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 auto-rows-[minmax(160px,auto)]">
 
-                {/* Safe to Spend - Hero Widget (2x2) */}
+                {/* Safe to Spend - Hero Widget (2x2 -> 2x1) */}
                 <div
                     onClick={onOpenBudgetModal}
-                    className="col-span-2 row-span-2 bg-gradient-to-br from-slate-900 to-slate-800 text-white p-8 rounded-3xl shadow-xl relative overflow-hidden group cursor-pointer hover:scale-[1.01] transition-all duration-300"
+                    className="col-span-2 bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-3xl shadow-xl relative overflow-hidden group cursor-pointer hover:scale-[1.01] transition-all duration-300 h-full flex flex-col justify-between"
                 >
                     <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:rotate-12 duration-500">
                         <span className="text-9xl">🛡️</span>
@@ -219,9 +230,9 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
 
                     <div className="relative z-10 flex flex-col h-full justify-between">
                         <div>
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2 text-emerald-400">
-                                    <span className="bg-emerald-400/20 p-1.5 rounded-full"><span className="text-sm">🛡️</span></span>
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3 text-emerald-400">
+                                    <span className="w-12 h-12 rounded-2xl bg-emerald-500/20 flex items-center justify-center text-2xl">🛡️</span>
                                     <span className="font-bold text-xs uppercase tracking-widest">Safe to Spend</span>
                                 </div>
                                 <span className={`text-xs font-bold px-2 py-1 rounded-full bg-white/10 ${burnRateColor}`}>
@@ -254,8 +265,8 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
 
 
 
-                {/* Info Widgets (1x1) */}
-                <div className="col-span-1 row-span-2">
+                {/* Financial Health Widget (Col 3 -> 1x1) */}
+                <div className="col-span-1 h-full">
                     <FinancialHealthWidget
                         monthlyBudget={monthlyBudget}
                         monthlyExpense={monthlyStats.expense}
@@ -264,48 +275,42 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
                     />
                 </div>
 
-                <Card className="col-span-1 flex flex-col justify-center cursor-pointer hover:bg-slate-50 border-slate-100 group" onClick={onNavigateToAssets}>
-                    <div className="flex items-center gap-2 text-slate-400 mb-3">
-                        <span className="bg-slate-100 p-1.5 rounded-full group-hover:bg-indigo-100 transition-colors">💼</span>
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Net Worth</span>
-                    </div>
-                    <p className="text-xl lg:text-2xl font-black text-slate-900 tracking-tight">{totalNetWorth.toLocaleString()}</p>
-                </Card>
-
-                {/* Replaced Expenses with generic filler or remove if layout shifts */}
-                {/* We need to fill the grid. We have 4x2 grid (8 cells).
-                    Hero uses 2x2 (4 cells).
-                    FinancialHealth uses 1x2 (2 cells).
-                    Remaining: 2 cells.
-                    We have Net Worth, Fixed Bills, Top Category. One must go or we adjust layout.
-                    Let's keep Net Worth and Fixed Bills.
-                */}
-
-                <Card className="col-span-1 flex flex-col justify-center border-slate-100 group">
-                    <div className="flex items-center gap-2 text-slate-400 mb-3">
-                        <span className="bg-slate-100 p-1.5 rounded-full group-hover:bg-amber-100 transition-colors">🗓️</span>
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Fixed Bills</span>
-                    </div>
-                    <p className="text-xl lg:text-2xl font-black text-slate-900 tracking-tight">{totalMonthlyFixed.toLocaleString()}</p>
-                </Card>
-
-                <Card className="col-span-1 flex flex-col justify-center border-slate-100 group">
-                    <div className="flex items-center gap-2 text-slate-400 mb-3">
-                        <span className="bg-slate-100 p-1.5 rounded-full group-hover:bg-emerald-100 transition-colors">📊</span>
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Top Category</span>
-                    </div>
-                    <p className="text-lg lg:text-xl font-bold text-slate-900 truncate tracking-tight">{categoryDataOverview[0]?.name || 'N/A'}</p>
-                </Card>
+                {/* Info Widgets Column (Col 4 - Merged for 1x1) */}
+                <div className="col-span-1 h-full">
+                    <Card className="h-full flex flex-col justify-between p-5 cursor-pointer hover:bg-slate-50 border-slate-100 group transition-all duration-300" onClick={onNavigateToAssets}>
+                        <div className="flex items-center justify-between border-b border-slate-50 pb-4 mb-2">
+                            <div className="flex items-center gap-3">
+                                <span className="w-10 h-10 rounded-xl bg-indigo-50 group-hover:bg-indigo-100 flex items-center justify-center text-lg transition-colors duration-300">💼</span>
+                                <div>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Net Worth</span>
+                                    <span className="text-lg font-black text-slate-900 tracking-tight">{totalNetWorth.toLocaleString()}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-2">
+                            <div className="flex items-center gap-3">
+                                <span className="w-10 h-10 rounded-xl bg-amber-50 group-hover:bg-amber-100 flex items-center justify-center text-lg transition-colors duration-300">🗓️</span>
+                                <div>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Fixed Bills</span>
+                                    <span className="text-lg font-black text-slate-900 tracking-tight">{totalMonthlyFixed.toLocaleString()}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
             </div>
+
+            {/* Middle Section: Flow & Budget */}
 
             {/* Middle Section: Flow & Budget */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
                 {/* Monthly Flow */}
-                <Card className="p-6 lg:p-8">
+                <Card className="p-6 lg:p-8 h-full flex flex-col justify-between">
                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                            <span className="bg-slate-100 p-1 rounded-lg">🌊</span> Monthly Flow
-                        </h3>
+                        <div className="flex items-center gap-3">
+                            <span className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-2xl">🌊</span>
+                            <h3 className="text-lg font-bold text-slate-900">Monthly Flow</h3>
+                        </div>
                         <Button
                             onClick={onOpenBudgetModal}
                             variant="ghost"
@@ -333,21 +338,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-xs font-bold text-slate-500 uppercase">
-                                <span>Budget Usage</span>
-                                <span>{Math.round((monthlyStats.expense / monthlyBudget) * 100)}%</span>
-                            </div>
-                            <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                                <div
-                                    className={`h-full w-full opacity-90 transition-all duration-700 ${monthlyStats.expense > monthlyBudget ? 'bg-rose-500' : 'bg-slate-800'}`}
-                                    style={{ width: `${Math.min((monthlyStats.expense / monthlyBudget) * 100, 100)}%` }}
-                                />
-                            </div>
-                            <div className="text-right text-xs text-slate-400 font-medium">
-                                limit: {monthlyBudget.toLocaleString()}
-                            </div>
-                        </div>
+
                     </div>
                 </Card>
 
@@ -402,7 +393,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
                     </Button>
                 </div>
             </Card>
-        </div>
+        </div >
     );
 };
 
