@@ -133,3 +133,6 @@
         - [x] **Import Wizard**: 블루 컬러 제거 -> Slate/Emerald 적용.
         - [x] **Modal**: 헤더 제거 및 버튼 둥글기(Rounded-2xl) 표준화.
         - [x] **Typography**: 하드코딩된 폰트 크기/색상 토큰화.
+
+    - [ ] **9순위: 모바일 대응 (Mobile Optimization)**
+        - [ ] **Import Wizard**: `grid-cols-3` -> `grid-cols-1`, 테이블 가로 스크롤, 버튼 스택 처리.
