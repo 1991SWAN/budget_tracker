@@ -118,7 +118,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
 
     const renderUploadStep = () => (
         <div
-            className={`flex flex-col items-center justify-center p-8 space-y-4 border-2 border-dashed rounded-3xl transition-all duration-200 ${isDragging
+            className={`flex flex-col items-center justify-center p-6 space-y-3 border-2 border-dashed rounded-2xl transition-all duration-200 ${isDragging
                 ? 'border-slate-900 bg-slate-50'
                 : 'border-slate-200 bg-slate-50/50 hover:border-slate-300'
                 }`}
@@ -126,26 +126,26 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
         >
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors ${isDragging ? 'bg-slate-900 text-white' : 'bg-white shadow-sm border border-slate-100 text-slate-900'
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isDragging ? 'bg-slate-900 text-white' : 'bg-white shadow-sm border border-slate-100 text-slate-900'
                 }`}>
-                <Upload size={28} />
+                <Upload size={24} />
             </div>
-            <div className="text-center space-y-1">
-                <h3 className={`text-lg font-bold ${isDragging ? 'text-slate-900' : 'text-slate-800'}`}>
+            <div className="text-center space-y-0.5">
+                <h3 className={`text-base font-bold ${isDragging ? 'text-slate-900' : 'text-slate-800'}`}>
                     {isDragging ? 'Drop file to upload' : 'Upload Bank Statement'}
                 </h3>
-                <p className="text-sm text-slate-400 font-medium">Supports CSV, XLS, XLSX</p>
+                <p className="text-xs text-slate-400 font-medium">Supports CSV, XLS, XLSX</p>
             </div>
-            <div className="flex justify-between pt-4">
+            <div className="flex flex-col-reverse sm:flex-row justify-between pt-2 gap-2 sm:gap-0 w-full">
                 <button
                     onClick={onClose}
-                    className="px-6 py-3 text-slate-400 hover:text-slate-600 font-bold transition-colors rounded-2xl hover:bg-slate-50"
+                    className="w-full sm:w-auto px-4 py-2.5 text-slate-400 hover:text-slate-600 font-bold transition-colors rounded-xl hover:bg-slate-50 text-sm"
                 >
                     Cancel
                 </button>
                 <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-8 py-3 bg-slate-900 text-white rounded-2xl hover:bg-slate-800 shadow-lg shadow-slate-200 transition-all font-bold pointer-events-auto"
+                    className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 shadow-lg shadow-slate-200 transition-all font-bold pointer-events-auto text-sm"
                 >
                     Select File
                 </button>
@@ -161,19 +161,19 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
     );
 
     const renderMappingStep = () => (
-        <div className="space-y-6">
-            <div className="bg-slate-50 p-5 rounded-2xl text-sm text-slate-600 border border-slate-100">
-                <p className="font-bold text-slate-900 mb-1">Assign Columns</p>
+        <div className="space-y-4">
+            <div className="bg-slate-50 p-4 rounded-xl text-xs text-slate-600 border border-slate-100">
+                <p className="font-bold text-slate-900 mb-0.5">Assign Columns</p>
                 Select which column corresponds to Date, Description, and Amount.
             </div>
 
             {/* Simplified Mapper UI */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Date Column</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Date Column</label>
                     <div className="relative">
                         <select
-                            className="w-full p-3 pl-3 pr-8 border border-slate-200 rounded-2xl bg-white appearance-none focus:ring-2 focus:ring-slate-900 focus:outline-none font-medium"
+                            className="w-full p-2.5 pl-3 pr-8 border border-slate-200 rounded-xl bg-white appearance-none focus:ring-2 focus:ring-slate-900 focus:outline-none font-medium text-sm"
                             value={mapping.dateIndex}
                             onChange={(e) => setMapping({ ...mapping, dateIndex: Number(e.target.value) })}
                         >
@@ -184,9 +184,9 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
                     </div>
                 </div>
                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Description</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Description</label>
                     <select
-                        className="w-full p-3 border border-slate-200 rounded-2xl bg-white focus:ring-2 focus:ring-slate-900 focus:outline-none font-medium"
+                        className="w-full p-2.5 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-slate-900 focus:outline-none font-medium text-sm"
                         value={mapping.memoIndex}
                         onChange={(e) => setMapping({ ...mapping, memoIndex: Number(e.target.value) })}
                     >
@@ -196,9 +196,9 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
                     </select>
                 </div>
                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Amount</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Amount</label>
                     <select
-                        className="w-full p-3 border border-slate-200 rounded-2xl bg-white focus:ring-2 focus:ring-slate-900 focus:outline-none font-medium"
+                        className="w-full p-2.5 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-slate-900 focus:outline-none font-medium text-sm"
                         value={mapping.amountIndex}
                         onChange={(e) => setMapping({ ...mapping, amountIndex: Number(e.target.value) })}
                     >
@@ -210,85 +210,91 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
             </div>
 
             {/* Preview Grid */}
-            <div className="border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-100">
-                        <tr>
-                            {rawData[0]?.map((_: any, idx: number) => (
-                                <th key={idx} className={`p-3 border-r border-slate-100 last:border-r-0 ${idx === mapping.dateIndex ? 'bg-emerald-50 text-emerald-700' :
-                                    idx === mapping.memoIndex ? 'bg-slate-100/80 text-slate-700' :
-                                        idx === mapping.amountIndex ? 'bg-indigo-50 text-indigo-700' : ''
-                                    }`}>
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] uppercase tracking-wider mb-0.5 opacity-70">Column {idx + 1}</span>
-                                        <span className="text-xs">
-                                            {idx === mapping.dateIndex ? '🗓 DATE' :
-                                                idx === mapping.memoIndex ? '📝 DESC' :
-                                                    idx === mapping.amountIndex ? '💰 AMT' : '-'}
-                                        </span>
-                                    </div>
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white">
-                        {rawData.slice(0, 5).map((row, rIdx) => (
-                            <tr key={rIdx} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
-                                {row.map((cell: any, cIdx: number) => (
-                                    <td key={cIdx} className="p-3 border-r border-slate-50 last:border-r-0 truncate max-w-[150px] font-medium text-slate-600">
-                                        {String(cell)}
-                                    </td>
+            <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm -mx-2 sm:mx-0">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left whitespace-nowrap">
+                        <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-100">
+                            <tr>
+                                {rawData[0]?.map((_: any, idx: number) => (
+                                    <th key={idx} className={`p-2 border-r border-slate-100 last:border-r-0 ${idx === mapping.dateIndex ? 'bg-emerald-50 text-emerald-700' :
+                                        idx === mapping.memoIndex ? 'bg-slate-100/80 text-slate-700' :
+                                            idx === mapping.amountIndex ? 'bg-indigo-50 text-indigo-700' : ''
+                                        }`}>
+                                        <div className="flex flex-col">
+                                            <span className="text-[9px] uppercase tracking-wider mb-0.5 opacity-70">Column {idx + 1}</span>
+                                            <span className="text-[10px]">
+                                                {idx === mapping.dateIndex ? '🗓 DATE' :
+                                                    idx === mapping.memoIndex ? '📝 DESC' :
+                                                        idx === mapping.amountIndex ? '💰 AMT' : '-'}
+                                            </span>
+                                        </div>
+                                    </th>
                                 ))}
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="bg-white">
+                            {rawData.slice(0, 5).map((row, rIdx) => (
+                                <tr key={rIdx} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
+                                    {row.map((cell: any, cIdx: number) => (
+                                        <td key={cIdx} className="p-2 border-r border-slate-50 last:border-r-0 max-w-[120px] truncate font-medium text-slate-600">
+                                            {String(cell)}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <div className="flex justify-between pt-2">
+            <div className="flex flex-col-reverse sm:flex-row justify-between pt-2 gap-2 sm:gap-0">
                 <button
                     onClick={onClose}
-                    className="px-6 py-3 text-slate-400 hover:text-slate-600 font-bold transition-colors rounded-2xl hover:bg-slate-50"
+                    className="w-full sm:w-auto px-4 py-2.5 text-slate-400 hover:text-slate-600 font-bold transition-colors rounded-xl hover:bg-slate-50 text-sm"
                 >
                     Cancel
                 </button>
                 <button
                     onClick={handleMappingConfirm}
-                    className="flex items-center gap-2 px-8 py-3 bg-slate-900 text-white rounded-2xl hover:bg-slate-800 shadow-lg shadow-slate-200 font-bold transition-all"
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 shadow-md shadow-slate-200 font-bold transition-all text-sm"
                 >
-                    Next Step <ArrowRight size={18} />
+                    Next Step <ArrowRight size={16} />
                 </button>
             </div>
         </div>
     );
 
     const renderPreviewStep = () => (
-        <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-                <div className="bg-emerald-50 p-5 rounded-3xl border border-emerald-100/50">
-                    <div className="flex items-center gap-2 text-emerald-700 font-black text-2xl mb-1">
-                        <Check size={24} className="bg-emerald-200 p-1 rounded-full text-emerald-800" />
-                        {validTxs.length}
+        <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100/50 flex items-center justify-between">
+                    <div>
+                        <div className="flex items-center gap-2 text-emerald-700 font-black text-xl mb-0.5">
+                            <Check size={20} className="bg-emerald-200 p-0.5 rounded-full text-emerald-800" />
+                            {validTxs.length}
+                        </div>
+                        <p className="text-xs font-bold text-emerald-600/80">Valid Transactions</p>
                     </div>
-                    <p className="text-sm font-bold text-emerald-600/80">Valid Transactions</p>
                 </div>
-                <div className="bg-rose-50 p-5 rounded-3xl border border-rose-100/50">
-                    <div className="flex items-center gap-2 text-rose-700 font-black text-2xl mb-1">
-                        <AlertTriangle size={24} className="bg-rose-200 p-1 rounded-full text-rose-800" />
-                        {invalidRows.length}
+                <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100/50 flex items-center justify-between">
+                    <div>
+                        <div className="flex items-center gap-2 text-rose-700 font-black text-xl mb-0.5">
+                            <AlertTriangle size={20} className="bg-rose-200 p-0.5 rounded-full text-rose-800" />
+                            {invalidRows.length}
+                        </div>
+                        <p className="text-xs font-bold text-rose-600/80">Skipped / Invalid</p>
                     </div>
-                    <p className="text-sm font-bold text-rose-600/80">Skipped / Invalid</p>
                 </div>
             </div>
 
             {/* Invalid List */}
             {invalidRows.length > 0 && (
-                <div className="border border-slate-100 rounded-3xl p-5 bg-slate-50/50 max-h-[160px] overflow-y-auto custom-scrollbar">
-                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-wider">Issues Found</h4>
-                    <ul className="space-y-2">
+                <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50 max-h-[140px] overflow-y-auto custom-scrollbar">
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-wider">Issues Found</h4>
+                    <ul className="space-y-1.5">
                         {invalidRows.map((err, idx) => (
-                            <li key={idx} className="text-xs text-rose-600 flex items-start gap-2 bg-white p-2 rounded-xl border border-rose-50">
-                                <span className="font-mono bg-rose-50 px-1.5 py-0.5 rounded text-[10px] font-bold">ROW {err.row}</span>
+                            <li key={idx} className="text-[10px] text-rose-600 flex items-start gap-2 bg-white p-1.5 rounded-lg border border-rose-50">
+                                <span className="font-mono bg-rose-50 px-1 py-0.5 rounded text-[9px] font-bold">ROW {err.row}</span>
                                 <span className="font-medium">{err.reason}</span>
                             </li>
                         ))}
@@ -296,20 +302,20 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
                 </div>
             )}
 
-            <div className="pt-2 flex justify-between items-center">
+            <div className="pt-2 flex flex-col-reverse sm:flex-row justify-between items-center gap-2 sm:gap-0">
                 <button
                     onClick={onClose}
-                    className="px-6 py-3 text-slate-400 hover:text-slate-600 font-bold transition-colors rounded-2xl hover:bg-slate-50"
+                    className="w-full sm:w-auto px-4 py-2.5 text-slate-400 hover:text-slate-600 font-bold transition-colors rounded-xl hover:bg-slate-50 text-sm"
                 >
                     Cancel
                 </button>
-                <div className="flex gap-2">
-                    <button onClick={() => setStep('MAPPING')} className="px-6 py-3 text-slate-500 hover:text-slate-800 font-bold transition-colors rounded-2xl hover:bg-slate-50">
+                <div className="flex flex-col-reverse sm:flex-row gap-2 w-full sm:w-auto">
+                    <button onClick={() => setStep('MAPPING')} className="w-full sm:w-auto px-4 py-2.5 text-slate-500 hover:text-slate-800 font-bold transition-colors rounded-xl hover:bg-slate-50 text-sm">
                         Back
                     </button>
                     <button
                         onClick={handleFinalConfirm}
-                        className="px-8 py-3 bg-slate-900 text-white rounded-2xl shadow-lg shadow-slate-200 hover:bg-slate-800 hover:shadow-xl transition-all font-bold"
+                        className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 text-white rounded-xl shadow-md shadow-slate-200 hover:bg-slate-800 hover:shadow-xl transition-all font-bold text-sm"
                     >
                         Confirm Import ({validTxs.length})
                     </button>
@@ -321,29 +327,29 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
     // --- Main Render ---
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] ring-1 ring-white/20">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-3 animate-in fade-in duration-200">
+            <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh] ring-1 ring-white/20">
                 {/* Clean Header (No bottom border, just spacing) */}
-                <div className="px-8 pt-8 pb-4 flex items-start justify-between">
+                <div className="px-5 pt-5 pb-2 sm:px-6 sm:pt-6 sm:pb-3 flex items-start justify-between">
                     <div>
-                        <h2 className="text-2xl font-black text-slate-900">Import Transactions</h2>
-                        <p className="text-sm text-slate-400 font-medium mt-1">Target Account: <span className="text-slate-600">{assetName}</span></p>
+                        <h2 className="text-lg sm:text-xl font-black text-slate-900">Import Transactions</h2>
+                        <p className="text-xs text-slate-400 font-medium mt-0.5">Target Account: <span className="text-slate-600">{assetName}</span></p>
                     </div>
                     {/* Header X button removed per Headless policy */}
                 </div>
 
                 {/* Stepper */}
-                <div className="px-8 mb-6">
-                    <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-2xl">
+                <div className="px-5 sm:px-6 mb-4">
+                    <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl">
                         {['Upload', 'Map Columns', 'Preview'].map((s, i) => {
                             const isActive = (step === 'UPLOAD' && i === 0) || (step === 'MAPPING' && i === 1) || (step === 'PREVIEW' && i === 2);
                             const isDone = (step === 'MAPPING' && i === 0) || (step === 'PREVIEW' && i <= 1);
 
                             return (
-                                <div key={s} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all ${isActive ? 'bg-white text-slate-900 shadow-sm' :
+                                <div key={s} className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${isActive ? 'bg-white text-slate-900 shadow-sm' :
                                     isDone ? 'text-emerald-600' : 'text-slate-400'
                                     }`}>
-                                    {isDone && <Check size={12} strokeWidth={3} />}
+                                    {isDone && <Check size={10} strokeWidth={3} />}
                                     <span>{s}</span>
                                 </div>
                             );
@@ -352,7 +358,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
                 </div>
 
                 {/* Body */}
-                <div className="px-8 pb-8 overflow-y-auto custom-scrollbar">
+                <div className="px-5 sm:px-6 pb-6 overflow-y-auto custom-scrollbar">
                     {step === 'UPLOAD' && renderUploadStep()}
                     {step === 'MAPPING' && renderMappingStep()}
                     {step === 'PREVIEW' && renderPreviewStep()}
