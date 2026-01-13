@@ -350,7 +350,9 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
     const getColumnRole = (colIdx: number) => {
         if (mapping.dateIndex === colIdx) return 'date';
         if (mapping.memoIndex === colIdx) return 'memo';
-        if (mapping.amountIndex === colIdx) return 'amount';
+        if (mapping.amountIndex === colIdx) return 'amount'; // General Mode
+        if (mapping.amountInIndex === colIdx) return 'amountIn'; // Banking Mode
+        if (mapping.amountOutIndex === colIdx) return 'amountOut'; // Banking Mode
         if (mapping.assetIndex === colIdx) return 'asset';
         if (mapping.categoryIndex === colIdx) return 'category';
         if (mapping.merchantIndex === colIdx) return 'merchant';
@@ -364,6 +366,8 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
             if (next.dateIndex === idx) next.dateIndex = -1;
             if (next.memoIndex === idx) next.memoIndex = -1;
             if (next.amountIndex === idx) next.amountIndex = -1;
+            if (next.amountInIndex === idx) next.amountInIndex = -1;
+            if (next.amountOutIndex === idx) next.amountOutIndex = -1;
             if (next.assetIndex === idx) next.assetIndex = -1;
             if (next.categoryIndex === idx) next.categoryIndex = -1;
             if (next.merchantIndex === idx) next.merchantIndex = -1;
@@ -372,6 +376,8 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
             if (role === 'date') next.dateIndex = idx;
             if (role === 'memo') next.memoIndex = idx;
             if (role === 'amount') next.amountIndex = idx;
+            if (role === 'amountIn') next.amountInIndex = idx;
+            if (role === 'amountOut') next.amountOutIndex = idx;
             if (role === 'asset') next.assetIndex = idx;
             if (role === 'category') next.categoryIndex = idx;
             if (role === 'merchant') next.merchantIndex = idx;
@@ -407,6 +413,12 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
                                     } else if (role === 'amount') {
                                         containerClass = 'bg-indigo-50 border-indigo-200 shadow-sm';
                                         labelClass = 'text-indigo-700 opacity-90';
+                                    } else if (role === 'amountIn') {
+                                        containerClass = 'bg-blue-50 border-blue-200 shadow-sm';
+                                        labelClass = 'text-blue-700 opacity-90';
+                                    } else if (role === 'amountOut') {
+                                        containerClass = 'bg-rose-50 border-rose-200 shadow-sm';
+                                        labelClass = 'text-rose-700 opacity-90';
                                     } else if (role === 'memo') {
                                         containerClass = 'bg-slate-100 border-slate-200 shadow-sm';
                                         labelClass = 'text-slate-700 opacity-90';
@@ -438,18 +450,31 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
                                                         : 'bg-white ring-1 ring-black/5 hover:shadow-md'
                                                         } ${role === 'date' ? 'text-emerald-700' :
                                                             role === 'amount' ? 'text-indigo-700' :
-                                                                role === 'memo' ? 'text-slate-700' :
-                                                                    role === 'asset' ? 'text-blue-700' :
-                                                                        role === 'category' ? 'text-amber-700' :
-                                                                            role === 'merchant' ? 'text-violet-700' : ''}`}
+                                                                role === 'amountIn' ? 'text-blue-600' :
+                                                                    role === 'amountOut' ? 'text-rose-600' :
+                                                                        role === 'memo' ? 'text-slate-700' :
+                                                                            role === 'asset' ? 'text-blue-700' :
+                                                                                role === 'category' ? 'text-amber-700' :
+                                                                                    role === 'merchant' ? 'text-violet-700' : ''}`}
                                                 >
                                                     <option value="ignore">Skip</option>
                                                     <option value="date">Date</option>
                                                     <option value="memo">Description</option>
-                                                    <option value="amount">Amount</option>
+
+                                                    {/* Conditional Options based on Target Asset */}
+                                                    {targetAssetId === 'dynamic' ? (
+                                                        <option value="amount">Amount (+/-)</option>
+                                                    ) : (
+                                                        <>
+                                                            <option value="amountOut">Withdrawal (-)</option>
+                                                            <option value="amountIn">Deposit (+)</option>
+                                                        </>
+                                                    )}
+
                                                     <option value="category">Category</option>
                                                     <option value="merchant">Merchant</option>
-                                                    <option value="asset">Account</option>
+                                                    {/* Only show Account mapping in Dynamic Mode */}
+                                                    {targetAssetId === 'dynamic' && <option value="asset">Account</option>}
                                                 </select>
                                             </div>
                                         </th>
@@ -464,7 +489,10 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
                                         const role = getColumnRole(cIdx);
                                         let cellClass = 'text-slate-500';
                                         if (role === 'date') cellClass = 'text-emerald-700 font-medium';
+                                        if (role === 'date') cellClass = 'text-emerald-700 font-medium';
                                         if (role === 'amount') cellClass = 'text-indigo-700 font-medium';
+                                        if (role === 'amountIn') cellClass = 'text-blue-600 font-medium';
+                                        if (role === 'amountOut') cellClass = 'text-rose-600 font-medium';
                                         if (role === 'memo') cellClass = 'text-slate-900';
 
                                         return (

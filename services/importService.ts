@@ -4,6 +4,8 @@ import { read, utils } from 'xlsx';
 export interface ColumnMapping {
   dateIndex: number;
   amountIndex: number;
+  amountInIndex?: number;
+  amountOutIndex?: number;
   memoIndex: number;
   typeIndex?: number;
   assetIndex?: number;
@@ -231,7 +233,46 @@ export const ImportService = {
         // 1. Extract Values
         const dateVal = row[mapping.dateIndex];
         const memoVal = row[mapping.memoIndex];
-        const amountVal = row[mapping.amountIndex];
+
+        // Amount Resolution (Banking vs General)
+        let amount = 0;
+        let determinedType: TransactionType | null = null;
+
+        if (mapping.amountInIndex !== undefined && mapping.amountInIndex >= 0 && mapping.amountOutIndex !== undefined && mapping.amountOutIndex >= 0) {
+          // BANKING MODE: Dual Columns
+          const inVal = row[mapping.amountInIndex];
+          const outVal = row[mapping.amountOutIndex];
+
+          const parseAmt = (v: any) => {
+            if (typeof v === 'number') return v;
+            return parseFloat(String(v).replace(/[^0-9.-]/g, '')) || 0;
+          };
+
+          const inAmount = parseAmt(inVal);
+          const outAmount = parseAmt(outVal);
+
+          if (inAmount > 0) {
+            amount = inAmount;
+            determinedType = TransactionType.INCOME;
+          } else if (outAmount > 0) {
+            amount = outAmount;
+            determinedType = TransactionType.EXPENSE;
+          } else {
+            // Both zero or empty -> Skip or treat as zero?
+            // If both zero, amount remains 0.
+          }
+        } else {
+          // GENERAL MODE: Single Column
+          const amountVal = row[mapping.amountIndex];
+          if (typeof amountVal === 'number') {
+            amount = amountVal;
+          } else {
+            const cleanAmt = String(amountVal).replace(/[^0-9.-]/g, '');
+            const parsedFloat = parseFloat(cleanAmt);
+            if (isNaN(parsedFloat)) throw new Error("Invalid Amount");
+            amount = parsedFloat;
+          }
+        }
 
         // Asset Resolution
         let currentAssetId = defaultAssetId;
@@ -375,16 +416,9 @@ export const ImportService = {
           throw new Error(`Invalid Date Format: "${dateVal}"`);
         }
 
-        // 3. Validate & Parse Amount
-        let amount = 0;
-        if (typeof amountVal === 'number') {
-          amount = amountVal;
-        } else {
-          const cleanAmt = String(amountVal).replace(/[^0-9.-]/g, '');
-          const parsedFloat = parseFloat(cleanAmt);
-          if (isNaN(parsedFloat)) throw new Error("Invalid Amount");
-          amount = parsedFloat;
-        }
+        // 3. Validate & Parse Amount - MOVED UP to Step 1 for Banking Mode support
+        // Only validation remains here if needed, but we essentially parsed it above.
+        if (isNaN(amount)) throw new Error("Invalid Amount");
 
         // 4. Memo
         const memo = String(memoVal || '').trim();
@@ -418,7 +452,12 @@ export const ImportService = {
 
         // 7. Build Object
         // Fix: Determine type from sign, then store absolute amount.
-        const type = amount < 0 ? TransactionType.EXPENSE : TransactionType.INCOME;
+        let type = TransactionType.EXPENSE;
+        if (determinedType) {
+          type = determinedType;
+        } else {
+          type = amount < 0 ? TransactionType.EXPENSE : TransactionType.INCOME;
+        }
         const finalAmount = Math.abs(amount);
 
         const hashKey = ImportService.generateHashKey(currentAssetId, timestamp, finalAmount, memo);
