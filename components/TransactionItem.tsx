@@ -110,7 +110,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     };
 
     return (
-        <div className="bg-white border-b border-slate-100 last:border-0 transition-all hover:bg-slate-50">
+        <div className="w-full">
             {/* Main Row */}
             <div
                 className="grid grid-cols-[50px_1fr_auto] lg:grid-cols-[60px_1.5fr_1.2fr_1fr] gap-2 py-3 px-4 items-center cursor-pointer"
@@ -118,7 +118,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
             >
                 {/* Col 1: Time */}
                 <div className="text-center">
-                    <span className="text-xs font-bold text-slate-400 font-mono tracking-tighter block">{timeStr}</span>
+                    <span className="text-xs font-bold text-slate-400 font-mono tracking-tighter block opacity-60">{timeStr}</span>
                 </div>
 
                 {/* Col 2: Merchant & Memo & Asset (Mobile Center: 2 Columns) */}
@@ -180,7 +180,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
                     {/* Inner Col 2: Asset Name Badge (Mobile Only) */}
                     <div className="lg:hidden shrink-0">
-                        <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                        <span className="text-[10px] text-slate-400 font-medium px-1.5 py-0.5">
                             {asset?.name || 'Unknown'}
                         </span>
                     </div>
@@ -188,16 +188,16 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
                 {/* Col 3: Center 2 (Desktop Only - Category, Asset, Installment Badge) */}
                 <div className="hidden lg:flex flex-nowrap gap-2 items-center">
-                    <span className={`px-2 py-1 bg-white border border-slate-200 ${categoryColorClass} rounded-lg text-[10px] font-bold whitespace-nowrap flex items-center h-fit shrink-0 gap-1`}>
+                    <span className={`px-2 py-0.5 bg-slate-50/50 border border-slate-100 ${categoryColorClass} rounded-md text-[11px] font-bold whitespace-nowrap flex items-center h-fit shrink-0 gap-1`}>
                         <span>{categoryEmoji}</span>
                         <span>{categoryName}</span>
                     </span>
                     {transaction.installment && (
-                        <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold whitespace-nowrap border border-blue-100 flex items-center h-fit shrink-0">
-                            {transaction.installment.totalMonths}개월 할부
+                        <span className="px-2 py-0.5 bg-blue-50/50 text-blue-600 rounded-md text-[10px] font-bold whitespace-nowrap flex items-center h-fit shrink-0">
+                            {transaction.installment.totalMonths}개월
                         </span>
                     )}
-                    <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap px-1 shrink-0 truncate max-w-[120px]">
+                    <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap px-1 shrink-0 truncate max-w-[120px]">
                         {asset?.name || 'Unknown'}
                     </span>
                 </div>
@@ -210,7 +210,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
                     {/* Installment Monthly Amount (Visible on Mobile & Desktop) */}
                     {transaction.installment && transaction.installment.totalMonths > 1 && (
-                        <p className="text-[11px] font-bold text-slate-500 mt-0.5">
+                        <p className="text-[10px] font-medium text-slate-400 mt-0.5">
                             (월 {Math.round(transaction.amount / transaction.installment.totalMonths).toLocaleString()})
                         </p>
                     )}
@@ -219,12 +219,12 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
             {/* Mobile Expanded Details */}
             {isExpanded && (
-                <div className="lg:hidden px-4 pb-3 pt-0 bg-slate-50/50 border-t border-slate-100/50 animate-in slide-in-from-top-1">
+                <div className="lg:hidden px-4 pb-3 pt-0 bg-slate-50/30 animate-in slide-in-from-top-1">
                     <div className="flex flex-wrap gap-2 my-2">
                         {/* Mobile Expanded: Memo (Moved here) */}
                         {transaction.merchant && transaction.memo && (
-                            <div className="w-fit max-w-full text-[10px] text-amber-700 mb-0 px-2 py-1 bg-amber-50 border border-amber-100/50 rounded-lg break-words shadow-sm flex items-center">
-                                <span className="font-bold mr-1 text-amber-600/70 shrink-0">Memo</span>
+                            <div className="w-fit max-w-full text-[10px] text-slate-600 mb-0 px-2 py-1 bg-white border border-slate-100 rounded-lg break-words shadow-sm flex items-center">
+                                <span className="font-bold mr-1 text-slate-400 shrink-0">Memo</span>
                                 <span>{transaction.memo}</span>
                             </div>
                         )}
@@ -246,19 +246,19 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
 
 
-                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100/50">
                         <Button
                             onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}
                             variant="outline"
                             size="sm"
-                            className="rounded-2xl text-xs font-bold shadow-sm h-auto py-1.5"
+                            className="rounded-xl text-xs font-bold shadow-sm h-auto py-1.5 bg-white border-slate-200"
                         >
                             Edit
                         </Button>
                         <Button
                             onClick={(e) => { e.stopPropagation(); if (isConfirmingDelete) onDelete(transaction); else setIsConfirmingDelete(true); }}
                             size="sm"
-                            className={`rounded-2xl text-xs font-bold shadow-sm transition-colors h-auto py-1.5 ${isConfirmingDelete
+                            className={`rounded-xl text-xs font-bold shadow-sm transition-colors h-auto py-1.5 ${isConfirmingDelete
                                 ? 'bg-rose-600 text-white hover:bg-rose-700'
                                 : 'bg-white border border-rose-100 text-rose-600 hover:bg-rose-50'
                                 }`}

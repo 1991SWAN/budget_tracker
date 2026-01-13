@@ -96,47 +96,49 @@ const TransactionList: React.FC<TransactionListProps> = ({
     }
 
     return (
-        <div className="h-[calc(100vh-280px)] bg-surface rounded-3xl border border-slate-200/50 max-w-3xl mx-auto backdrop-blur-sm">
-            {/* Height calculation expects header/filters above. Adjust as needed or use flex-grow in parent */}
-            <GroupedVirtuoso
-                style={{ height: '100%' }}
-                groupCounts={groupCounts}
-                context={{ categories, assets, onEdit, onDelete }}
-                groupContent={(index) => {
-                    const dateStr = groupLabels[index];
-                    const dateLabel = getDateLabel(dateStr);
-                    const dailyTotal = groupDailyTotals[index];
+        <div className="h-[calc(100vh-280px)] w-full">
+            {/* Minimal List Container */}
+            <div className="h-full bg-white md:rounded-3xl border-y md:border border-slate-200 shadow-sm overflow-hidden">
+                <GroupedVirtuoso
+                    style={{ height: '100%' }}
+                    groupCounts={groupCounts}
+                    context={{ categories, assets, onEdit, onDelete }}
+                    groupContent={(index) => {
+                        const dateStr = groupLabels[index];
+                        const dateLabel = getDateLabel(dateStr);
+                        const dailyTotal = groupDailyTotals[index];
 
-                    return (
-                        <div className="bg-surface/95 backdrop-blur-md px-5 py-3 border-b border-slate-200/50 flex justify-between items-end sticky top-0 z-10 shadow-sm transition-all">
-                            <span className="text-xs font-black text-muted uppercase tracking-widest pl-1">
-                                {dateLabel}
-                            </span>
-                            <span className={`text-xs font-bold ${dailyTotal > 0 ? 'text-emerald-600' : dailyTotal < 0 ? 'text-destructive' : 'text-muted'}`}>
-                                {dailyTotal !== 0 ? (dailyTotal > 0 ? '+' : '') + dailyTotal.toLocaleString() : ''}
-                            </span>
-                        </div>
-                    );
-                }}
-                itemContent={(index, _, __, context) => {
-                    const tx = sortedData[index];
-                    if (!tx) return <></>; // Safety fallback
-                    const { categories, assets, onEdit, onDelete } = context;
+                        return (
+                            <div className="bg-slate-50/95 backdrop-blur-md px-6 py-2 border-b border-slate-100 flex justify-between items-center sticky top-0 z-10">
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                    {dateLabel}
+                                </span>
+                                <span className={`text-xs font-bold ${dailyTotal > 0 ? 'text-emerald-600' : dailyTotal < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                                    {dailyTotal !== 0 ? (dailyTotal > 0 ? '+' : '') + dailyTotal.toLocaleString() : '-'}
+                                </span>
+                            </div>
+                        );
+                    }}
+                    itemContent={(index, _, __, context) => {
+                        const tx = sortedData[index];
+                        if (!tx) return <></>;
+                        const { categories, assets, onEdit, onDelete } = context;
 
-                    return (
-                        <Card className="mx-3 my-1 border-slate-100 overflow-hidden first:mt-2 last:mb-4" noPadding>
-                            <TransactionItem
-                                transaction={tx}
-                                asset={assets.find(a => a.id === tx.assetId)}
-                                toAsset={tx.toAssetId ? assets.find(a => a.id === tx.toAssetId) : undefined}
-                                categories={categories}
-                                onEdit={onEdit}
-                                onDelete={onDelete}
-                            />
-                        </Card>
-                    );
-                }}
-            />
+                        return (
+                            <div className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
+                                <TransactionItem
+                                    transaction={tx}
+                                    asset={assets.find(a => a.id === tx.assetId)}
+                                    toAsset={tx.toAssetId ? assets.find(a => a.id === tx.toAssetId) : undefined}
+                                    categories={categories}
+                                    onEdit={onEdit}
+                                    onDelete={onDelete}
+                                />
+                            </div>
+                        );
+                    }}
+                />
+            </div>
         </div>
     );
 };
