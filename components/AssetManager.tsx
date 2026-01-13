@@ -167,7 +167,8 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
       } else if (formData.type === AssetType.CREDIT_CARD) {
         assetToSave.creditDetails = creditForm as CreditCardDetails;
         assetToSave.limit = Number(creditForm.limit);
-        if (assetToSave.balance > 0) assetToSave.balance = -assetToSave.balance;
+        // Only flip sign on creation. If editing, preserve existing sign (even if positive, to avoid phantom diffs).
+        if (!isEditing && assetToSave.balance > 0) assetToSave.balance = -assetToSave.balance;
       } else if (formData.type === AssetType.LOAN) {
         assetToSave.loanDetails = loanForm as LoanDetails;
         if (assetToSave.balance > 0) assetToSave.balance = -assetToSave.balance;
