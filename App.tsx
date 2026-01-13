@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useToast } from './contexts/ToastContext';
 import ErrorBoundary from "./components/ErrorBoundary";
 
@@ -48,6 +48,9 @@ const App: React.FC = () => {
 
 
   const [filterType, setFilterType] = useState<TransactionType | 'ALL'>('ALL');
+  const [filterCategories, setFilterCategories] = useState<string[]>([]);
+  const [filterAssets, setFilterAssets] = useState<string[]>([]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [dateRange, setDateRange] = useState<{ start: string, end: string } | null>(null);
 
@@ -102,13 +105,55 @@ const App: React.FC = () => {
   }, []);
 
   // Hooks must be at top level
-  const searchedTransactions = useTransactionSearch(transactions, searchTerm);
-
-
-
+  // Note: We moved search filtering to the main filter block below to combine logic
+  // const searchedTransactions = useTransactionSearch(transactions, searchTerm); 
 
   const { addTransaction: handleAddTransaction, addTransactions: handleAddTransactions, updateTransaction: handleUpdateTransaction, deleteTransaction: handleDeleteTransaction } = useTransactionManager(transactions, setTransactions, assets, setAssets);
   const { categories } = useCategoryManager();
+
+  // --- Main Filtering Logic ---
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      // 1. Search (Name, Memo, Amount)
+      if (searchTerm) {
+        const lowerTerm = searchTerm.toLowerCase();
+        const assetName = assets.find(a => a.id === t.assetId)?.name.toLowerCase() || '';
+        const categoryName = categories.find(c => c.id === t.category)?.name.toLowerCase() || t.category.toLowerCase();
+
+        const matchesSearch =
+          (t.merchant && t.merchant.toLowerCase().includes(lowerTerm)) ||
+          (t.memo && t.memo.toLowerCase().includes(lowerTerm)) ||
+          t.amount.toString().includes(lowerTerm) ||
+          assetName.includes(lowerTerm) ||
+          categoryName.includes(lowerTerm);
+
+        if (!matchesSearch) return false;
+      }
+
+      // 2. Date Range
+      if (dateRange) {
+        if (t.date < dateRange.start || t.date > dateRange.end) return false;
+      }
+
+      // 3. Type Filter
+      if (filterType !== 'ALL' && t.type !== filterType) return false;
+
+      // 4. Category Filter (Multi-select OR)
+      if (filterCategories.length > 0) {
+        // Check both ID and Name (for legacy compatibility)
+        const matchesCat = filterCategories.includes(t.category) ||
+          categories.some(c => c.id === t.category && filterCategories.includes(c.name));
+        if (!matchesCat) return false;
+      }
+
+      // 5. Asset Filter (Multi-select OR)
+      if (filterAssets.length > 0) {
+        if (!filterAssets.includes(t.assetId)) return false;
+      }
+
+      return true;
+    });
+  }, [transactions, searchTerm, dateRange, filterType, filterCategories, filterAssets, assets, categories]);
 
   const loadData = async () => {
     try {
@@ -607,22 +652,18 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Search Box */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden px-4 py-3 flex gap-2 items-center">
-            <span className="text-slate-400">🔍</span>
-            <input
-              type="text"
-              placeholder="Search transactions..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full bg-transparent outline-none text-sm font-medium placeholder:text-slate-300"
-            />
-          </div>
-
-          {/* Filter Chips */}
+          {/* Integrated Filter Toolbar */}
           <FilterBar
-            currentFilter={filterCategory}
-            onFilterChange={setFilterCategory}
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+            filterType={filterType}
+            onTypeChange={setFilterType}
+            filterCategories={filterCategories}
+            onCategoriesChange={setFilterCategories}
+            filterAssets={filterAssets}
+            onAssetsChange={setFilterAssets}
             assets={assets}
             categories={categories}
           />
@@ -631,35 +672,14 @@ const App: React.FC = () => {
         {/* Transaction List */}
         <ErrorBoundary>
           <TransactionList
-            transactions={searchedTransactions.filter(t => {
-              // 1. (Search is now handled by hook above)
-
-              // 2. Date Filter
-              const matchesDate = dateRange ? (t.date >= dateRange.start && t.date <= dateRange.end) : true;
-
-              // 3. Category/Type Filter
-              let matchesType = true;
-              if (filterCategory === 'ALL') matchesType = true;
-              else if (Object.values(TransactionType).includes(filterCategory as any)) {
-                matchesType = t.type === filterCategory;
-              } else {
-                // Check if it's an Asset ID
-                const isAsset = assets.some(a => a.id === filterCategory);
-                if (isAsset) {
-                  matchesType = t.assetId === filterCategory || t.toAssetId === filterCategory;
-                } else {
-                  // Assume it's a Category ID (or legacy category name)
-                  matchesType = t.category === filterCategory;
-                }
-              }
-
-              return matchesDate && matchesType;
-            })}
+            transactions={filteredTransactions}
             assets={assets}
-            onEdit={(t) => { setEditingTransaction(t); setShowSmartInput(true); }}
-            onDelete={handleDeleteTransaction}
-            searchTerm={searchTerm}
             categories={categories}
+            onEdit={(tx) => {
+              setEditingTransaction(tx);
+              setShowSmartInput(true);
+            }}
+            onDelete={handleDeleteTransaction}
           />
         </ErrorBoundary>
       </div>}
