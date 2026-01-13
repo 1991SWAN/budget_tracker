@@ -356,6 +356,8 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
         if (mapping.assetIndex === colIdx) return 'asset';
         if (mapping.categoryIndex === colIdx) return 'category';
         if (mapping.merchantIndex === colIdx) return 'merchant';
+        if (mapping.tagIndex === colIdx) return 'tag';
+        if (mapping.installmentIndex === colIdx) return 'installment';
         return 'ignore';
     };
 
@@ -371,6 +373,8 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
             if (next.assetIndex === idx) next.assetIndex = -1;
             if (next.categoryIndex === idx) next.categoryIndex = -1;
             if (next.merchantIndex === idx) next.merchantIndex = -1;
+            if (next.tagIndex === idx) next.tagIndex = -1;
+            if (next.installmentIndex === idx) next.installmentIndex = -1;
 
             // 2. Assign new role
             if (role === 'date') next.dateIndex = idx;
@@ -381,6 +385,8 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
             if (role === 'asset') next.assetIndex = idx;
             if (role === 'category') next.categoryIndex = idx;
             if (role === 'merchant') next.merchantIndex = idx;
+            if (role === 'tag') next.tagIndex = idx;
+            if (role === 'installment') next.installmentIndex = idx;
 
             return next;
         });
@@ -431,6 +437,12 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
                                     } else if (role === 'merchant') {
                                         containerClass = 'bg-violet-50 border-violet-200 shadow-sm';
                                         labelClass = 'text-violet-700 opacity-90';
+                                    } else if (role === 'tag') {
+                                        containerClass = 'bg-pink-50 border-pink-200 shadow-sm';
+                                        labelClass = 'text-pink-700 opacity-90';
+                                    } else if (role === 'installment') {
+                                        containerClass = 'bg-orange-50 border-orange-200 shadow-sm';
+                                        labelClass = 'text-orange-700 opacity-90';
                                     }
 
                                     return (
@@ -455,7 +467,9 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
                                                                         role === 'memo' ? 'text-slate-700' :
                                                                             role === 'asset' ? 'text-blue-700' :
                                                                                 role === 'category' ? 'text-amber-700' :
-                                                                                    role === 'merchant' ? 'text-violet-700' : ''}`}
+                                                                                    role === 'merchant' ? 'text-violet-700' :
+                                                                                        role === 'tag' ? 'text-pink-700' :
+                                                                                            role === 'installment' ? 'text-orange-700' : ''}`}
                                                 >
                                                     <option value="ignore">Skip</option>
                                                     <option value="date">Date</option>
@@ -473,6 +487,9 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
 
                                                     <option value="category">Category</option>
                                                     <option value="merchant">Merchant</option>
+                                                    <option value="tag">Tag (#)</option>
+                                                    <option value="installment">Installment (Months)</option>
+
                                                     {/* Only show Account mapping in Dynamic Mode */}
                                                     {targetAssetId === 'dynamic' && <option value="asset">Account</option>}
                                                 </select>
@@ -489,11 +506,12 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
                                         const role = getColumnRole(cIdx);
                                         let cellClass = 'text-slate-500';
                                         if (role === 'date') cellClass = 'text-emerald-700 font-medium';
-                                        if (role === 'date') cellClass = 'text-emerald-700 font-medium';
-                                        if (role === 'amount') cellClass = 'text-indigo-700 font-medium';
-                                        if (role === 'amountIn') cellClass = 'text-blue-600 font-medium';
-                                        if (role === 'amountOut') cellClass = 'text-rose-600 font-medium';
+                                        if (role === 'amount') cellClass = 'text-indigo-700 font-medium'; // General Mode
+                                        if (role === 'amountIn') cellClass = 'text-blue-600 font-medium'; // Banking Mode
+                                        if (role === 'amountOut') cellClass = 'text-rose-600 font-medium'; // Banking Mode
                                         if (role === 'memo') cellClass = 'text-slate-900';
+                                        if (role === 'tag') cellClass = 'text-pink-600 font-medium';
+                                        if (role === 'installment') cellClass = 'text-orange-600 font-medium';
 
                                         return (
                                             <td key={cIdx} className={`p-2 border-r border-slate-50 last:border-r-0 max-w-[160px] truncate ${cellClass}`}>

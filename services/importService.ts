@@ -11,6 +11,8 @@ export interface ColumnMapping {
   assetIndex?: number;
   categoryIndex?: number;
   merchantIndex?: number;
+  tagIndex?: number;
+  installmentIndex?: number;
 }
 
 export interface ImportPreset {
@@ -170,7 +172,25 @@ export const ImportService = {
   parseFileToGrid: async (file: File): Promise<any[][]> => {
     const buffer = await file.arrayBuffer();
 
-    // Encoding Detection Logic
+    // Strategy 1: Prioritize Binary Read for Excel Files (.xls, .xlsx)
+    // This prevents "TextDecoder" from corrupting binary BIFF8/ZIP content.
+    if (file.name.match(/\.(xls|xlsx)$/i)) {
+      try {
+        console.log(`Detected Excel file (${file.name}), attempting binary read...`);
+        // type: 'array' handles binary buffers (BIFF8, ZIP) correctly
+        const workbook = read(buffer, { type: 'array', cellDates: true });
+
+        if (workbook.SheetNames.length > 0) {
+          const firstSheetName = workbook.SheetNames[0];
+          const rows = utils.sheet_to_json(workbook.Sheets[firstSheetName], { header: 1, defval: '' }) as any[][];
+          if (rows.length > 0) return rows;
+        }
+      } catch (e) {
+        console.warn("Binary Excel read failed, falling back to text decoding...", e);
+      }
+    }
+
+    // Strategy 2: Text Decoding (CSV, HTML-as-XLS)
     // 1. Try UTF-8 with fatal: true checks for invalid sequences (usually robust)
     let decodedText = '';
     let encoding = 'utf-8';
@@ -186,7 +206,7 @@ export const ImportService = {
         decodedText = decoder.decode(buffer);
         encoding = 'euc-kr';
       } catch (err) {
-        console.error("Failed to decode file", err);
+        console.error("Failed to decode file locally, trying SheetJS binary fallback", err);
         // Fallback to reading as buffer and letting SheetJS guess (best effort)
         const workbook = read(buffer, { type: 'array', cellDates: true });
         const firstSheetName = workbook.SheetNames[0];
@@ -366,12 +386,17 @@ export const ImportService = {
           let s = String(val).trim();
 
           // 1. Try to extract YYYY-MM-DD pattern first
-          // Matches "2024/04/03 오후 8:13", "2025.05.01 14:00"
-          const complexMatch = s.match(/(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})\s*(?:(오전|오후|AM|PM)\s*)?(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/i);
+          // Matches "2024/04/03 오후 8:13", "2025.05.01 14:00", "2024년 5월 1일"
+          // Enhanced Regex to support Korean "년/월/일" characters and loose separators
+          const complexMatch = s.match(/(\d{4})[\.\/\-년]\s*(\d{1,2})[\.\/\-월]\s*(\d{1,2})[일]?\s*(?:(오전|오후|AM|PM)\s*)?(\d{1,2})?:?(\d{1,2})?(?::(\d{1,2}))?/i);
 
           if (complexMatch) {
             let [_, y, m, d, meridiem, hourStr, min, sec] = complexMatch;
-            let hour = parseInt(hourStr, 10);
+
+            // Default time to midnight if not present
+            let hour = hourStr ? parseInt(hourStr, 10) : 0;
+            let minute = min ? parseInt(min, 10) : 0;
+            let second = sec ? parseInt(sec, 10) : 0;
 
             // Handle AM/PM
             if (meridiem) {
@@ -379,12 +404,13 @@ export const ImportService = {
               if ((meridiem === '오전' || meridiem.toUpperCase() === 'AM') && hour === 12) hour = 0;
             }
 
-            const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d), hour, parseInt(min), sec ? parseInt(sec) : 0);
+            const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d), hour, minute, second);
             return isNaN(date.getTime()) ? null : date;
           }
 
           // 2. Fallback: Standard Date-only Parsing
-          const simpleDateMatch = s.match(/^(\d{4})\s*[\.\/\-]\s*(\d{1,2})\s*[\.\/\-]\s*(\d{1,2})/);
+          // Matches "2024 05 01", "2024.5.1", etc.
+          const simpleDateMatch = s.match(/^(\d{4})\s*[\.\/\-년]\s*(\d{1,2})\s*[\.\/\-월]\s*(\d{1,2})[일]?/);
 
           if (simpleDateMatch) {
             const [_, y, m, d] = simpleDateMatch;
@@ -420,9 +446,54 @@ export const ImportService = {
         // Only validation remains here if needed, but we essentially parsed it above.
         if (isNaN(amount)) throw new Error("Invalid Amount");
 
-        // 4. Memo
-        const memo = String(memoVal || '').trim();
-        if (!memo) throw new Error("Empty Memo");
+        // 6. Merchant (Optional) & Memo Enhancement
+        let merchantVal = undefined;
+        let finalMemo = String(memoVal || '').trim();
+
+        if (mapping.merchantIndex !== undefined && mapping.merchantIndex >= 0) {
+          const rawMerchant = String(row[mapping.merchantIndex] || '').trim();
+          if (rawMerchant) {
+            merchantVal = rawMerchant;
+            // Auto-Tagging Logic: Append @Merchant to Memo if not already present
+            // Checks if memo already contains "@Merchant" (case-insensitive check, case-sensitive append)
+            if (!finalMemo.toLowerCase().includes(`@${rawMerchant.toLowerCase()}`)) {
+              finalMemo = finalMemo ? `${finalMemo} @${rawMerchant}` : `@${rawMerchant}`;
+            }
+          }
+        }
+
+        if (mapping.tagIndex !== undefined && mapping.tagIndex >= 0) {
+          const rawTag = String(row[mapping.tagIndex] || '').trim();
+          if (rawTag) {
+            // Append formatted tag (Space -> Underscore)
+            const cleanTag = rawTag.replace(/\s+/g, '_');
+            const formattedTag = cleanTag.startsWith('#') ? cleanTag : `#${cleanTag}`;
+            if (!finalMemo.toLowerCase().includes(formattedTag.toLowerCase())) {
+              finalMemo = `${finalMemo} ${formattedTag}`;
+            }
+          }
+        }
+
+        if (!finalMemo) throw new Error("Empty Memo");
+
+        // 6.5 Installment Parsing (Optional)
+        let installmentObj = undefined;
+        if (mapping.installmentIndex !== undefined && mapping.installmentIndex >= 0) {
+          const rawInst = String(row[mapping.installmentIndex] || '').trim();
+          // Parse "3개월", "3", "일시불", etc.
+          const monthsMatch = rawInst.match(/(\d+)/);
+          if (monthsMatch) {
+            const totalMonths = parseInt(monthsMatch[1], 10);
+            if (totalMonths > 1) {
+              installmentObj = {
+                totalMonths: totalMonths,
+                currentMonth: 1, // Assume start of installment
+                isInterestFree: true, // Default to true unless parsed otherwise?
+                remainingBalance: Math.abs(amount) // Initial balance is total amount
+              };
+            }
+          }
+        }
 
         // 5. Category (Optional)
         // If mapped, try to match by name, otherwise store raw string (legacy mode supports names)
@@ -444,12 +515,6 @@ export const ImportService = {
           }
         }
 
-        // 6. Merchant (Optional)
-        let merchantVal = undefined;
-        if (mapping.merchantIndex !== undefined && mapping.merchantIndex >= 0) {
-          merchantVal = String(row[mapping.merchantIndex] || '').trim();
-        }
-
         // 7. Build Object
         // Fix: Determine type from sign, then store absolute amount.
         let type = TransactionType.EXPENSE;
@@ -460,7 +525,7 @@ export const ImportService = {
         }
         const finalAmount = Math.abs(amount);
 
-        const hashKey = ImportService.generateHashKey(currentAssetId, timestamp, finalAmount, memo);
+        const hashKey = ImportService.generateHashKey(currentAssetId, timestamp, finalAmount, finalMemo);
 
         valid.push({
           id: `imported-${Date.now()}-${i}`,
@@ -469,11 +534,12 @@ export const ImportService = {
           amount: finalAmount, // Always positive
           type: type,
           category: categoryVal,
-          memo: memo,
+          memo: finalMemo,
           merchant: merchantVal,
+          installment: installmentObj,
           assetId: currentAssetId,
           hashKey: hashKey,
-          originalText: memo
+          originalText: finalMemo
         });
 
       } catch (err) {
