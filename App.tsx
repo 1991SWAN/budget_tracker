@@ -577,6 +577,7 @@ const App: React.FC = () => {
           categories={categories}
           initialData={editingTransaction}
           transactions={transactions}
+          onDelete={handleDeleteTransaction}
         />
       )}
 

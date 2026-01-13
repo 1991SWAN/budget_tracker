@@ -453,6 +453,42 @@ export const SupabaseService = {
         }
 
         if (options.transactions) {
+            // Smart Reset: Calculate net transaction effect per asset and revert it to preserve 'Initial Balance'.
+            // 1. Fetch all transactions (lightweight, only needed fields)
+            const { data: allTxs } = await supabase.from('transactions').select('asset_id, to_asset_id, amount, type');
+
+            if (allTxs && allTxs.length > 0 && !options.assets) {
+                // 2. Aggregate impact per asset
+                const assetImpact: Record<string, number> = {};
+
+                allTxs.forEach(tx => {
+                    const amt = Number(tx.amount);
+                    if (tx.asset_id) {
+                        if (!assetImpact[tx.asset_id]) assetImpact[tx.asset_id] = 0;
+                        if (tx.type === 'INCOME') assetImpact[tx.asset_id] += amt;
+                        else if (tx.type === 'EXPENSE') assetImpact[tx.asset_id] -= amt;
+                        else if (tx.type === 'TRANSFER') assetImpact[tx.asset_id] -= amt;
+                    }
+                    if (tx.to_asset_id && tx.type === 'TRANSFER') {
+                        if (!assetImpact[tx.to_asset_id]) assetImpact[tx.to_asset_id] = 0;
+                        assetImpact[tx.to_asset_id] += amt;
+                    }
+                });
+
+                // 3. Apply Reversion to Assets
+                const { data: currentAssets } = await supabase.from('assets').select('id, balance');
+                if (currentAssets) {
+                    for (const asset of currentAssets) {
+                        const netChange = assetImpact[asset.id] || 0;
+                        // Avoid unnecessary writes if net change is 0
+                        if (netChange !== 0) {
+                            const originalBalance = Number(asset.balance) - netChange;
+                            await supabase.from('assets').update({ balance: originalBalance }).eq('id', asset.id);
+                        }
+                    }
+                }
+            }
+
             await supabase.from('transactions').delete().neq('id', dummyId);
         }
 

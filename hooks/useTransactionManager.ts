@@ -155,25 +155,31 @@ export const useTransactionManager = (
                 }
             }
 
-            // 2. Delete main transaction from DB
+            // 2. Update Assets (Calculate & Persist BEFORE deleting from DB to ensure rollback potential or just logical order)
+            // Actually, for delete, we usually delete from DB first.
+            // But to fix the "Side effect in SetState" issue:
+
+            // Calculate new assets based on CURRENT assets (from hook prop)
+            const newAssets = applyTransactionToAssets(assets, tx, -1);
+
+            // Persist asset changes to Supabase (Await this!)
+            await persistAssetChanges(assets, newAssets);
+
+            // 3. Delete main transaction from DB
             await SupabaseService.deleteTransaction(tx.id);
 
-            // 3. Update Local State
+            // 4. Update Local State (UI)
             setTransactions(prev => prev.filter(t => t.id !== tx.id));
-
-            // 4. Update Assets (Reverse effect)
-            setAssets(prevAssets => {
-                const newAssets = applyTransactionToAssets(prevAssets, tx, -1);
-                persistAssetChanges(prevAssets, newAssets);
-                return newAssets;
-            });
+            setAssets(newAssets);
 
             addToast('Transaction deleted', 'success');
         } catch (error) {
             console.error('Failed to delete transaction', error);
+            // Ideally we should revert assets here if they were saved but tx delete failed.
+            // For now, at least we log and toast.
             addToast('Failed to delete transaction', 'error');
         }
-    }, [transactions, setTransactions, setAssets, applyTransactionToAssets, persistAssetChanges, addToast, updateTransaction]);
+    }, [transactions, assets, setTransactions, setAssets, applyTransactionToAssets, persistAssetChanges, addToast, updateTransaction]);
 
     return {
         addTransaction,

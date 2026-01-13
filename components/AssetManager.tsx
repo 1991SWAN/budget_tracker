@@ -372,13 +372,21 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
   // The system prompt says "To edit multiple, non-adjacent lines ... make a single call to the multi_replace_file_content tool".
   // I will use multi_replace_file_content.
 
-  const footerContent = (
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const footerContent = isDeleting ? (
+    <>
+      <div className="flex-1 flex items-center justify-center text-sm font-bold text-rose-600 animate-pulse">Are you sure?</div>
+      <Button onClick={() => setIsDeleting(false)} variant="ghost" size="md">Cancel</Button>
+      <Button onClick={onDelete} variant="destructive" size="md">Yes, Delete</Button>
+    </>
+  ) : (
     <>
       {asset.type === AssetType.CREDIT_CARD && onPay && (
         <Button onClick={() => onPay(asset)} variant="secondary" className="flex-1">💸 Pay Bill</Button>
       )}
       <Button onClick={onEdit} variant="outline" className="flex-1">Edit Details</Button>
-      <Button onClick={onDelete} variant="destructive" className="px-6">Delete Asset</Button>
+      <Button onClick={() => setIsDeleting(true)} variant="destructive" className="px-6">Delete Asset</Button>
     </>
   );
 
@@ -609,10 +617,8 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
 
   const handleDelete = () => {
     if (selectedAsset) {
-      if (confirm('Are you sure you want to delete this asset?')) {
-        onDelete(selectedAsset.id);
-        setSelectedAsset(null);
-      }
+      onDelete(selectedAsset.id);
+      setSelectedAsset(null);
     }
   };
 
