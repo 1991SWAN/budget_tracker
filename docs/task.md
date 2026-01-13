@@ -126,32 +126,20 @@
             - [x] `ImportWizardModal`: 3단계(파일선택 -> 매핑 -> 미리보기) 스테퍼 UI.
             - [x] `ColumnMapper`: 데이터 그리드 및 드롭다운 매핑 UI.
             - [x] `ImportPreview`: 유효 데이터/중복 데이터 요약 리포트 UI.
-        - [ ] **3단계: 프리셋 시스템 (Future)**
+        - [x] **3단계: 안정화 및 개선 (Stabilization)**
+            - [x] **Date Parsing**: 한국형 날짜 포맷(`YYYY.MM.DD`, `YYYYMMDD`) 지원 추가.
+            - [x] **Asset Matching**: 점수 기반 퍼지 매칭(Score-Based Logic) 도입으로 정확도 향상.
+            - [x] **Negative Amount**: 지출/수입(`EXPENSE`/`INCOME`) 자동 보정 로직 추가.
+        - [ ] **4단계: 프리셋 시스템 (Future)**
             - [ ] 매핑 설정 저장/불러오기 기능 (localStorage 활용).
 
-    - [x] **8순위: 디자인 일관성 폴리싱 (Design Polish)**
-        - [x] **Import Wizard**: 블루 컬러 제거 -> Slate/Emerald 적용.
-        - [x] **Modal**: 헤더 제거 및 버튼 둥글기(Rounded-2xl) 표준화.
-        - [x] **Typography**: 하드코딩된 폰트 크기/색상 토큰화.
-
-    - [x] **9순위: 모바일 대응 (Mobile Optimization)**
-        - [x] **Import Wizard**: `grid-cols-3` -> `grid-cols-1`, 테이블 가로 스크롤, 버튼 스택 처리.
-
-    - [x] **10순위: 대시보드 리팩토링 (Dashboard Refactor v2.0)** <!-- id: 9 -->
-        - [x] **Phase 1: Sidebar & Layout**: Zone 분리, 버튼 형태(Shape) 적용. `Sidebar.tsx`
-        - [x] **Phase 2: Overview Widgets**: Grid Layout Fix, Compact Widgets. `OverviewTab.tsx`
-        - [x] **Phase 3: Micro-interactions**: Widget unified filters & scrollable activity.
-
-    - [x] **11순위: 이체 로직 고도화 (Transfer Matching)** <!-- id: 10 -->
-        - [x] **Logic Analysis**: Existing "Inverse Amount + 5min Window" trigger verified.
-        - [x] **New-to-New Matching**: Implemented matching within same import batch.
-
-    - [x] **12순위: Import Wizard 고도화 (New 3-Track Strategy)** <!-- id: 11 -->
-        - [x] **Planning**: 3-Track Strategy (Manual, Preset, Migration) Analysis.
-        - [x] **Track 1: Manual Mode**: "Save as Preset" flow.
-        - [x] **Track 2: Preset Mode**: Auto-detect header & apply mapping.
-        - [ ] **Track 3: Migration Mode**: Source selection & dedicated parsers.
-
-    - [ ] **13순위: 대시보드 데이터 고도화 (Dashboard Data Enhancements)** <!-- id: 12 -->
-        - [x] **Safe to Spend Refinement**: Daily Pacing(일일 권장 지출) 및 Burn Rate(지출 속도) 시각화 추가. `OverviewTab.tsx`
-        - [x] **Financial Health Score**: 재무 건강 점수 위젯 구현 (Alternative A). `FinancialHealthWidget.tsx`
+- [x] **8순위: 데이터 안전성 및 관리 (Safety & Management)**
+    - [x] **거래 삭제 안전장치 강화**
+        - [x] **자산 연동**: 거래 삭제 시 자산 잔액 역산 로직(Reverse Operation) 구현.
+        - [x] **삭제 프로세스**: `SmartInput` 및 `AssetDetail` 내 삭제 확인 UI(2-Step) 개선.
+        - [x] **데이터 초기화**: `ResetData` 시 자산 잔액 보존(Smart Reset) 로직 적용.
+    - [x] **거래 다중 선택 및 일괄 삭제 (Bulk Delete)**
+        - [x] **UX/UI 연구**: 하이브리드 전략(Long Press / Hover) 보고서 작성 및 승인.
+        - [x] **선택 모드 구현**: `TransactionList` 내 다중 선택 상태(State) 및 UI(Checkbox) 구현.
+        - [x] **액션 바(Action Bar)**: 하단 플로팅 액션 바(Bottom Sheet) 구현.
+        - [x] **로직 연동**: 일괄 삭제 시 자산 잔액 순차적 업데이트 및 원자(Atomic) 처리.
