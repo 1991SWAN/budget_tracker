@@ -179,6 +179,20 @@ export const SupabaseService = {
         }
     },
 
+    deleteTransactions: async (ids: string[]) => {
+        if (!ids || ids.length === 0) return;
+
+        const { error } = await supabase
+            .from('transactions')
+            .delete()
+            .in('id', ids);
+
+        if (error) {
+            console.error('Error deleting transactions:', error);
+            throw error;
+        }
+    },
+
     // --- Recurring ---
     getRecurring: async (): Promise<RecurringTransaction[]> => {
         const { data, error } = await supabase.from('recurring_transactions').select('*');

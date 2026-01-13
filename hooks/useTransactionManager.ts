@@ -181,10 +181,42 @@ export const useTransactionManager = (
         }
     }, [transactions, assets, setTransactions, setAssets, applyTransactionToAssets, persistAssetChanges, addToast, updateTransaction]);
 
+    const deleteTransactions = useCallback(async (ids: string[]) => {
+        if (!ids || ids.length === 0) return;
+        try {
+            // 1. Filter transactions to be deleted
+            const targets = transactions.filter(t => ids.includes(t.id));
+            if (targets.length === 0) return;
+
+            // 2. Calculate Asset Reversion (Batch)
+            let currentAssets = [...assets];
+            targets.forEach(tx => {
+                // Apply reverse effect (-1) cumulatively
+                currentAssets = applyTransactionToAssets(currentAssets, tx, -1);
+            });
+
+            // 3. Persist Asset Changes
+            await persistAssetChanges(assets, currentAssets);
+
+            // 4. Delete from DB
+            await SupabaseService.deleteTransactions(ids);
+
+            // 5. Update Local State
+            setTransactions(prev => prev.filter(t => !ids.includes(t.id)));
+            setAssets(currentAssets);
+
+            addToast(`${ids.length} transactions deleted`, 'success');
+        } catch (error) {
+            console.error('Failed to delete transactions', error);
+            addToast('Failed to delete transactions', 'error');
+        }
+    }, [transactions, assets, setTransactions, setAssets, applyTransactionToAssets, persistAssetChanges, addToast]);
+
     return {
         addTransaction,
         addTransactions,
         updateTransaction,
-        deleteTransaction
+        deleteTransaction,
+        deleteTransactions
     };
 };

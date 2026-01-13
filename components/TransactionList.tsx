@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { GroupedVirtuoso } from 'react-virtuoso';
 import { Transaction, Asset, CategoryItem } from '../types';
 import TransactionItem from './TransactionItem';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
+import { Button } from './ui/Button';
 
 interface TransactionListProps {
     transactions: Transaction[];
@@ -11,6 +12,7 @@ interface TransactionListProps {
     categories: CategoryItem[];
     onEdit: (tx: Transaction) => void;
     onDelete: (tx: Transaction) => void;
+    onDeleteTransactions?: (ids: string[]) => void;
     searchTerm: string;
 }
 
@@ -18,6 +20,7 @@ interface TransactionListProps {
 const getDateLabel = (dateStr: string) => {
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const currentYear = new Date().getFullYear();
 
     if (dateStr === today) return 'Today';
     if (dateStr === yesterday) return 'Yesterday';
@@ -28,6 +31,12 @@ const getDateLabel = (dateStr: string) => {
         day: 'numeric',
         weekday: 'short'
     };
+
+    // Add year if not current year
+    if (d.getFullYear() !== currentYear) {
+        options.year = 'numeric';
+    }
+
     return d.toLocaleDateString('en-US', options);
 };
 
@@ -36,8 +45,59 @@ const TransactionList: React.FC<TransactionListProps> = ({
     assets,
     categories,
     onEdit,
-    onDelete
+    onDelete,
+    onDeleteTransactions
 }) => {
+    // Selection State
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const isSelectionMode = selectedIds.size > 0;
+    const [isConfirmingBulkDelete, setIsConfirmingBulkDelete] = useState(false);
+
+    // Handlers
+    const handleToggleSelection = useCallback((id: string) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    }, []);
+
+    const handleSelectAll = useCallback(() => {
+        if (selectedIds.size === transactions.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(transactions.map(t => t.id)));
+        }
+    }, [selectedIds.size, transactions]);
+
+    const handleLongPress = useCallback((id: string) => {
+        // Enter selection mode and select the item
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            next.add(id);
+            return next;
+        });
+        // Vibration (Short)
+        if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
+    }, []);
+
+    const handleCancelSelection = useCallback(() => {
+        setSelectedIds(new Set());
+        setIsConfirmingBulkDelete(false);
+    }, []);
+
+    const handleBulkDelete = useCallback(() => {
+        if (onDeleteTransactions) {
+            onDeleteTransactions(Array.from(selectedIds));
+            handleCancelSelection(); // Exit mode
+        }
+    }, [selectedIds, onDeleteTransactions, handleCancelSelection]);
+
+
     const { sortedData, groupCounts, groupLabels, groupDailyTotals } = useMemo(() => {
         // Sort transactions by Date Descending
         const sorted = [...transactions].sort((a, b) => {
@@ -96,13 +156,25 @@ const TransactionList: React.FC<TransactionListProps> = ({
     }
 
     return (
-        <div className="h-[calc(100vh-280px)] w-full">
+        <div className="h-[calc(100vh-280px)] w-full relative">
+            {/* Selection Header Overlay (Optional - currently using bottom bar heavily) */}
+
             {/* Minimal List Container */}
-            <div className="h-full bg-white md:rounded-3xl border-y md:border border-slate-200 shadow-sm overflow-hidden">
+            <div className={`h-full bg-white md:rounded-3xl border-y md:border border-slate-200 shadow-sm overflow-hidden transition-all ${isSelectionMode ? 'pb-20' : ''}`}>
                 <GroupedVirtuoso
                     style={{ height: '100%' }}
                     groupCounts={groupCounts}
-                    context={{ categories, assets, onEdit, onDelete }}
+                    context={{
+                        categories,
+                        assets,
+                        onEdit,
+                        onDelete,
+                        // Selection Context
+                        selectedIds,
+                        isSelectionMode,
+                        handleToggleSelection,
+                        handleLongPress
+                    }}
                     groupContent={(index) => {
                         const dateStr = groupLabels[index];
                         const dateLabel = getDateLabel(dateStr);
@@ -122,10 +194,21 @@ const TransactionList: React.FC<TransactionListProps> = ({
                     itemContent={(index, _, __, context) => {
                         const tx = sortedData[index];
                         if (!tx) return <></>;
-                        const { categories, assets, onEdit, onDelete } = context;
+                        const {
+                            categories,
+                            assets,
+                            onEdit,
+                            onDelete,
+                            selectedIds,
+                            isSelectionMode,
+                            handleToggleSelection,
+                            handleLongPress
+                        } = context;
+
+                        const isSelected = selectedIds.has(tx.id);
 
                         return (
-                            <div className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
+                            <div className={`border-b border-slate-50 last:border-0 transition-colors ${isSelected ? 'bg-blue-50/40' : 'hover:bg-slate-50/50'}`}>
                                 <TransactionItem
                                     transaction={tx}
                                     asset={assets.find(a => a.id === tx.assetId)}
@@ -133,12 +216,69 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                     categories={categories}
                                     onEdit={onEdit}
                                     onDelete={onDelete}
+                                    // Selection Props
+                                    isSelectionMode={isSelectionMode}
+                                    isSelected={isSelected}
+                                    onToggleSelect={() => handleToggleSelection(tx.id)}
+                                    onLongPress={() => handleLongPress(tx.id)}
                                 />
                             </div>
                         );
                     }}
                 />
             </div>
+
+            {/* Bottom Floating Action Bar (Selection Mode) */}
+            {isSelectionMode && (
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 min-w-[300px] w-[90%] md:w-[400px] bg-slate-900/90 backdrop-blur-xl text-white rounded-2xl shadow-2xl border border-slate-700/50 p-2 flex items-center justify-between z-50 animate-in slide-in-from-bottom-4 duration-300">
+                    <div className="flex items-center gap-3 px-3">
+                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 font-bold text-xs">
+                            {selectedIds.size}
+                        </div>
+                        <span className="text-sm font-medium text-slate-200">Selected</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {isConfirmingBulkDelete ? (
+                            <>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setIsConfirmingBulkDelete(false)}
+                                    className="text-slate-300 hover:text-white hover:bg-white/10"
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    onClick={handleBulkDelete}
+                                    className="bg-rose-600 hover:bg-rose-700 text-white border-none"
+                                >
+                                    Confirm Delete
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={handleCancelSelection}
+                                    className="text-slate-300 hover:text-white hover:bg-white/10 h-8 text-xs font-medium"
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    onClick={() => setIsConfirmingBulkDelete(true)}
+                                    className="bg-rose-500/10 text-rose-400 hover:bg-rose-600 hover:text-white border border-rose-500/30 transition-all h-8 text-xs"
+                                >
+                                    Delete ({selectedIds.size})
+                                </Button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

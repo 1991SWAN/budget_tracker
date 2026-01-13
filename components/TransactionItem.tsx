@@ -9,6 +9,12 @@ interface TransactionItemProps {
     categories: CategoryItem[];
     onEdit: (tx: Transaction) => void;
     onDelete: (tx: Transaction) => void;
+
+    // Bulk Selection Props
+    isSelectionMode?: boolean;
+    isSelected?: boolean;
+    onToggleSelect?: () => void;
+    onLongPress?: () => void;
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({
@@ -17,10 +23,37 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     toAsset,
     categories = [],
     onEdit,
-    onDelete
+    onDelete,
+    isSelectionMode = false,
+    isSelected = false,
+    onToggleSelect,
+    onLongPress
 }) => {
     const [isExpanded, setIsExpanded] = React.useState(false);
     const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false);
+
+    // Long Press Logic
+    const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
+    const isLongPressTriggered = React.useRef(false);
+
+    const handleTouchStart = () => {
+        isLongPressTriggered.current = false;
+        longPressTimer.current = setTimeout(() => {
+            if (onLongPress) {
+                isLongPressTriggered.current = true;
+                onLongPress();
+                // Vibration feedback (haptic) if supported
+                if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
+            }
+        }, 500); // 500ms for long press
+    };
+
+    const handleTouchEnd = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    };
 
     const isExpense = transaction.type === TransactionType.EXPENSE;
     const isIncome = transaction.type === TransactionType.INCOME;
@@ -100,6 +133,16 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     }, [transaction.memo, (transaction as any).merchant]);
 
     const handleRowClick = () => {
+        // 1. If Selection Mode, always toggle
+        if (isSelectionMode && onToggleSelect) {
+            onToggleSelect();
+            return;
+        }
+
+        // 2. If Long Press was just triggered, do nothing (prevent click)
+        if (isLongPressTriggered.current) return;
+
+        // 3. Normal Click Behavior
         // Desktop: Edit directly
         if (window.innerWidth >= 1024) {
             onEdit(transaction);
@@ -110,12 +153,30 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     };
 
     return (
-        <div className="w-full">
+        <div
+            className={`w-full relative group transition-colors ${isSelected ? 'bg-blue-50/80' : ''}`}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchEnd}
+        >
             {/* Main Row */}
             <div
-                className="grid grid-cols-[50px_1fr_auto] lg:grid-cols-[60px_1.5fr_1.2fr_1fr] gap-2 py-3 px-4 items-center cursor-pointer"
+                className="grid grid-cols-[auto_50px_1fr_auto] lg:grid-cols-[auto_60px_1.5fr_1.2fr_1fr] gap-2 py-3 px-4 items-center cursor-pointer"
                 onClick={handleRowClick}
             >
+                {/* Checkbox Column (Always present in grid to prevent jumping, but width goes to 0 if hidden) */}
+                <div className={`overflow-hidden transition-all duration-300 ease-spring ${isSelectionMode ? 'w-6 opacity-100 mr-2' : 'w-0 opacity-0 group-hover:w-6 group-hover:opacity-100 mr-0 group-hover:mr-2'}`}>
+                    <div
+                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-slate-300 bg-white'}`}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onToggleSelect) onToggleSelect();
+                        }}
+                    >
+                        {isSelected && <span className="text-white text-xs font-bold">✓</span>}
+                    </div>
+                </div>
+
                 {/* Col 1: Time */}
                 <div className="text-center">
                     <span className="text-xs font-bold text-slate-400 font-mono tracking-tighter block opacity-60">{timeStr}</span>
@@ -125,7 +186,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                 <div className="min-w-0 flex items-center justify-between gap-2 pr-1">
                     {/* Inner Col 1: Text Info */}
                     <div className="flex flex-col overflow-hidden">
-                        <p className="font-bold text-slate-900 text-[15px] truncate leading-tight">
+                        <p className={`font-bold text-[15px] truncate leading-tight ${isSelected ? 'text-blue-900' : 'text-slate-900'}`}>
                             {mainText || <span className="text-slate-400 font-normal italic">No Description</span>}
                         </p>
 
@@ -218,7 +279,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
             </div>
 
             {/* Mobile Expanded Details */}
-            {isExpanded && (
+            {isExpanded && !isSelectionMode && (
                 <div className="lg:hidden px-4 pb-3 pt-0 bg-slate-50/30 animate-in slide-in-from-top-1">
                     <div className="flex flex-wrap gap-2 my-2">
                         {/* Mobile Expanded: Memo (Moved here) */}
@@ -268,15 +329,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                     </div>
                 </div>
             )}
-
-            {/* Desktop Hover Actions (Positioned absolute or integrated?) 
-                Actually, simpler to just keep the original delete button logic for Desktop 
-                or put it in the 4th column. 
-                Let's add a subtle delete button on Desktop hover in 4th col.
-            */}
-            <div className="hidden lg:flex absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                {/* ... can be added later if needed, but current layout covers info. */}
-            </div>
         </div>
     );
 };

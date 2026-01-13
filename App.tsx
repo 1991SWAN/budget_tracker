@@ -108,7 +108,7 @@ const App: React.FC = () => {
   // Note: We moved search filtering to the main filter block below to combine logic
   // const searchedTransactions = useTransactionSearch(transactions, searchTerm); 
 
-  const { addTransaction: handleAddTransaction, addTransactions: handleAddTransactions, updateTransaction: handleUpdateTransaction, deleteTransaction: handleDeleteTransaction } = useTransactionManager(transactions, setTransactions, assets, setAssets);
+  const { addTransaction: handleAddTransaction, addTransactions: handleAddTransactions, updateTransaction: handleUpdateTransaction, deleteTransaction: handleDeleteTransaction, deleteTransactions: handleDeleteTransactions } = useTransactionManager(transactions, setTransactions, assets, setAssets);
   const { categories } = useCategoryManager();
 
   // --- Main Filtering Logic ---
@@ -681,6 +681,7 @@ const App: React.FC = () => {
               setShowSmartInput(true);
             }}
             onDelete={handleDeleteTransaction}
+            onDeleteTransactions={handleDeleteTransactions}
           />
         </ErrorBoundary>
       </div>}
