@@ -400,14 +400,17 @@ export const ImportService = {
         }
 
         // 7. Build Object
-        const type = amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENSE;
-        const hashKey = ImportService.generateHashKey(currentAssetId, timestamp, amount, memo);
+        // Fix: Determine type from sign, then store absolute amount.
+        const type = amount < 0 ? TransactionType.EXPENSE : TransactionType.INCOME;
+        const finalAmount = Math.abs(amount);
+
+        const hashKey = ImportService.generateHashKey(currentAssetId, timestamp, finalAmount, memo);
 
         valid.push({
           id: `imported-${Date.now()}-${i}`,
           date: dateStr,
           timestamp: timestamp,
-          amount: amount,
+          amount: finalAmount, // Always positive
           type: type,
           category: categoryVal,
           memo: memo,
