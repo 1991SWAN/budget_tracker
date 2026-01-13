@@ -324,23 +324,40 @@ export const ImportService = {
           if (!val) return null;
           let s = String(val).trim();
 
-          // 1. Try to extract YYYY-MM-DD pattern (with separators ., /, or -)
-          // Matches "2025.05.01", "2025/05/01", "2025-05-01", "2025. 5. 1" followed by anything
+          // 1. Try to extract YYYY-MM-DD pattern first
+          // Matches "2024/04/03 오후 8:13", "2025.05.01 14:00"
+          const complexMatch = s.match(/(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})\s*(?:(오전|오후|AM|PM)\s*)?(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/i);
+
+          if (complexMatch) {
+            let [_, y, m, d, meridiem, hourStr, min, sec] = complexMatch;
+            let hour = parseInt(hourStr, 10);
+
+            // Handle AM/PM
+            if (meridiem) {
+              if ((meridiem === '오후' || meridiem.toUpperCase() === 'PM') && hour < 12) hour += 12;
+              if ((meridiem === '오전' || meridiem.toUpperCase() === 'AM') && hour === 12) hour = 0;
+            }
+
+            const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d), hour, parseInt(min), sec ? parseInt(sec) : 0);
+            return isNaN(date.getTime()) ? null : date;
+          }
+
+          // 2. Fallback: Standard Date-only Parsing
           const simpleDateMatch = s.match(/^(\d{4})\s*[\.\/\-]\s*(\d{1,2})\s*[\.\/\-]\s*(\d{1,2})/);
 
           if (simpleDateMatch) {
             const [_, y, m, d] = simpleDateMatch;
-            const pad = (n: string) => n.padStart(2, '0');
-            s = `${y}-${pad(m)}-${pad(d)}`;
-          } else {
-            // 2. Fallback: Clean string and check for YYYYMMDD (8 digits)
-            const cleanS = s.replace(/[\.\/]/g, '-').replace(/\s/g, '');
-            if (/^\d{8}$/.test(cleanS)) {
-              s = `${cleanS.substring(0, 4)}-${cleanS.substring(4, 6)}-${cleanS.substring(6, 8)}`;
-            } else {
-              // Use cleaned version for Date constructor fallback
-              s = cleanS;
-            }
+            // Return midnight date
+            return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+          }
+
+          // 3. Fallback: Clean string and try standard Date constructor
+          const cleanS = s.replace(/[\.\/]/g, '-').replace(/\s/g, '');
+          if (/^\d{8}$/.test(cleanS)) {
+            const y = parseInt(cleanS.substring(0, 4));
+            const m = parseInt(cleanS.substring(4, 6)) - 1;
+            const d = parseInt(cleanS.substring(6, 8));
+            return new Date(y, m, d);
           }
 
           const d = new Date(s);
