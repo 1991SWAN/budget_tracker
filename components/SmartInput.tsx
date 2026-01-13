@@ -205,7 +205,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     return 'Smart Input';
   };
 
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
 
   return (
     <Dialog
@@ -214,58 +214,19 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
       title={getTitle()}
       maxWidth="lg"
       footer={mode === 'manual' ? (
-        <div className="flex w-full gap-2 items-center">
-          {initialData && (
-            isConfirmingDelete ? (
-              <div className="mr-auto flex gap-2 animate-in slide-in-from-left-2 fade-in">
-                <Button
-                  onClick={() => setIsConfirmingDelete(false)}
-                  variant="ghost"
-                  size="sm"
-                  className="text-slate-500"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (onDelete) {
-                      onDelete(initialData);
-                      onCancel();
-                    }
-                  }}
-                  variant="destructive"
-                  size="sm"
-                  className="bg-rose-600 text-white hover:bg-rose-700 font-bold shadow-sm"
-                >
-                  Yes, Delete
-                </Button>
-              </div>
-            ) : (
-              <Button
-                onClick={() => setIsConfirmingDelete(true)}
-                variant="destructive"
-                className="mr-auto bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-100"
-              >
-                Delete
-              </Button>
-            )
-          )}
-          {!isConfirmingDelete && (
-            <>
-              <Button
-                onClick={initialData ? onCancel : () => setMode('select')}
-                variant="ghost"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleManualSubmit}
-                variant="primary"
-              >
-                {initialData ? 'Update' : 'Save'}
-              </Button>
-            </>
-          )}
+        <div className="flex w-full gap-2 items-center justify-end">
+          <Button
+            onClick={initialData ? onCancel : () => setMode('select')}
+            variant="ghost"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleManualSubmit}
+            variant="primary"
+          >
+            {initialData ? 'Update' : 'Save'}
+          </Button>
         </div>
       ) : undefined}
     >

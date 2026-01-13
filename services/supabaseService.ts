@@ -97,6 +97,7 @@ export const SupabaseService = {
             assetId: row.asset_id,
             toAssetId: row.to_asset_id,
             linkedTransactionId: row.linked_transaction_id,
+            hashKey: row.hash_key,
 
             // Reconstruct Installment Object from Flat Columns (Preferred) or JSON (Fallback)
             installment: (row.installment_total_months > 1 || row.installment) ? {
@@ -131,7 +132,8 @@ export const SupabaseService = {
             // New Flattened Installment Columns
             installment_total_months: tx.installment?.totalMonths ?? null,
             installment_current_month: tx.installment?.currentMonth ?? null,
-            is_interest_free: tx.installment?.isInterestFree ?? null
+            is_interest_free: tx.installment?.isInterestFree ?? null,
+            hash_key: tx.hashKey || null
         };
         const { error } = await supabase.from('transactions').upsert(row);
         if (error) {
@@ -162,7 +164,10 @@ export const SupabaseService = {
             // New Flattened Installment Columns
             installment_total_months: tx.installment?.totalMonths ?? null,
             installment_current_month: tx.installment?.currentMonth ?? null,
-            is_interest_free: tx.installment?.isInterestFree ?? null
+            is_interest_free: tx.installment?.isInterestFree ?? null,
+
+            // Hash Key for Duplicate Detection
+            hash_key: tx.hashKey || null
         }));
         const { error } = await supabase.from('transactions').upsert(rows);
         if (error) console.error('Error saving transactions:', error);

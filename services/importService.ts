@@ -241,6 +241,8 @@ export const ImportService = {
   ): { valid: Partial<Transaction>[], invalid: any[] } => {
     const valid: Partial<Transaction>[] = [];
     const invalid: any[] = [];
+    // Fix: Use Occurrence Counting instead of simple Set to allow legitimate duplicate transactions
+    const baseHashCounts = new Map<string, number>();
 
     // Skip header row
     const startRow = 1;
@@ -525,7 +527,16 @@ export const ImportService = {
         }
         const finalAmount = Math.abs(amount);
 
-        const hashKey = ImportService.generateHashKey(currentAssetId, timestamp, finalAmount, finalMemo);
+        // 1. Generate Base Hash (Content only)
+        const baseHash = ImportService.generateHashKey(currentAssetId, timestamp, finalAmount, finalMemo);
+
+        // 2. Count Occurrences of this Base Hash
+        const currentCount = baseHashCounts.get(baseHash) || 0;
+        baseHashCounts.set(baseHash, currentCount + 1);
+
+        // 3. Generate Final Unique Hash Key with Index
+        // This ensures the 1st "Starbucks" is #0, 2nd is #1, etc.
+        const hashKey = `${baseHash}#${currentCount}`;
 
         valid.push({
           id: `imported-${Date.now()}-${i}`,
