@@ -6,6 +6,9 @@ import { useTransactionSearch } from "./hooks/useTransactionSearch";
 
 import FilterBar from "./components/FilterBar";
 import TransactionList from "./components/TransactionList";
+import { useTransferReconciler } from './hooks/useTransferReconciler';
+import { ReconciliationModal } from './components/ReconciliationModal';
+import { Button } from './components/ui/Button';
 
 import { Transaction, Asset, View, TransactionType, Category, RecurringTransaction, SavingsGoal, BillType, AssetType } from './types';
 import { StorageService } from './services/storageService';
@@ -213,6 +216,18 @@ const App: React.FC = () => {
     }
   }, [user]);
 
+  // V3 Transfer Reconciliation Hook
+  const {
+    candidates: transferCandidates,
+    handleLink: linkTransfer,
+    handleIgnore: ignoreTransfer,
+    scanCandidates
+  } = useTransferReconciler(transactions, loadData);
+
+  const [isReconciliationModalOpen, setIsReconciliationModalOpen] = useState(false);
+
+
+
   // Optimistic updates are handled in state, but we need to persist changes
   // We will wrap state setters or call Service directly in handlers
 
@@ -229,7 +244,7 @@ const App: React.FC = () => {
     } else {
       parsedTxs.forEach(ptx => {
         const tx: Transaction = {
-          id: crypto.randomUUID(),
+          id: ptx.id || crypto.randomUUID(),
           date: ptx.date || new Date().toISOString().split('T')[0],
           timestamp: ptx.timestamp || Date.now(),
           amount: ptx.amount || 0,
@@ -551,6 +566,16 @@ const App: React.FC = () => {
     >
       {renderModals()}
 
+      {/* Reconciliation Modal (V3) */}
+      <ReconciliationModal
+        isOpen={isReconciliationModalOpen}
+        onClose={() => setIsReconciliationModalOpen(false)}
+        candidates={transferCandidates}
+        assets={assets}
+        onLink={linkTransfer}
+        onIgnore={ignoreTransfer}
+      />
+
       {/* New Import Wizard */}
       {/* New Import Wizard */}
       {modalType === 'import' && (
@@ -579,6 +604,29 @@ const App: React.FC = () => {
           transactions={transactions}
           onDelete={handleDeleteTransaction}
         />
+      )}
+
+      {/* Baner: Transfer Suggestions */}
+      {transferCandidates.length > 0 && (
+        <div className="mx-4 mt-4 md:mx-8 mb-0 bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-row items-center justify-between shadow-sm animate-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+              ✨
+            </div>
+            <div>
+              <h4 className="font-bold text-blue-900 text-sm">Transfer Suggestions Found</h4>
+              <p className="text-xs text-blue-700">We found {transferCandidates.length} potential transfers to link.</p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="primary"
+            className="bg-blue-600 hover:bg-blue-700 shadow-none"
+            onClick={() => setIsReconciliationModalOpen(true)}
+          >
+            Review
+          </Button>
+        </div>
       )}
 
       {view === 'dashboard' && <Dashboard

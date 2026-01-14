@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Asset, Transaction, RecurringTransaction, SavingsGoal, AssetType, Category, BillType, CategoryItem, Budget, Tag } from '../types';
+import { Asset, Transaction, RecurringTransaction, SavingsGoal, AssetType, Category, BillType, CategoryItem, Budget, Tag, TransactionType } from '../types';
 
 // Initialize Supabase Client
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -556,6 +556,44 @@ export const SupabaseService = {
         }
 
         console.log("Data reset completed with options:", options);
+    },
+
+    async linkTransactionsV3(
+        sourceUpdate: Partial<Transaction>,
+        targetUpdate: Partial<Transaction>
+    ) {
+        // Enforce safe updates
+        if (!sourceUpdate.id || !targetUpdate.id) throw new Error("IDs required for linking.");
+
+        console.log("[SupabaseService] Executing V3 Link...", sourceUpdate, targetUpdate);
+
+        // 1. Update Source (Withdrawal Side)
+        const { error: err1 } = await supabase
+            .from('transactions')
+            .update({
+                type: TransactionType.TRANSFER,
+                linked_transaction_id: sourceUpdate.linkedTransactionId,
+                to_asset_id: sourceUpdate.toAssetId,
+                amount: sourceUpdate.amount
+            })
+            .eq('id', sourceUpdate.id);
+
+        if (err1) throw err1;
+
+        // 2. Update Target (Deposit Side)
+        const { error: err2 } = await supabase
+            .from('transactions')
+            .update({
+                type: TransactionType.TRANSFER,
+                linked_transaction_id: targetUpdate.linkedTransactionId,
+                to_asset_id: null, // Explicitly null for Destination
+                amount: targetUpdate.amount
+            })
+            .eq('id', targetUpdate.id);
+
+        if (err2) {
+            throw err2;
+        }
     }
 
 };

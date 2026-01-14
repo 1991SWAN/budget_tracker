@@ -592,98 +592,14 @@ export const ImportService = {
       // Prepare the transaction object
       const newTx = { ...draftTx } as Transaction;
 
-      // 2. TRANSFER MATCHING ALGORITHM
-      // Look for a counterpart in existing transactions that is NOT already linked
-      const matchCandidate = existingTransactions.find(existing => {
-        if (existing.linkedTransactionId) return false; // Already persistently linked
-        if (newlyMatchedIds.has(existing.id)) return false; // Already matched in this current loop! (Fix for Edge Case #1)
-
-        const amountMatch = existing.amount === -newTx.amount;
-
-        // Time diff check (5 minutes = 300,000 ms)
-        const timeDiff = Math.abs((newTx.timestamp || 0) - (existing.timestamp || 0));
-        const timeMatch = timeDiff <= 300000;
-
-        return amountMatch && timeMatch;
-      });
-
-      if (matchCandidate) {
-        // MATCH FOUND!
-        console.log(`Transfer Match Found: ${newTx.memo} <-> ${matchCandidate.memo}`);
-
-        // Mark as matched in this batch
-        newlyMatchedIds.add(matchCandidate.id);
-
-        // Update New Transaction
-        newTx.type = TransactionType.TRANSFER;
-        newTx.category = Category.TRANSFER;
-        newTx.linkedTransactionId = matchCandidate.id;
-        newTx.toAssetId = matchCandidate.assetId;
-        newTx.toAssetId = matchCandidate.assetId;
-
-        // Update Existing Transaction
-        // We need to clone it to avoid mutating the prop directly before state update
-        const updatedMatch = { ...matchCandidate };
-        updatedMatch.type = TransactionType.TRANSFER;
-        updatedMatch.category = Category.TRANSFER;
-        updatedMatch.linkedTransactionId = newTx.id;
-        updatedMatch.toAssetId = newTx.assetId;
-        updatedMatch.toAssetId = newTx.assetId;
-
-        updatedExistingTxs.push(updatedMatch);
-      }
+      // 2. TRANSFER MATCHING ALGORITHM - REMOVED (V2 Request)
+      // Transactions are now imported purely as Income/Expense.
+      // Reconciliation will happen in a separate post-import step if needed.
 
       finalNewTxs.push(newTx);
     }
 
-    // 3. NEW-TO-NEW MATCHING (Self-Correction within the batch)
-    // For transactions that didn't find a match in DB, they might match each other in this file.
-    matchNewToNew(finalNewTxs);
-
     return { finalNewTxs, updatedExistingTxs };
-  }
+  },
 };
 
-/**
- * Helper to match unmatched New transactions against each other.
- * (New-to-New Matching)
- */
-function matchNewToNew(mainTxs: Transaction[]) {
-  const matchedIds = new Set<string>();
-
-  for (let i = 0; i < mainTxs.length; i++) {
-    const txA = mainTxs[i];
-    if (txA.linkedTransactionId || matchedIds.has(txA.id)) continue;
-
-    for (let j = i + 1; j < mainTxs.length; j++) {
-      const txB = mainTxs[j];
-      if (txB.linkedTransactionId || matchedIds.has(txB.id)) continue;
-
-      // 1. Amount Match (Inverse)
-      if (txA.amount !== -txB.amount) continue;
-
-      // 2. Time Match (5 mins)
-      const timeDiff = Math.abs((txA.timestamp || 0) - (txB.timestamp || 0));
-      if (timeDiff > 300000) continue;
-
-      // MATCH FOUND!
-      console.log(`New-to-New Match: ${txA.memo} <-> ${txB.memo}`);
-
-      // Link A -> B
-      txA.type = TransactionType.TRANSFER;
-      txA.category = Category.TRANSFER;
-      txA.linkedTransactionId = txB.id;
-      txA.toAssetId = txB.assetId;
-
-      // Link B -> A
-      txB.type = TransactionType.TRANSFER;
-      txB.category = Category.TRANSFER;
-      txB.linkedTransactionId = txA.id;
-      txB.toAssetId = txA.assetId;
-
-      matchedIds.add(txA.id);
-      matchedIds.add(txB.id);
-      break; // Move to next txA
-    }
-  }
-}

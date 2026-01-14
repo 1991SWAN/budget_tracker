@@ -47,6 +47,13 @@
     - [x] **예산 관리**: 카테고리별 목표 금액 설정 및 달성률 표시.
     - [x] **구독 허브**: 정기 결제 캘린더 뷰 및 월별 예상 지출 요약.
 
+- [ ] Transfer Logic Refinement (V3: Positive Amount + ToAsset Flag)
+    - [x] **Core Logic**: Update `useTransactionManager` balance calculation (Source has `toAssetId`, Dest has `null` but `linkedId`).
+    - [x] **Reconciler**: Implement `useTransferReconciler` hook (Scan 5min window, Link Logic).
+    - [x] **Dual Creation**: Implement `SmartInput` dual-record creation for manual transfers.
+    - [x] **UI**: Implement `MergedTransferCard` in `TransactionItem`.
+    - [x] **Integration**: Integrate Reconciler & Notification into `App.tsx`.
+    - [ ] **Verification**: Manual Verification required (Script blocked by Auth). Verify Dual Link & Reconciler in UI.
 - [x] **데이터 가져오기 (Import System)**
     - [x] **Excel/CSV 파싱**: `xlsx` 라이브러리 및 바이너리(.xls) 지원(한글 깨짐 해결).
     - [x] **Banking Mode**: 입/출금(Deposit/Withdrawal) 분리 컬럼 지원.

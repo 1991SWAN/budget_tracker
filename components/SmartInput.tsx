@@ -151,13 +151,66 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     if (!manualForm.amount) { setError("Please enter an amount."); return; }
     if (!manualForm.assetId) { setError("Please select an account."); return; }
 
-    if (manualForm.type === TransactionType.TRANSFER && !isExternalTransfer) {
+    const isInternalTransfer = manualForm.type === TransactionType.TRANSFER && !isExternalTransfer;
+
+    if (isInternalTransfer) {
       if (!manualForm.toAssetId) { setError("Please select a destination account."); return; }
       if (manualForm.assetId === manualForm.toAssetId) { setError("Source and destination accounts must be different."); return; }
     }
 
     const totalAmount = parseFloat(manualForm.amount);
 
+    // HYBRID TAGGING: Scan for new tags and update dictionary in background
+    const tags = manualForm.memo?.match(/#\S+/g); // Find all #hashtags
+    if (tags) {
+      tags.forEach(tag => {
+        // Remove # and upsert
+        SupabaseService.upsertTag(tag.slice(1));
+      });
+    }
+
+    // V3 DUAL CREATION LOGIC
+    if (isInternalTransfer && !initialData) { // Only for new creations, not edits (edits are complex)
+      // Generate IDs for both sides
+      const sourceId = crypto.randomUUID();
+      const targetId = crypto.randomUUID();
+
+      const commonData = {
+        date: manualForm.date,
+        amount: totalAmount, // Always positive
+        category: manualForm.category,
+        memo: manualForm.memo,
+        installment: null as any
+      };
+
+      // 1. Source Transaction (Withdrawal Side)
+      // Has toAssetId, Points to TargetID as linked
+      const sourceTx: Partial<Transaction> = {
+        ...commonData,
+        id: sourceId,
+        type: TransactionType.TRANSFER,
+        assetId: manualForm.assetId,
+        toAssetId: manualForm.toAssetId,
+        linkedTransactionId: targetId
+      };
+
+      // 2. Target Transaction (Deposit Side)
+      // No toAssetId, Points to SourceID as linked
+      const targetTx: Partial<Transaction> = {
+        ...commonData,
+        id: targetId,
+        type: TransactionType.TRANSFER,
+        assetId: manualForm.toAssetId, // Belongs to target asset
+        toAssetId: undefined, // Explicitly undefined/null
+        linkedTransactionId: sourceId
+      };
+
+      console.log("[SmartInput] Dual Creating Transfer:", sourceTx, targetTx);
+      onTransactionsParsed([sourceTx, targetTx]);
+      return;
+    }
+
+    // Standard Single Transaction Logic (Expense, Income, External Transfer, or Edits)
     const transactionData: Partial<Transaction> = {
       date: manualForm.date,
       amount: totalAmount,
@@ -168,6 +221,11 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
       assetId: manualForm.assetId,
       toAssetId: (manualForm.type === TransactionType.TRANSFER && !isExternalTransfer) ? manualForm.toAssetId : undefined
     };
+
+    // Preserve ID if editing
+    if (initialData?.id) {
+      transactionData.id = initialData.id;
+    }
 
     if (isInstallment && manualForm.type === TransactionType.EXPENSE) {
       const existing = initialData?.installment;
@@ -183,15 +241,6 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
 
     } else if (initialData?.installment && !isInstallment) {
       transactionData.installment = null as any;
-    }
-
-    // HYBRID TAGGING: Scan for new tags and update dictionary in background
-    const tags = manualForm.memo?.match(/#\S+/g); // Find all #hashtags
-    if (tags) {
-      tags.forEach(tag => {
-        // Remove # and upsert
-        SupabaseService.upsertTag(tag.slice(1));
-      });
     }
 
     onTransactionsParsed([transactionData]);

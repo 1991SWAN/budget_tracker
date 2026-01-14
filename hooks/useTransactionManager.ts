@@ -29,14 +29,21 @@ export const useTransactionManager = (
                 return { ...asset, balance: asset.balance + (change * multiplier) };
             }
 
-            // 2. Transfer Impact
+            // 2. Transfer Impact (V3 Logic: Positive Amount + ToAssetFlag)
             if (tx.type === TransactionType.TRANSFER) {
-                // Source Asset: Decreases
-                if (asset.id === tx.assetId) {
+                // Case A: Source Account (Money Leaving)
+                // Identified by: has 'toAssetId' pointing to destination
+                if (asset.id === tx.assetId && tx.toAssetId) {
                     return { ...asset, balance: asset.balance - (tx.amount * multiplier) };
                 }
-                // Destination Asset: Increases
-                if (asset.id === tx.toAssetId) {
+
+                // Case B: Destination Account (Money Entering)
+                // Identified by: has 'linkedTransactionId' but NO 'toAssetId' (or toAssetId is null/empty)
+                // Ideally, for the destination record, asset.id IS the effective target.
+                // But in our dual-record model:
+                // - Source Tx: assetId=A, toAssetId=B
+                // - Dest Tx: assetId=B, toAssetId=null (linked to Source)
+                if (asset.id === tx.assetId && !tx.toAssetId && tx.linkedTransactionId) {
                     return { ...asset, balance: asset.balance + (tx.amount * multiplier) };
                 }
             }
