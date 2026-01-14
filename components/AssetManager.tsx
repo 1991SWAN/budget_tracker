@@ -185,7 +185,13 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
 
   return (
     <div className="space-y-6 pb-6 h-full flex flex-col">
-      {/* Internal Header Removed for Headless/Dialog Integration */}
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
+        <div>
+          <h1 className="text-3xl font-bold text-primary">Assets</h1>
+          <p className="text-muted">Track your net worth and manage accounts.</p>
+        </div>
+      </div>
 
       <div className="space-y-6 pb-6">
         <div className="grid grid-cols-3 gap-3">

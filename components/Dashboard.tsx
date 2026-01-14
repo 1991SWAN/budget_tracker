@@ -48,7 +48,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   return (
     <div className="space-y-6 pb-24 lg:pb-0">
       {/* Header & Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
         <div>
           <h1 className="text-3xl font-bold text-primary">Dashboard</h1>
           <p className="text-muted">Welcome back! Here's your financial overview.</p>

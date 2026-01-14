@@ -639,8 +639,12 @@ const App: React.FC = () => {
         {/* ... existing transaction view code ... */}
         <div className="flex flex-col gap-4">
           {/* Header & Actions */}
-          <div className="flex justify-between items-center px-1">
-            <h2 className="text-2xl font-bold text-slate-800">Transactions</h2>
+          {/* Header & Actions */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
+            <div>
+              <h1 className="text-3xl font-bold text-primary">Transactions</h1>
+              <p className="text-muted">Review and manage your financial history.</p>
+            </div>
             <div className="flex gap-2">
               <button onClick={openAddBill} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold hover:bg-indigo-100 transition-colors">
                 <span>🗓️</span> Bills

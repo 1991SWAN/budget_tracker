@@ -479,30 +479,46 @@ export const SupabaseService = {
             if (allTxs && allTxs.length > 0 && !options.assets) {
                 // 2. Aggregate impact per asset
                 const assetImpact: Record<string, number> = {};
+                console.log(`[SmartReset] Found ${allTxs.length} transactions to revert.`);
 
                 allTxs.forEach(tx => {
-                    const amt = Number(tx.amount);
+                    // Ensure amount is positive for calculation logic (sign depends on Type)
+                    const amt = Math.abs(Number(tx.amount));
                     if (tx.asset_id) {
                         if (!assetImpact[tx.asset_id]) assetImpact[tx.asset_id] = 0;
-                        if (tx.type === 'INCOME') assetImpact[tx.asset_id] += amt;
-                        else if (tx.type === 'EXPENSE') assetImpact[tx.asset_id] -= amt;
-                        else if (tx.type === 'TRANSFER') assetImpact[tx.asset_id] -= amt;
+
+                        // Logic: If we added INCOME, we must subtract it to revert.
+                        // If we subtracted EXPENSE, we must add it to revert.
+                        if (tx.type === 'INCOME') assetImpact[tx.asset_id] += amt; // Was +amt, impact is +amt
+                        else if (tx.type === 'EXPENSE') assetImpact[tx.asset_id] -= amt; // Was -amt, impact is -amt
+                        else if (tx.type === 'TRANSFER') assetImpact[tx.asset_id] -= amt; // Was -amt (Sender), impact is -amt
                     }
                     if (tx.to_asset_id && tx.type === 'TRANSFER') {
                         if (!assetImpact[tx.to_asset_id]) assetImpact[tx.to_asset_id] = 0;
-                        assetImpact[tx.to_asset_id] += amt;
+                        assetImpact[tx.to_asset_id] += amt; // Was +amt (Receiver), impact is +amt
                     }
                 });
+
+                console.log('[SmartReset] Calculated Asset Impacts:', assetImpact);
 
                 // 3. Apply Reversion to Assets
                 const { data: currentAssets } = await supabase.from('assets').select('id, balance');
                 if (currentAssets) {
                     for (const asset of currentAssets) {
                         const netChange = assetImpact[asset.id] || 0;
-                        // Avoid unnecessary writes if net change is 0
                         if (netChange !== 0) {
+                            // To revert: Original = Current - NetChange
+                            // Example: Current 900. NetChange -100 (Expense). Original = 900 - (-100) = 1000. Correct.
                             const originalBalance = Number(asset.balance) - netChange;
-                            await supabase.from('assets').update({ balance: originalBalance }).eq('id', asset.id);
+
+                            console.log(`[SmartReset] Reverting Asset ${asset.id}: ${asset.balance} -> ${originalBalance} (Net: ${netChange})`);
+
+                            const { error: updateError } = await supabase
+                                .from('assets')
+                                .update({ balance: originalBalance })
+                                .eq('id', asset.id);
+
+                            if (updateError) console.error(`[SmartReset] Failed to update asset ${asset.id}:`, updateError);
                         }
                     }
                 }
