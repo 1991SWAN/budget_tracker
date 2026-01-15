@@ -19,6 +19,7 @@ import Dashboard from './components/Dashboard';
 import AssetManager from './components/AssetManager';
 import SmartInput from './components/SmartInput';
 import { AppShell } from './components/layout/AppShell';
+import { TransferNotificationToast } from './components/ui/TransferNotificationToast';
 import { SettingsView } from './components/settings/SettingsView';
 
 import { CategorySettings } from './components/settings/CategorySettings';
@@ -572,6 +573,7 @@ const App: React.FC = () => {
         onClose={() => setIsReconciliationModalOpen(false)}
         candidates={transferCandidates}
         assets={assets}
+        categories={categories}
         onLink={linkTransfer}
         onIgnore={ignoreTransfer}
       />
@@ -607,27 +609,7 @@ const App: React.FC = () => {
       )}
 
       {/* Baner: Transfer Suggestions */}
-      {transferCandidates.length > 0 && (
-        <div className="mx-4 mt-4 md:mx-8 mb-0 bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-row items-center justify-between shadow-sm animate-in slide-in-from-top-2 duration-300">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-              ✨
-            </div>
-            <div>
-              <h4 className="font-bold text-blue-900 text-sm">Transfer Suggestions Found</h4>
-              <p className="text-xs text-blue-700">We found {transferCandidates.length} potential transfers to link.</p>
-            </div>
-          </div>
-          <Button
-            size="sm"
-            variant="primary"
-            className="bg-blue-600 hover:bg-blue-700 shadow-none"
-            onClick={() => setIsReconciliationModalOpen(true)}
-          >
-            Review
-          </Button>
-        </div>
-      )}
+
 
       {view === 'dashboard' && <Dashboard
         transactions={transactions}
@@ -694,9 +676,7 @@ const App: React.FC = () => {
               <p className="text-muted">Review and manage your financial history.</p>
             </div>
             <div className="flex gap-2">
-              <button onClick={openAddBill} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold hover:bg-indigo-100 transition-colors">
-                <span>🗓️</span> Bills
-              </button>
+
               {dateRange && (
                 <button onClick={() => setDateRange(null)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full text-xs font-bold hover:bg-slate-200">
                   Clear Date
@@ -742,6 +722,12 @@ const App: React.FC = () => {
 
       {view === 'settings-categories' && <CategorySettings onNavigate={navigateTo} />}
       {view === 'settings-import' && <ImportSettings onNavigate={navigateTo} />}
+
+      {/* Global Transfer Notification Toast */}
+      <TransferNotificationToast
+        count={transferCandidates.length}
+        onReview={() => setIsReconciliationModalOpen(true)}
+      />
     </AppShell>
   );
 };
