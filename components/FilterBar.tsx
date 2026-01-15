@@ -163,7 +163,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                     `}
                                 >
                                     <span className="text-xs text-slate-400">{a.currency}</span>
-                                    <span>{a.name}</span>
+                                    <span>{a.institution ? `${a.institution} - ${a.name}` : a.name}</span>
                                     {filterAssets.includes(a.id) && <span className="ml-auto text-emerald-500">✓</span>}
                                 </button>
                             ))}

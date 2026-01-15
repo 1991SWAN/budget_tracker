@@ -198,6 +198,24 @@ export const SupabaseService = {
         }
     },
 
+    deleteTransactionsByAsset: async (assetId: string) => {
+        if (!assetId) return;
+
+        // Delete all transactions where asset_id OR to_asset_id matches
+        // Note: OR syntax in Supabase is .or(`asset_id.eq.${assetId},to_asset_id.eq.${assetId}`)
+        // But for safety and specific logic ("Clear History of THIS asset"), usually we want to clear everything touching it.
+
+        const { error } = await supabase
+            .from('transactions')
+            .delete()
+            .or(`asset_id.eq.${assetId},to_asset_id.eq.${assetId}`);
+
+        if (error) {
+            console.error(`Error deleting transactions for asset ${assetId}:`, error);
+            throw error;
+        }
+    },
+
     // --- Recurring ---
     getRecurring: async (): Promise<RecurringTransaction[]> => {
         const { data, error } = await supabase.from('recurring_transactions').select('*');

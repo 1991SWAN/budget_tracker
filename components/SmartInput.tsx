@@ -400,7 +400,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                   label={manualForm.type === TransactionType.TRANSFER ? 'From' : 'Account'}
                   value={manualForm.assetId}
                   onChange={e => setManualForm({ ...manualForm, assetId: e.target.value })}
-                  options={assets.map(a => ({ label: a.name, value: a.id }))}
+                  options={assets.map(a => ({ label: a.institution ? `${a.institution} - ${a.name}` : a.name, value: a.id }))}
                   className="h-10 py-0"
                 />
 
@@ -414,7 +414,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                         { label: 'Select Target', value: '' },
                         ...assets
                           .filter(a => a.id !== manualForm.assetId)
-                          .map(a => ({ label: a.name, value: a.id }))
+                          .map(a => ({ label: a.institution ? `${a.institution} - ${a.name}` : a.name, value: a.id }))
                       ]}
                       className="bg-blue-50 border-blue-100 text-blue-700"
                     />

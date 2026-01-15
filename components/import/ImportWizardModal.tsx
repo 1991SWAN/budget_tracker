@@ -307,7 +307,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
                     <option value="dynamic">✨ General Import (Match by Column)</option>
                     <option disabled className="text-slate-300">━━━━━━━━━━━━━━━━</option>
                     {assets.map(a => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
+                        <option key={a.id} value={a.id}>{a.institution ? `${a.institution} - ${a.name}` : a.name}</option>
                     ))}
                 </select>
 

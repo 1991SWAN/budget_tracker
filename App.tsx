@@ -44,6 +44,9 @@ const App: React.FC = () => {
   const { addToast } = useToast();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
+  // Modal Visibility State for Reconciliation
+  const [showReconciliationModal, setShowReconciliationModal] = useState(false);
+
   const [assets, setAssets] = useState<Asset[]>([]);
   const [recurring, setRecurring] = useState<RecurringTransaction[]>([]);
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
@@ -220,7 +223,9 @@ const App: React.FC = () => {
   // V3 Transfer Reconciliation Hook
   const {
     candidates: transferCandidates,
+    singleCandidates,
     handleLink: linkTransfer,
+    handleConvert: convertTransfer,
     handleIgnore: ignoreTransfer,
     scanCandidates
   } = useTransferReconciler(transactions, assets, loadData);
@@ -468,7 +473,7 @@ const App: React.FC = () => {
                 <input type="number" placeholder="Payment Amount" value={formData.amount} onChange={e => setFormData({ ...formData, amount: e.target.value })} className="w-full p-4 border border-rose-200 bg-rose-50 rounded-xl font-bold text-2xl text-rose-900 focus:outline-none" />
                 <label className="block text-xs font-semibold text-slate-500 uppercase">Withdraw From</label>
                 <select value={paymentAsset} onChange={e => setPaymentAsset(e.target.value)} className="w-full p-2 border rounded-lg">
-                  {assets.filter(a => a.type !== AssetType.CREDIT_CARD).map(a => <option key={a.id} value={a.id}>{a.name} ({a.balance.toLocaleString()})</option>)}
+                  {assets.filter(a => a.type !== AssetType.CREDIT_CARD).map(a => <option key={a.id} value={a.id}>{a.institution ? `${a.institution} ${a.name}` : a.name} ({a.balance.toLocaleString()})</option>)}
                 </select>
               </>
             )}
@@ -493,14 +498,14 @@ const App: React.FC = () => {
                 {modalType === 'fund-goal' && <input type="number" placeholder="Amount to Add" value={formData.amount} onChange={e => setFormData({ ...formData, amount: e.target.value })} className="w-full p-2 border rounded-lg font-bold text-lg" autoFocus />}
                 <label className="block text-xs font-semibold text-slate-500 uppercase">Pay From / Source</label>
                 <select value={paymentAsset} onChange={e => setPaymentAsset(e.target.value)} className="w-full p-2 border rounded-lg">
-                  {assets.filter(a => a.type !== AssetType.CREDIT_CARD).map(a => <option key={a.id} value={a.id}>{a.name} ({a.balance.toLocaleString()})</option>)}
+                  {assets.filter(a => a.type !== AssetType.CREDIT_CARD).map(a => <option key={a.id} value={a.id}>{a.institution ? `${a.institution} ${a.name}` : a.name} ({a.balance.toLocaleString()})</option>)}
                 </select>
                 {modalType === 'fund-goal' && (
                   <>
                     <label className="block text-xs font-semibold text-slate-500 uppercase mt-2">To Account (Optional)</label>
                     <select value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} className="w-full p-2 border rounded-lg">
                       <option value="">None (Track Only)</option>
-                      {assets.map(a => <option key={a.id} value={a.id} disabled={a.id === paymentAsset}>{a.name} ({a.type})</option>)}
+                      {assets.map(a => <option key={a.id} value={a.id} disabled={a.id === paymentAsset}>{a.institution ? `${a.institution} ${a.name}` : a.name} ({a.type})</option>)}
                     </select>
                   </>
                 )}
@@ -572,9 +577,11 @@ const App: React.FC = () => {
         isOpen={isReconciliationModalOpen}
         onClose={() => setIsReconciliationModalOpen(false)}
         candidates={transferCandidates}
+        singleCandidates={singleCandidates}
         assets={assets}
         categories={categories}
         onLink={linkTransfer}
+        onConvert={convertTransfer}
         onIgnore={ignoreTransfer}
       />
 
@@ -664,7 +671,19 @@ const App: React.FC = () => {
           };
           await handleAddTransaction(tx);
         }
-      }} onPay={openPayCard} />}
+      }} onPay={openPayCard}
+        onClearHistory={async (assetId) => {
+          try {
+            await SupabaseService.deleteTransactionsByAsset(assetId);
+            setTransactions(prev => prev.filter(t => t.assetId !== assetId && t.toAssetId !== assetId));
+            // In a real app we might show a toast here
+            console.log("History cleared for asset", assetId);
+          } catch (e) {
+            console.error("Failed to clear history", e);
+            alert("Failed to clear history. Please try again.");
+          }
+        }}
+      />}
       {view === 'transactions' && <div className="space-y-4">
         {/* ... existing transaction view code ... */}
         <div className="flex flex-col gap-4">
@@ -725,7 +744,7 @@ const App: React.FC = () => {
 
       {/* Global Transfer Notification Toast */}
       <TransferNotificationToast
-        count={transferCandidates.length}
+        count={transferCandidates.length + singleCandidates.length}
         onReview={() => setIsReconciliationModalOpen(true)}
       />
     </AppShell>

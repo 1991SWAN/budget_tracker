@@ -346,7 +346,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel, is
 };
 
 // --- Asset Detail Modal ---
-const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], onClose: () => void, onEdit: () => void, onDelete: () => void, onPay?: (asset: Asset) => void }> = ({ asset, transactions, onClose, onEdit, onDelete, onPay }) => {
+const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], onClose: () => void, onEdit: () => void, onDelete: () => void, onPay?: (asset: Asset) => void, onClearHistory?: (assetId: string) => void }> = ({ asset, transactions, onClose, onEdit, onDelete, onPay, onClearHistory }) => {
   const modalRef = useRef<HTMLDivElement>(null);
 
   const chartData = useMemo(() => {
@@ -379,6 +379,7 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
   // I will use multi_replace_file_content.
 
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isClearing, setIsClearing] = useState(false); // New State: History Clear Confirmation
 
   const footerContent = isDeleting ? (
     <>
@@ -386,12 +387,26 @@ const AssetDetailModal: React.FC<{ asset: Asset, transactions: Transaction[], on
       <Button onClick={() => setIsDeleting(false)} variant="ghost" size="md">Cancel</Button>
       <Button onClick={onDelete} variant="destructive" size="md">Yes, Delete</Button>
     </>
+  ) : isClearing ? (
+    <>
+      <div className="flex-1 flex flex-col items-center justify-center text-xs font-bold text-rose-600">
+        <span className="animate-pulse text-sm">❗ Really Clear History?</span>
+        <span className="opacity-70">This month's stats will be lost.</span>
+      </div>
+      <Button onClick={() => setIsClearing(false)} variant="ghost" size="md">Cancel</Button>
+      <Button onClick={() => { onClearHistory?.(asset.id); setIsClearing(false); }} variant="secondary" size="md" className="bg-rose-100 text-rose-700 hover:bg-rose-200">Yes, Clear</Button>
+    </>
   ) : (
     <>
       {asset.type === AssetType.CREDIT_CARD && onPay && (
         <Button onClick={() => onPay(asset)} variant="secondary" className="flex-1">💸 Pay Bill</Button>
       )}
       <Button onClick={onEdit} variant="outline" className="flex-1">Edit Details</Button>
+      {onClearHistory && (
+        <Button onClick={() => setIsClearing(true)} variant="ghost" className="px-3 text-slate-400 hover:text-slate-600 text-xs" title="Clear Transaction History">
+          Clear History 🧹
+        </Button>
+      )}
       <Button onClick={() => setIsDeleting(true)} variant="destructive" className="px-6">Delete Asset</Button>
     </>
   );
@@ -634,9 +649,10 @@ interface AssetManagerProps {
   onEdit: (asset: Asset) => void;
   onDelete: (assetId: string) => void;
   onPay?: (asset: Asset) => void;
+  onClearHistory?: (assetId: string) => void;
 }
 
-const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd, onEdit, onDelete, onPay }) => {
+const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd, onEdit, onDelete, onPay, onClearHistory }) => {
   const [activeTab, setActiveTab] = useState<AssetTab>('ALL');
   const [showForm, setShowForm] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
@@ -892,6 +908,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
           onEdit={() => { setIsEditing(true); setShowForm(true); }}
           onDelete={handleDelete}
           onPay={onPay}
+          onClearHistory={onClearHistory}
         />
       )}
     </div>

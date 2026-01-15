@@ -30,7 +30,7 @@ export const TransferNotificationToast: React.FC<TransferNotificationToastProps>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                     </span>
                     <span className="text-sm font-medium">
-                        <span className="font-bold text-blue-300">{count}</span> transfer pairs found
+                        <span className="font-bold text-blue-300">{count}</span> transfer suggestions found
                     </span>
                 </div>
                 <Button
