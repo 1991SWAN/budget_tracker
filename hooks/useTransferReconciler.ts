@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Transaction, TransactionType } from '../types';
+import { Transaction, TransactionType, Asset, AssetType } from '../types';
 import { SupabaseService } from '../services/supabaseService';
 
 interface TransferCandidate {
@@ -11,6 +11,7 @@ interface TransferCandidate {
 
 export const useTransferReconciler = (
     transactions: Transaction[],
+    assets: Asset[],
     onRefresh: () => void
 ) => {
     const [candidates, setCandidates] = useState<TransferCandidate[]>([]);
@@ -37,9 +38,17 @@ export const useTransferReconciler = (
         // For now, let's rely on Amount/Time matching. 
         // TODO: In real app, pass 'assets' to this hook to filter by type.
 
+        // Create Asset lookup for type checking
+        const assetMap = new Map<string, Asset>();
+        assets.forEach(a => assetMap.set(a.id, a));
+
         for (let i = 0; i < sorted.length; i++) {
             const txA = sorted[i];
             if (txA.linkedTransactionId || txA.type === TransactionType.TRANSFER || processedIds.has(txA.id)) continue;
+
+            // Pre-filter: If Asset is excluded type (Credit Card / Loan), skip
+            const assetA = assetMap.get(txA.assetId);
+            if (!assetA || assetA.type === AssetType.CREDIT_CARD || assetA.type === AssetType.LOAN) continue;
 
             // V3 Window: 5 minutes (300,000 ms)
             const timeA = new Date(txA.timestamp || txA.date).getTime();
@@ -49,39 +58,29 @@ export const useTransferReconciler = (
                 const txB = sorted[j];
                 if (txB.linkedTransactionId || txB.type === TransactionType.TRANSFER || processedIds.has(txB.id)) continue;
 
+                // Pre-filter: Check Asset B type
+                const assetB = assetMap.get(txB.assetId);
+                if (!assetB || assetB.type === AssetType.CREDIT_CARD || assetB.type === AssetType.LOAN) continue;
+
+                // Constraint 1: Must be different assets
+                if (txA.assetId === txB.assetId) continue;
+
                 const timeB = new Date(txB.timestamp || txB.date).getTime();
                 const timeDiff = Math.abs(timeA - timeB);
 
                 if (timeDiff > windowSize) break; // Out of window (sorted desc)
 
-                // AMOUNT MATCH (Absolute)
-                // Import logic saves absolute amounts, but assigns Type based on sign.
-                // In Database: Expense is Amount, Income is Amount. Both Positive.
-                // Type differentiates them.
-                // Or if Import V2 saves signed amounts? 
-                // Wait, our new Import Logic saves pure Expense/Income.
-                // Usually Expense amount is > 0, Type=Expense. Income amount > 0, Type=Income.
-                // Let's assume absolute match.
-
                 if (Math.abs(txA.amount) === Math.abs(txB.amount)) {
-                    // TYPE CHECK: Must be opposite
-                    const isOpposite = (
-                        (txA.type === TransactionType.EXPENSE && txB.type === TransactionType.INCOME) ||
-                        (txA.type === TransactionType.INCOME && txB.type === TransactionType.EXPENSE)
-                    );
-
+                    // Constraint 2: Type Check (Expense vs Income)
                     if (txA.type !== txB.type) {
                         // Found a pair!
-                        // Determine which is Withdrawal (Source) and which is Deposit (Target)
-                        // Expense -> Withdrawal
-                        // Income -> Deposit
                         const withdrawal = txA.type === TransactionType.EXPENSE ? txA : txB;
                         const deposit = txA.type === TransactionType.EXPENSE ? txB : txA;
 
                         candidatesFound.push({
                             withdrawal,
                             deposit,
-                            score: 1.0, // Perfect match
+                            score: 1.0,
                             timeDiff
                         });
                         processedIds.add(txA.id);
@@ -95,7 +94,7 @@ export const useTransferReconciler = (
         setCandidates(candidatesFound);
         setIsScanning(false);
         console.log(`[TransferReconciler] Scanned ${transactions.length} txs, found ${candidatesFound.length} candidates.`);
-    }, [transactions]);
+    }, [transactions, assets]);
 
     /**
      * Trigger Scan on Mount or Transaction Change

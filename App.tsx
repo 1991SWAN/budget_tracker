@@ -223,7 +223,7 @@ const App: React.FC = () => {
     handleLink: linkTransfer,
     handleIgnore: ignoreTransfer,
     scanCandidates
-  } = useTransferReconciler(transactions, loadData);
+  } = useTransferReconciler(transactions, assets, loadData);
 
   const [isReconciliationModalOpen, setIsReconciliationModalOpen] = useState(false);
 
