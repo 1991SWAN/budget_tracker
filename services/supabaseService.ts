@@ -474,7 +474,8 @@ export const SupabaseService = {
         if (options.transactions) {
             // Smart Reset: Calculate net transaction effect per asset and revert it to preserve 'Initial Balance'.
             // 1. Fetch all transactions (lightweight, only needed fields)
-            const { data: allTxs } = await supabase.from('transactions').select('asset_id, to_asset_id, amount, type');
+            // 1. Fetch all transactions (including linked_transaction_id to identify transfer pairs)
+            const { data: allTxs } = await supabase.from('transactions').select('asset_id, to_asset_id, linked_transaction_id, amount, type');
 
             if (allTxs && allTxs.length > 0 && !options.assets) {
                 // 2. Aggregate impact per asset
@@ -482,20 +483,36 @@ export const SupabaseService = {
                 console.log(`[SmartReset] Found ${allTxs.length} transactions to revert.`);
 
                 allTxs.forEach(tx => {
-                    // Ensure amount is positive for calculation logic (sign depends on Type)
+                    // Ensure amount is positive for calculation logic
                     const amt = Math.abs(Number(tx.amount));
-                    if (tx.asset_id) {
-                        if (!assetImpact[tx.asset_id]) assetImpact[tx.asset_id] = 0;
 
-                        // Logic: If we added INCOME, we must subtract it to revert.
-                        // If we subtracted EXPENSE, we must add it to revert.
-                        if (tx.type === 'INCOME') assetImpact[tx.asset_id] += amt; // Was +amt, impact is +amt
-                        else if (tx.type === 'EXPENSE') assetImpact[tx.asset_id] -= amt; // Was -amt, impact is -amt
-                        else if (tx.type === 'TRANSFER') assetImpact[tx.asset_id] -= amt; // Was -amt (Sender), impact is -amt
+                    if (!assetImpact[tx.asset_id]) assetImpact[tx.asset_id] = 0;
+
+                    if (tx.type === 'INCOME') {
+                        assetImpact[tx.asset_id] += amt;
                     }
-                    if (tx.to_asset_id && tx.type === 'TRANSFER') {
-                        if (!assetImpact[tx.to_asset_id]) assetImpact[tx.to_asset_id] = 0;
-                        assetImpact[tx.to_asset_id] += amt; // Was +amt (Receiver), impact is +amt
+                    else if (tx.type === 'EXPENSE') {
+                        assetImpact[tx.asset_id] -= amt;
+                    }
+                    else if (tx.type === 'TRANSFER') {
+                        if (tx.to_asset_id) {
+                            // Case A: Source Transfer (Outgoing)
+                            // 1. Subtract from Source (Self)
+                            assetImpact[tx.asset_id] -= amt;
+
+                            // 2. Add to Destination (Target)
+                            // This anticipates the impact on the other asset
+                            if (!assetImpact[tx.to_asset_id]) assetImpact[tx.to_asset_id] = 0;
+                            assetImpact[tx.to_asset_id] += amt;
+                        } else if (tx.linked_transaction_id) {
+                            // Case B: Destination Transfer (Incoming, Linked)
+                            // SKIPPED: Already handled by Case A (Source) above.
+                            // If we process this, we would incorrectly subtract the amount again.
+                        } else {
+                            // Case C: Unlinked Transfer (Legacy or Broken Link)
+                            // Treat as simple Outflow
+                            assetImpact[tx.asset_id] -= amt;
+                        }
                     }
                 });
 

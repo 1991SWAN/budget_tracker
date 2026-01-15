@@ -168,84 +168,14 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         return null; // Hide from list (will be represented by Source side)
     }
 
-    // 2. Format for Source Side (Merged Card)
-    if (isTransfer && toAsset) {
-        // Source (Withdrawal Side) -> Render Merged Card
-        return (
-            <div
-                className={`relative px-4 py-3 flex items-center justify-between group transition-all duration-200 
-                bg-blue-50/30 hover:bg-blue-50/60 active:bg-blue-100/50
-                ${isSelected ? 'bg-blue-100/40' : ''}`}
-                onClick={handleRowClick}
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-                onContextMenu={(e) => {
-                    e.preventDefault();
-                    onLongPress?.();
-                }}
-            >
-                {/* Selection Checkbox */}
-                {isSelectionMode && (
-                    <div className="pr-3 animate-in fade-in zoom-in duration-200">
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'border-blue-500 bg-blue-500' : 'border-slate-300'}`}>
-                            {isSelected && <div className="w-2.5 h-2.5 bg-white rounded-full" />}
-                        </div>
-                    </div>
-                )}
 
-                {/* Left: Icon & Transfer Info */}
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-blue-100/80 text-blue-600 flex items-center justify-center text-lg shadow-sm border border-blue-200">
-                        {/* Exchange Icon */}
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                        </svg>
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                        {/* Merged Route: From -> To */}
-                        <div className="flex items-center text-sm font-semibold text-slate-800 truncate gap-1">
-                            <span>{asset?.name || 'Unknown'}</span>
-                            <span className="text-slate-400">→</span>
-                            <span className="text-blue-600">{toAsset?.name || 'Unknown'}</span>
-                        </div>
-                        {/* Memo / Category */}
-                        <div className="flex items-center gap-2 text-xs text-slate-500 truncate">
-                            <span className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">
-                                {categoryEmoji} {categoryName}
-                            </span>
-                            {mainText && <span>• {mainText}</span>}
-                        </div>
-                    </div>
-                </div>
 
-                {/* Right: Amounts (Dual) */}
-                <div className="flex flex-col items-end gap-0.5 ml-3">
-                    {/* From Amount (Red / Negative check logic: Source is Out) */}
-                    <div className="text-sm font-bold text-rose-500">
-                        -{formattedAmount}
-                    </div>
-                    {/* To Amount (Green / Positive) */}
-                    <div className="text-xs font-medium text-emerald-500">
-                        +{formattedAmount}
-                    </div>
-                    <div className="text-[10px] text-slate-400 font-medium">
-                        {timeStr}
-                    </div>
-                </div>
-
-                {/* Right Arrow (Mobile) */}
-                <div className="block lg:hidden ml-2 text-slate-300">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                </div>
-            </div>
-        );
-    }
+    const isLinkedTransfer = isTransfer && toAsset;
 
     return (
         <div
-            className={`w-full relative group transition-colors ${isSelected ? 'bg-blue-50/80' : ''}`}
+            className={`w-full relative group transition-colors 
+            ${isSelected ? 'bg-blue-50/80' : isLinkedTransfer ? 'bg-indigo-50/30' : ''}`}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
             onTouchMove={handleTouchEnd}
@@ -356,9 +286,30 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
                 {/* Col 4: Amount & Installment Info (Right) */}
                 <div className="text-right flex flex-col items-end min-w-0">
-                    <p className={`font-bold text-[15px] tabular-nums tracking-tight ${amountColor}`}>
-                        {amountSign}{formattedAmount}
-                    </p>
+                    {isTransfer && transaction.toAssetId && toAsset ? (
+                        // V3 Dual Line Display for Transfers
+                        <div className="flex flex-col items-end">
+                            {/* Line 1: Source (Withdrawal) */}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-slate-400 max-w-[60px] truncate hidden md:block">{asset?.name}</span>
+                                <span className="text-[15px] font-bold text-rose-600 tracking-tight">
+                                    -{formattedAmount}
+                                </span>
+                            </div>
+                            {/* Line 2: Destination (Deposit) */}
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[10px] text-slate-400 max-w-[60px] truncate hidden md:block">{toAsset?.name}</span>
+                                <span className="text-[15px] font-bold text-emerald-600 tracking-tight">
+                                    +{formattedAmount}
+                                </span>
+                            </div>
+                        </div>
+                    ) : (
+                        // Standard Display
+                        <p className={`font-bold text-[15px] tabular-nums tracking-tight ${amountColor}`}>
+                            {amountSign}{formattedAmount}
+                        </p>
+                    )}
 
                     {/* Installment Monthly Amount (Visible on Mobile & Desktop) */}
                     {transaction.installment && transaction.installment.totalMonths > 1 && (
