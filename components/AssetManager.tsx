@@ -550,25 +550,68 @@ const AssetCard: React.FC<{ asset: Asset, transactions: Transaction[], onClick: 
     return FinanceCalculator.calculateCreditCardBalances(asset, transactions);
   }, [asset, transactions]);
 
-  return (
-    <div onClick={onClick} className={`group relative h-48 rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl ${theme.bg} text-white shadow-lg`}>
-      <div className="absolute -top-10 -right-10 w-40 h-40 bg-white opacity-10 rounded-full blur-2xl group-hover:opacity-20 transition-opacity"></div>
-      <div className="absolute bottom-0 left-0 w-32 h-32 bg-black opacity-5 rounded-full blur-2xl"></div>
+  // Masked Number (Last 4)
+  const maskedNumber = asset.accountNumber ? `•••• ${asset.accountNumber.slice(-4)}` : '';
 
-      <div className="p-5 h-full flex flex-col justify-between relative z-10">
-        <div className="flex justify-between items-start">
-          <div className="bg-white/20 backdrop-blur-md p-2 rounded-xl text-xl shadow-inner border border-white/10">{theme.icon}</div>
-          <span className="px-2.5 py-1 rounded-full bg-black/20 backdrop-blur-md text-[9px] font-bold tracking-widest uppercase border border-white/10">{asset.type.replace('_', ' ')}</span>
+  return (
+    <div onClick={onClick} className={`group relative h-48 rounded-3xl overflow-hidden cursor-pointer transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl ${theme.bg} text-white shadow-lg`}>
+      {/* Premium Background Effects */}
+      <div className="absolute -top-24 -right-24 w-64 h-64 bg-white opacity-10 rounded-full blur-3xl group-hover:opacity-15 transition-opacity"></div>
+      <div className="absolute bottom-0 left-0 w-32 h-32 bg-black opacity-10 rounded-full blur-2xl"></div>
+
+      {/* Glass Texture */}
+      <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-50"></div>
+
+      <div className="p-6 h-full flex flex-col justify-between relative z-10">
+        {/* Header: Institution & Badge */}
+        <div className="flex justify-between items-center">
+          <div className="flex flex-col">
+            <span className="font-bold text-xs tracking-wider opacity-70 uppercase">
+              {asset.institution || 'SmartPenny'}
+            </span>
+          </div>
+          {/* Restored Asset Type Badge */}
+          <span className="px-2.5 py-1 rounded-full bg-black/20 backdrop-blur-md text-[9px] font-bold tracking-widest uppercase border border-white/10 shadow-sm">
+            {asset.type.replace('_', ' ')}
+          </span>
         </div>
-        <div>
-          <h3 className="font-bold text-lg mb-0.5 truncate">{asset.name}</h3>
-          <p className="text-3xl font-black tracking-tight">{asset.balance.toLocaleString()}</p>
-          {(asset.type === AssetType.CREDIT_CARD) && creditStats && (
-            <div className="mt-2 flex items-center gap-2 text-[10px] font-medium opacity-80 bg-black/20 self-start px-2 py-1 rounded-lg backdrop-blur-sm">
-              <span>Next Bill:</span>
-              <span className="font-bold text-white">{Math.round(creditStats.statementBalance).toLocaleString()}</span>
+
+        {/* Content: Name, Number & Balance */}
+        <div className="space-y-1 mt-auto">
+          <div className="flex justify-between items-start">
+            <div className="min-w-0 pr-2">
+              <h3 className="font-medium text-lg opacity-90 truncate tracking-tight leading-tight">{asset.name}</h3>
+              {maskedNumber && (
+                <p className="font-mono text-xs opacity-60 tracking-widest text-shadow-sm mt-0.5">
+                  {maskedNumber}
+                </p>
+              )}
             </div>
-          )}
+
+            {/* Credit Stats Badge (Moved Right - Full Info) */}
+            {(asset.type === AssetType.CREDIT_CARD) && creditStats && (
+              <div className="flex items-center gap-3 bg-black/20 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 shadow-sm shrink-0">
+                <div className="flex flex-col text-right">
+                  <span className="text-[9px] uppercase font-bold opacity-60 leading-none mb-0.5">Next Bill</span>
+                  <span className="text-xs font-bold leading-none">{Math.round(creditStats.statementBalance).toLocaleString()}</span>
+                </div>
+                <div className="h-4 w-px bg-white/10"></div>
+                <div className="flex flex-col text-right">
+                  <span className="text-[9px] uppercase font-bold opacity-60 leading-none mb-0.5">Payment Day</span>
+                  <span className="text-xs font-bold leading-none text-emerald-300">
+                    {asset.creditDetails?.billingCycle?.paymentDay || 14}th
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-baseline gap-1.5 pt-2">
+            <span className="text-3xl font-black tracking-tighter drop-shadow-sm">
+              {asset.balance.toLocaleString()}
+            </span>
+            <span className="text-sm font-medium opacity-60">KRW</span>
+          </div>
         </div>
       </div>
     </div>
