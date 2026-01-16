@@ -143,6 +143,9 @@ const TransactionList: React.FC<TransactionListProps> = ({
     }, [transactions]);
 
 
+    // Deduplication Set (Memoized)
+    const presentTxIds = useMemo(() => new Set(transactions.map(t => t.id)), [transactions]);
+
     // Empty State
     if (sortedData.length === 0) {
         return (
@@ -162,6 +165,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
             {/* Minimal List Container */}
             <div className={`h-full bg-white md:rounded-3xl border-y md:border border-slate-200 shadow-sm overflow-hidden transition-all ${isSelectionMode ? 'pb-20' : ''}`}>
                 <GroupedVirtuoso
+                    key={transactions.length}
                     style={{ height: '100%' }}
                     groupCounts={groupCounts}
                     context={{
@@ -173,7 +177,9 @@ const TransactionList: React.FC<TransactionListProps> = ({
                         selectedIds,
                         isSelectionMode,
                         handleToggleSelection,
-                        handleLongPress
+                        handleLongPress,
+                        // Deduplication Context
+                        presentTxIds
                     }}
                     groupContent={(index) => {
                         const dateStr = groupLabels[index];
@@ -202,7 +208,8 @@ const TransactionList: React.FC<TransactionListProps> = ({
                             selectedIds,
                             isSelectionMode,
                             handleToggleSelection,
-                            handleLongPress
+                            handleLongPress,
+                            presentTxIds
                         } = context;
 
                         const isSelected = selectedIds.has(tx.id);
@@ -213,6 +220,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                     transaction={tx}
                                     asset={assets.find(a => a.id === tx.assetId)}
                                     toAsset={tx.toAssetId ? assets.find(a => a.id === tx.toAssetId) : undefined}
+                                    fromAsset={tx.linkedTransactionSourceAssetId ? assets.find(a => a.id === tx.linkedTransactionSourceAssetId) : undefined}
                                     categories={categories}
                                     onEdit={onEdit}
                                     onDelete={onDelete}
@@ -221,6 +229,8 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                     isSelected={isSelected}
                                     onToggleSelect={() => handleToggleSelection(tx.id)}
                                     onLongPress={() => handleLongPress(tx.id)}
+                                    // Deduplication Prop
+                                    presentTxIds={presentTxIds}
                                 />
                             </div>
                         );

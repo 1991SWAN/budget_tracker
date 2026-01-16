@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { useModalClose } from '../../../hooks/useModalClose';
+
 interface MobileSheetProps {
     isOpen: boolean;
     onClose: () => void;
@@ -16,6 +18,9 @@ export const MobileSheet: React.FC<MobileSheetProps> = ({
     children,
     footer
 }) => {
+    const sheetRef = React.useRef<HTMLDivElement>(null);
+    useModalClose(isOpen, onClose, sheetRef);
+
     // Swipe Logic
     const [dragY, setDragY] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
@@ -76,6 +81,7 @@ export const MobileSheet: React.FC<MobileSheetProps> = ({
             />
 
             <div
+                ref={sheetRef}
                 className={`relative w-full bg-white rounded-t-3xl shadow-2xl flex flex-col max-h-[95vh] transition-transform duration-200 ease-out transform ${isOpen && !isDragging ? 'translate-y-0' : ''}`}
                 style={{
                     transform: isDragging ? `translateY(${dragY}px)` : isOpen ? 'translateY(0)' : 'translateY(100%)',

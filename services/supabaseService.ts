@@ -85,18 +85,35 @@ export const SupabaseService = {
     // --- Transactions ---
     getTransactions: async (): Promise<Transaction[]> => {
         console.log('[Supabase] getTransactions called');
-        const { data, error } = await supabase.from('transactions').select('*').order('date', { ascending: false });
+        // Fetch All Transactions
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .order('date', { ascending: false });
+
         if (error) {
             console.error('Error fetching transactions:', error);
             return [];
         }
         console.log('[Supabase] getTransactions done. Count:', data?.length);
+
+        // Client-Side Join Optimization:
+        // Create a Map of ID -> AssetID for quick lookup
+        const txAssetMap = new Map<string, string>();
+        data.forEach((row: any) => {
+            if (row.id && row.asset_id) {
+                txAssetMap.set(row.id, row.asset_id);
+            }
+        });
+
         return data.map((row: any) => ({
             ...row,
             amount: Number(row.amount),
             assetId: row.asset_id,
             toAssetId: row.to_asset_id,
             linkedTransactionId: row.linked_transaction_id,
+            // Client-Side lookup using the Map
+            linkedTransactionSourceAssetId: row.linked_transaction_id ? txAssetMap.get(row.linked_transaction_id) : undefined,
             hashKey: row.hash_key,
 
             // Reconstruct Installment Object from Flat Columns (Preferred) or JSON (Fallback)
@@ -205,14 +222,41 @@ export const SupabaseService = {
         // Note: OR syntax in Supabase is .or(`asset_id.eq.${assetId},to_asset_id.eq.${assetId}`)
         // But for safety and specific logic ("Clear History of THIS asset"), usually we want to clear everything touching it.
 
-        const { error } = await supabase
+        // 1. Delete all transactions where asset_id OR to_asset_id matches
+        const { error: deleteError } = await supabase
             .from('transactions')
             .delete()
             .or(`asset_id.eq.${assetId},to_asset_id.eq.${assetId}`);
 
-        if (error) {
-            console.error(`Error deleting transactions for asset ${assetId}:`, error);
-            throw error;
+        if (deleteError) {
+            console.error(`Error deleting transactions for asset ${assetId}:`, deleteError);
+            throw deleteError;
+        }
+
+        // 2. Verify: Ensure DB is actually empty for this asset
+        const { count, error: countError } = await supabase
+            .from('transactions')
+            .select('*', { count: 'exact', head: true })
+            .or(`asset_id.eq.${assetId},to_asset_id.eq.${assetId}`);
+
+        if (countError) {
+            console.error("Verification failed during clear history:", countError);
+            return;
+        }
+
+        // 3. Act: Only reset balance if verified empty
+        if (count === 0) {
+            console.log(`[Verified] Asset ${assetId} history cleared. Resetting balance to 0.`);
+            const { error: updateError } = await supabase
+                .from('assets')
+                .update({ balance: 0 })
+                .eq('id', assetId);
+
+            if (updateError) {
+                console.error("Failed to reset asset balance:", updateError);
+            }
+        } else {
+            console.warn(`[Safety] Transactions not fully deleted (Count: ${count}). Balance reset skipped.`);
         }
     },
 
@@ -629,6 +673,79 @@ export const SupabaseService = {
         if (err2) {
             throw err2;
         }
+    },
+
+    /**
+     * Creates a counterpart transaction for a Single-Sided Payment (handleConvert).
+     * 1. Creates a new INCOMING transaction for the target asset.
+     * 2. Updates the original OUTGOING transaction to link to it.
+     * 3. Updates the target asset's balance (Reduces Debt).
+     */
+    async createTransferPair(
+        sourceTx: Transaction,
+        targetAssetId: string,
+        categoryId: string
+    ) {
+        if (!sourceTx.id || !targetAssetId) throw new Error("Source Transaction and Target Asset ID required.");
+
+        const targetTxId = crypto.randomUUID();
+        console.log("[SupabaseService] Creating Transfer Pair for Payment...", sourceTx.id, "->", targetTxId);
+
+        // 1. Create Target Transaction (Incoming / Deposit)
+        // This represents the "Payment Received" on the Credit Card side.
+        const targetTx: Partial<Transaction> = {
+            id: targetTxId,
+            date: sourceTx.date,
+            timestamp: sourceTx.timestamp,
+            amount: sourceTx.amount, // Same amount
+            type: TransactionType.TRANSFER,
+            assetId: targetAssetId,
+            toAssetId: undefined, // Destination has no toAssetId
+            linkedTransactionId: sourceTx.id,
+            category: categoryId,
+            memo: sourceTx.memo // Keep exact memo as requested
+        };
+
+        await this.saveTransaction(targetTx as Transaction);
+
+        // 2. Update Source Transaction (Outgoing / Withdrawal)
+        // Convert Expense -> Transfer Out
+        const { error: srcError } = await supabase
+            .from('transactions')
+            .update({
+                type: TransactionType.TRANSFER,
+                to_asset_id: targetAssetId, // Point to Credit Card
+                linked_transaction_id: targetTxId,
+                category: categoryId // Unified Category
+            })
+            .eq('id', sourceTx.id);
+
+        if (srcError) throw srcError;
+
+        // 3. Update Target Asset Balance (Reflect the Payment)
+        // Since we created a new "Incoming" transaction, the balance must increase (Debt decreases).
+        // We must fetch the latest balance to be safe.
+        const { data: assetData, error: assetError } = await supabase
+            .from('assets')
+            .select('*')
+            .eq('id', targetAssetId)
+            .single();
+
+        if (assetError || !assetData) {
+            console.error("Failed to fetch target asset for balance update", assetError);
+            throw new Error("Target Asset not found for balance update.");
+        }
+
+        const newBalance = Number(assetData.balance) + Number(sourceTx.amount);
+
+        const { error: updateError } = await supabase
+            .from('assets')
+            .update({ balance: newBalance })
+            .eq('id', targetAssetId);
+
+        if (updateError) throw updateError;
+
+        console.log(`[SupabaseService] Payment Balance Updated: ${assetData.balance} -> ${newBalance}`);
     }
 
 };

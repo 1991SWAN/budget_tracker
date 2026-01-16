@@ -228,7 +228,7 @@ const App: React.FC = () => {
     handleConvert: convertTransfer,
     handleIgnore: ignoreTransfer,
     scanCandidates
-  } = useTransferReconciler(transactions, assets, loadData);
+  } = useTransferReconciler(transactions, assets, categories, loadData);
 
   const [isReconciliationModalOpen, setIsReconciliationModalOpen] = useState(false);
 
@@ -676,11 +676,15 @@ const App: React.FC = () => {
           try {
             await SupabaseService.deleteTransactionsByAsset(assetId);
             setTransactions(prev => prev.filter(t => t.assetId !== assetId && t.toAssetId !== assetId));
-            // In a real app we might show a toast here
+
+            // Also reset the asset balance in local state to 0 (matching new backend logic)
+            setAssets(prev => prev.map(a => a.id === assetId ? { ...a, balance: 0 } : a));
+
+            addToast("History cleared and balance reset to 0.", 'success');
             console.log("History cleared for asset", assetId);
           } catch (e) {
             console.error("Failed to clear history", e);
-            alert("Failed to clear history. Please try again.");
+            addToast("Failed to clear history. Please try again.", 'error');
           }
         }}
       />}

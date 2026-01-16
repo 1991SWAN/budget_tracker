@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { useModalClose } from '../../../hooks/useModalClose';
+
 interface DesktopDialogProps {
     isOpen: boolean;
     onClose: () => void;
@@ -18,6 +20,9 @@ export const DesktopDialog: React.FC<DesktopDialogProps> = ({
     footer,
     maxWidth = 'md'
 }) => {
+    const dialogRef = React.useRef<HTMLDivElement>(null);
+    useModalClose(isOpen, onClose, dialogRef);
+
     const [visible, setVisible] = useState(false);
 
     useEffect(() => {
@@ -56,6 +61,7 @@ export const DesktopDialog: React.FC<DesktopDialogProps> = ({
 
             {/* Dialog Panel */}
             <div
+                ref={dialogRef}
                 className={`relative w-full ${maxWidthClasses[maxWidth]} bg-white rounded-2xl shadow-2xl flex flex-col max-h-[85vh] transition-all duration-200 transform ${isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}
             >
                 {/* Header */}

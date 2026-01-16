@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Transaction, TransactionType, Asset, AssetType, Category } from '../types';
+import { Transaction, TransactionType, Asset, AssetType, Category, CategoryItem } from '../types';
 import { SupabaseService } from '../services/supabaseService';
 
 interface TransferCandidate {
@@ -18,6 +18,7 @@ interface SingleCandidate {
 export const useTransferReconciler = (
     transactions: Transaction[],
     assets: Asset[],
+    categories: CategoryItem[],
     onRefresh: () => void
 ) => {
     const [candidates, setCandidates] = useState<TransferCandidate[]>([]);
@@ -225,39 +226,44 @@ export const useTransferReconciler = (
     const handleConvert = async (candidate: SingleCandidate) => {
         const { transaction, targetAsset } = candidate;
 
-        try {
-            const updatedTx: Transaction = {
-                ...transaction,
-                type: TransactionType.TRANSFER,
-                category: Category.TRANSFER, // Force category change? Or keep 'Finance'? Let's suggest Transfer.
-                toAssetId: targetAsset.id,
-                // Do NOT set linkedTransactionId because there is no counter-party transaction yet. 
-                // Wait, if it's a transfer to a Liability, does it create a second transaction?
-                // In 'Pay Bill' logic: We created ONE Transfer transaction.
-                // But normally Transfer is a Pair?
-                // If I am sending Money FROM Checking TO Credit Card...
-                // In SmartPenny V3, Transfers can be Single Linked (Pay Bill style) or Double (Bank style)?
-                // Actually 'Pay Bill' creates ONE transaction with `toAssetId`.
-                // The `transaction_list` or `asset` logic handles showing it on both sides?
-                // Let's check `handleAddTransaction` or database.
-                // 
-                // Supabase Service `saveTransaction` saves `to_asset_id`.
-                // If `to_asset_id` is set, does it show up in the Target Asset's list?
-                // `SupabaseService.getTransactions` usually queries by `asset_id` OR `to_asset_id`.
-                // So YES, one transaction record is enough if it acts as a dual-sided record.
-                // 
-                // So for Single Convert, we just update the existing one.
-            };
+        // Determine proper Transfer Category
+        // Strict Mode: MUST find a "Payment" related category.
 
-            await SupabaseService.saveTransaction(updatedTx);
+        let targetCategoryId: string | null = null;
+
+        if (categories && categories.length > 0) {
+            const transferCategories = categories.filter(c => c.type === 'TRANSFER');
+
+            const paymentCategory = transferCategories.find(c =>
+                c.name.toLowerCase().includes('card') ||
+                c.name.toLowerCase().includes('payment') ||
+                c.name.toLowerCase().includes('결제')
+            );
+
+            if (paymentCategory) {
+                targetCategoryId = paymentCategory.id;
+            }
+        }
+
+        // Strict Enforcement
+        if (!targetCategoryId) {
+            alert("To convert to a payment, you must have a Transfer Category named 'Card Payment' or '결제'. Please create one in Settings.");
+            return;
+        }
+
+        try {
+            // New Logic: Create Counterpart Transaction Pair via Service
+            await SupabaseService.createTransferPair(transaction, targetAsset.id, targetCategoryId);
 
             onRefresh();
             setSingleCandidates(prev => prev.filter(c => c.transaction.id !== transaction.id));
-        } catch (e) {
-            console.error("Failed to convert transaction", e);
-            alert("Failed to convert. Please try again.");
+        } catch (error) {
+            console.error("Failed to convert transaction:", error);
+            alert("Failed to convert transaction. Please try again.");
         }
     };
+
+
 
     const handleIgnore = (id: string, isSingle: boolean = false) => {
         if (isSingle) {

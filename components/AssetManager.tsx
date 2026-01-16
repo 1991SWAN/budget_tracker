@@ -658,6 +658,22 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
+  // --- Reactive Asset Sync ---
+  // Ensure the open modal (local state) stays in sync with global props
+  useEffect(() => {
+    if (selectedAsset) {
+      const freshAsset = assets.find(a => a.id === selectedAsset.id);
+      // Valid update: Asset exists in global state but differs from local snapshot
+      if (freshAsset && freshAsset !== selectedAsset) {
+        setSelectedAsset(freshAsset);
+      }
+      // Edge case: Asset was deleted globally? Close modal
+      else if (!freshAsset) {
+        setSelectedAsset(null);
+      }
+    }
+  }, [assets, selectedAsset]);
+
   // View Options State
   const [sortBy, setSortBy] = useState<SortOption>('default');
   const [groupBy, setGroupBy] = useState<GroupOption>('none');

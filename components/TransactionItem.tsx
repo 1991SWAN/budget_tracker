@@ -5,7 +5,8 @@ import { Button } from './ui/Button';
 interface TransactionItemProps {
     transaction: Transaction;
     asset?: Asset;
-    toAsset?: Asset; // For transfers
+    toAsset?: Asset; // For transfers (Destination)
+    fromAsset?: Asset; // For transfers (Source - when viewing Target)
     categories: CategoryItem[];
     onEdit: (tx: Transaction) => void;
     onDelete: (tx: Transaction) => void;
@@ -15,19 +16,23 @@ interface TransactionItemProps {
     isSelected?: boolean;
     onToggleSelect?: () => void;
     onLongPress?: () => void;
+    // Deduplication Prop
+    presentTxIds?: Set<string>;
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({
     transaction,
     asset,
     toAsset,
+    fromAsset,
     categories = [],
     onEdit,
     onDelete,
     isSelectionMode = false,
     isSelected = false,
     onToggleSelect,
-    onLongPress
+    onLongPress,
+    presentTxIds
 }) => {
     const [isExpanded, setIsExpanded] = React.useState(false);
     const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false);
@@ -161,21 +166,25 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         }
     };
 
-    // V3 Transfer Logic: Merged View
-    // 1. Hide Target Side (Money entering, linked but no 'toAssetId')
-    // Source side always has toAssetId. Target side has null toAssetId but linkedTransactionId.
-    if (isTransfer && !toAsset && transaction.linkedTransactionId) {
-        return null; // Hide from list (will be represented by Source side)
+
+
+
+
+    // Unified Flag for Styling
+    const isLinkedTransfer = isTransfer && ((toAsset) || (fromAsset && !toAsset));
+
+    // V3 Deduplication Logic:
+    // If we are the "Target" (Receiver) AND the "Source" (Sender) is also currently displayed in this list,
+    // then HIDE ourselves to prevent duplicates.
+    // If the Source is NOT in the list (e.g. filtered view), then SHOW ourselves.
+    if (isTransfer && !toAsset && transaction.linkedTransactionId && presentTxIds?.has(transaction.linkedTransactionId)) {
+        return null;
     }
-
-
-
-    const isLinkedTransfer = isTransfer && toAsset;
 
     return (
         <div
-            className={`w-full relative group transition-colors 
-            ${isSelected ? 'bg-blue-50/80' : isLinkedTransfer ? 'bg-indigo-50/30' : ''}`}
+            className={`w-full relative group transition-all duration-200
+            ${isSelected ? 'bg-blue-50/80' : 'hover:bg-slate-50/30'}`}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
             onTouchMove={handleTouchEnd}
@@ -286,19 +295,23 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
                 {/* Col 4: Amount & Installment Info (Right) */}
                 <div className="text-right flex flex-col items-end min-w-0">
-                    {isTransfer && transaction.toAssetId && toAsset ? (
-                        // V3 Dual Line Display for Transfers
+                    {/* V3 Dual Line Display for Transfers (Unified) */}
+                    {isTransfer && ((toAsset) || (fromAsset && !toAsset)) ? (
                         <div className="flex flex-col items-end">
-                            {/* Line 1: Source (Withdrawal) */}
+                            {/* Line 1: Source (Withdrawal) - Always Red */}
                             <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] text-slate-400 max-w-[60px] truncate hidden md:block">{asset?.name}</span>
+                                <span className="text-[10px] text-slate-400 max-w-[60px] truncate hidden md:block">
+                                    {toAsset ? asset?.name : fromAsset?.name}
+                                </span>
                                 <span className="text-[15px] font-bold text-rose-600 tracking-tight">
                                     -{formattedAmount}
                                 </span>
                             </div>
-                            {/* Line 2: Destination (Deposit) */}
+                            {/* Line 2: Destination (Deposit) - Always Green */}
                             <div className="flex items-center gap-1.5 mt-0.5">
-                                <span className="text-[10px] text-slate-400 max-w-[60px] truncate hidden md:block">{toAsset?.name}</span>
+                                <span className="text-[10px] text-slate-400 max-w-[60px] truncate hidden md:block">
+                                    {toAsset ? toAsset.name : asset?.name}
+                                </span>
                                 <span className="text-[15px] font-bold text-emerald-600 tracking-tight">
                                     +{formattedAmount}
                                 </span>

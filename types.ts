@@ -144,6 +144,7 @@ export interface Transaction {
 
   hashKey?: string;
   linkedTransactionId?: string;
+  linkedTransactionSourceAssetId?: string; // New: For rendering "From Asset" on Target Side
   originalText?: string;
   merchant?: string; // Parsed Merchant Name
 
