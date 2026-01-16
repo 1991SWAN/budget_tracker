@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Transaction, TransactionType, Asset, CategoryItem } from '../types';
 import { Button } from './ui/Button';
 
@@ -388,4 +388,4 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     );
 };
 
-export default TransactionItem;
+export default memo(TransactionItem);

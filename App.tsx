@@ -28,7 +28,9 @@ import { ImportSettings } from './components/settings/ImportSettings';
 
 import { useTransactionManager } from './hooks/useTransactionManager';
 import { useCategoryManager } from './hooks/useCategoryManager';
+import { useAppData } from './hooks/useAppData';
 import { useModalClose } from './hooks/useModalClose';
+import { useModalManager } from './hooks/useModalManager';
 
 
 import { useAuth } from './contexts/AuthContext';
@@ -42,15 +44,18 @@ const App: React.FC = () => {
   const [view, setView] = useState<View>('dashboard');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const { addToast } = useToast();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  // Refactored to useAppData
+  const {
+    assets, setAssets,
+    transactions, setTransactions,
+    recurring, setRecurring,
+    goals, setGoals,
+    monthlyBudget, setMonthlyBudget,
+    refreshData: loadData
+  } = useAppData(user);
 
-  // Modal Visibility State for Reconciliation
+  // Modal Visibility State for Reconciliation (Restored)
   const [showReconciliationModal, setShowReconciliationModal] = useState(false);
-
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [recurring, setRecurring] = useState<RecurringTransaction[]>([]);
-  const [goals, setGoals] = useState<SavingsGoal[]>([]);
-  const [monthlyBudget, setMonthlyBudget] = useState<number>(0);
   const [showSmartInput, setShowSmartInput] = useState(false);
 
 
@@ -65,13 +70,19 @@ const App: React.FC = () => {
 
 
   // Added 'import' to modal types
-  const [modalType, setModalType] = useState<'bill' | 'goal' | 'pay-bill' | 'fund-goal' | 'budget' | 'pay-card' | 'import' | null>(null);
-  const [selectedItem, setSelectedItem] = useState<any>(null);
-
-  const [formData, setFormData] = useState<any>({});
-  const [paymentAsset, setPaymentAsset] = useState<string>('');
-  const [destinationAsset, setDestinationAsset] = useState<string>('');
-  const [paymentError, setPaymentError] = useState<string | null>(null);
+  // Refactored to useModalManager
+  const {
+    modalType, setModalType,
+    selectedItem, setSelectedItem,
+    formData, setFormData,
+    paymentAsset, setPaymentAsset,
+    destinationAsset, setDestinationAsset,
+    paymentError, setPaymentError,
+    openAddBill, openEditBill, openPayBill,
+    openAddGoal, openEditGoal, openFundGoal,
+    openEditBudget, openPayCard, openImport,
+    closeModal: hookCloseModal
+  } = useModalManager(assets);
 
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
@@ -83,10 +94,13 @@ const App: React.FC = () => {
 
   // Modal Close Support
   const modalRef = useRef<HTMLDivElement>(null);
-  useModalClose(!!modalType, () => {
-    setModalType(null);
+
+  const closeModal = () => {
+    hookCloseModal();
     setPendingImportFile(null); // Clear file on close
-  }, modalRef);
+  };
+
+  useModalClose(!!modalType, closeModal, modalRef);
 
   // --- History / Navigation Handling ---
   const navigateTo = useCallback((newView: View) => {
@@ -117,6 +131,11 @@ const App: React.FC = () => {
 
   const { addTransaction: handleAddTransaction, addTransactions: handleAddTransactions, updateTransaction: handleUpdateTransaction, deleteTransaction: handleDeleteTransaction, deleteTransactions: handleDeleteTransactions } = useTransactionManager(transactions, setTransactions, assets, setAssets);
   const { categories } = useCategoryManager();
+
+  const handleEditTransaction = useCallback((tx: Transaction) => {
+    setEditingTransaction(tx);
+    setShowSmartInput(true);
+  }, []);
 
   // --- Main Filtering Logic ---
   const filteredTransactions = useMemo(() => {
@@ -162,63 +181,7 @@ const App: React.FC = () => {
     });
   }, [transactions, searchTerm, dateRange, filterType, filterCategories, filterAssets, assets, categories]);
 
-  const loadData = async () => {
-    try {
-      console.log('[App] loadData called. User ID:', user?.id);
 
-      // 1. Auth check - We already have 'user' from Context, so we can skip a blocking getSession() call
-      // preventing potential hangs on refresh.
-      if (!user) {
-        console.log("[App] No user in context. Skipping data load.");
-        return;
-      }
-
-      const [txs, assts, recs, gls] = await Promise.all([
-        SupabaseService.getTransactions(),
-        SupabaseService.getAssets(),
-        SupabaseService.getRecurring(),
-        SupabaseService.getGoals()
-      ]);
-
-      console.log(`[App] Data Loaded: Txs=${txs.length}, Assets=${assts.length}`);
-
-      setTransactions(txs);
-      setAssets(assts);
-      setRecurring(recs);
-      setGoals(gls);
-
-      // Load Profile for Settings/Budget
-      const profile = await SupabaseService.getProfile();
-      if (profile) {
-        setMonthlyBudget(profile.monthlyBudget);
-      } else {
-        // Fallback to 0 if no profile set (User requested to remove 2.5M default)
-        setMonthlyBudget(0);
-      }
-    } catch (e) {
-      addToast('Failed to load data from cloud', 'error');
-    }
-  };
-
-  // Reload data when user changes (Login/Logout)
-  useEffect(() => {
-    console.log('[App] useEffect triggered. User:', user?.id);
-    if (user) {
-      // Add a small delay to ensure Auth Session is fully propagated to Supabase Client headers
-      // This prevents "Data 0" issues on page refresh
-      const timer = setTimeout(() => {
-        console.log('[App] Timeout finished. Calling loadData...');
-        loadData();
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
-      // Clear data on logout
-      setTransactions([]);
-      setAssets([]);
-      setRecurring([]);
-      setGoals([]);
-    }
-  }, [user]);
 
   // V3 Transfer Reconciliation Hook
   const {
@@ -345,16 +308,7 @@ const App: React.FC = () => {
     addToast(`Imported ${finalNewTxs.length} transactions (${updatedExistingTxs.length} matched as transfers)`, 'success');
   };
 
-  const openAddBill = () => { setModalType('bill'); setSelectedItem(null); setFormData({ name: '', amount: '', dayOfMonth: 1, category: Category.UTILITIES, billType: BillType.SUBSCRIPTION }); };
 
-  const openEditBill = (bill: RecurringTransaction) => { setModalType('bill'); setSelectedItem(bill); setFormData({ ...bill }); };
-  const openPayBill = (bill: RecurringTransaction) => { setModalType('pay-bill'); setSelectedItem(bill); setPaymentAsset(assets.find(a => a.type !== AssetType.CREDIT_CARD)?.id || ''); };
-  const openAddGoal = () => { setModalType('goal'); setSelectedItem(null); setFormData({ name: '', targetAmount: '', emoji: '🎯', deadline: '' }); };
-  const openEditGoal = (goal: SavingsGoal) => { setModalType('goal'); setSelectedItem(goal); setFormData({ ...goal }); };
-  const openFundGoal = (goal: SavingsGoal) => { setModalType('fund-goal'); setSelectedItem(goal); setFormData({ amount: '' }); setPaymentAsset(assets.find(a => a.type !== AssetType.CREDIT_CARD)?.id || ''); setDestinationAsset(''); };
-  const openEditBudget = () => { setModalType('budget'); setFormData({ amount: monthlyBudget }); };
-  const openPayCard = (card: Asset) => { setModalType('pay-card'); setSelectedItem(card); setFormData({ amount: Math.abs(card.balance) }); setPaymentAsset(assets.find(a => a.type !== AssetType.CREDIT_CARD)?.id || ''); };
-  const closeModal = () => { setModalType(null); setSelectedItem(null); setPaymentError(null); setPendingImportFile(null); };
 
   const handleSubmit = () => {
     setPaymentError(null);
@@ -731,10 +685,7 @@ const App: React.FC = () => {
             transactions={filteredTransactions}
             assets={assets}
             categories={categories}
-            onEdit={(tx) => {
-              setEditingTransaction(tx);
-              setShowSmartInput(true);
-            }}
+            onEdit={handleEditTransaction}
             onDelete={handleDeleteTransaction}
             onDeleteTransactions={handleDeleteTransactions}
           />

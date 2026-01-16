@@ -146,6 +146,19 @@ const TransactionList: React.FC<TransactionListProps> = ({
     // Deduplication Set (Memoized)
     const presentTxIds = useMemo(() => new Set(transactions.map(t => t.id)), [transactions]);
 
+    // Memoize Context to prevent Virtuoso Item re-renders
+    const virtuosoContext = useMemo(() => ({
+        categories,
+        assets,
+        onEdit,
+        onDelete,
+        selectedIds,
+        isSelectionMode,
+        handleToggleSelection,
+        handleLongPress,
+        presentTxIds
+    }), [categories, assets, onEdit, onDelete, selectedIds, isSelectionMode, handleToggleSelection, handleLongPress, presentTxIds]);
+
     // Empty State
     if (sortedData.length === 0) {
         return (
@@ -168,19 +181,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
                     key={transactions.length}
                     style={{ height: '100%' }}
                     groupCounts={groupCounts}
-                    context={{
-                        categories,
-                        assets,
-                        onEdit,
-                        onDelete,
-                        // Selection Context
-                        selectedIds,
-                        isSelectionMode,
-                        handleToggleSelection,
-                        handleLongPress,
-                        // Deduplication Context
-                        presentTxIds
-                    }}
+                    context={virtuosoContext}
                     groupContent={(index) => {
                         const dateStr = groupLabels[index];
                         const dateLabel = getDateLabel(dateStr);

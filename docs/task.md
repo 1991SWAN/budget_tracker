@@ -9,12 +9,18 @@
     - [x] **보안 강화**: 단일 기기 접속(Single Device) 강제, 익명 로그인 로직 제거.
     - [x] **세션 관리**: 새로고침 시 데이터 유지 및 화이트 스크린 방지.
 
+- [x] **보안 강화 및 감사 (Security Audit)**
+    - [x] **RLS 정책 강화**: 익명 사용자(Anonymous) 접근 원천 차단 (`to_boolean` 체크).
+    - [x] **함수 보안**: `search_path` 명시적 설정으로 SQL Injection 방지.
+    - [x] **비밀번호 정책**: 유출된 비밀번호(Pwned Password) 차단 가이드 수립.
+
 - [x] **자산 관리 (Asset Management)**
     - [x] **데이터 설계**: `institution`, `account_number` 등 상세 스키마 정의.
     - [x] **자산 UI**: 카드/통장 메타포 디자인, 유형별 동적 입력 폼.
     - [x] **그룹핑**: 자산 유형별(입출금, 적금, 대출 등) 탭 분리 및 시각화.
     - [x] **보기 옵션**: 정렬(잔액/이름순) 및 그룹화(은행/유형별) 기능 구현.
     - [x] **고급 로직**: 대출 상환, 이자 계산, 총자산 제외 옵션 구현.
+    - [x] **초기화 로직 개선**: 내역 삭제 시 검증 후 잔액 0 처리 (Verify-then-Reset).
 
 ---
 
@@ -98,4 +104,18 @@
 
 - [ ] **유지보수 및 확장 (Future)**
     - [ ] **프리셋 시스템**: 가져오기 매핑 설정 저장 기능.
-    - [ ] **성능 튜닝**: 대량 데이터 렌더링 최적화 지속.
+
+---
+
+## 6. 코드 최적화 및 리팩토링 (Code Optimization)
+시스템 성능 및 유지보수성 향상을 위한 구조 개선 작업입니다.
+
+- [x] **AssetManager 리팩토링** (Critical)
+    - [x] `AssetForm.tsx` 분리: 입력 폼 컴포넌트 독립.
+    - [x] `AssetDetailModal.tsx` 분리: 상세 보기 및 차트 로직 독립.
+    - [x] `AssetCard.tsx` 분리: 리스트 아이템 컴포넌트 독립.
+- [ ] **App.tsx 구조 개선** (High)
+    - [x] `useModalManager`: 모달 상태 관리 로직 훅으로 추출.
+    - [x] `useInitialization`: 초기 데이터 로딩 로직 분리 (Implemented as `useAppData`).
+    - [x] `useInitialization`: 초기 데이터 로딩 로직 분리 (Implemented as `useAppData`).
+    - [x] **성능 튜닝**: 대량 데이터 렌더링 최적화 지속 (TransactionList optimized).
