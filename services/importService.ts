@@ -26,6 +26,15 @@ export interface ImportPreset {
 
 const PRESET_STORAGE_KEY = 'smartpenny_import_presets';
 
+export interface ImportRow {
+  index: number;
+  data: any[];
+  status: 'valid' | 'invalid';
+  transaction?: Partial<Transaction>;
+  reason?: string;
+  assetId?: string; // Manually assigned assetId or detected one
+}
+
 export const ImportService = {
   /**
    * Generates a hash/signature for CSV Headers to identify the format.
@@ -225,13 +234,291 @@ export const ImportService = {
   },
 
   /**
-   * Converts raw grid data into Draft Transactions using the user's Column Mapping.
-   * This is Step 3 of the wizard (Preview).
+   * Internal helper to parse and validate a single row.
+   * Extracted from the main loop to support real-time re-validation.
    */
+  validateRow: (
+    row: any[],
+    index: number,
+    mapping: ColumnMapping,
+    defaultAssetId: string,
+    assets: any[] = [],
+    categories: CategoryItem[] = []
+  ): { transaction?: Partial<Transaction>, reason?: string } => {
+    try {
+      const dateVal = row[mapping.dateIndex];
+      const memoVal = row[mapping.memoIndex];
+
+      // Amount Resolution
+      let amount = 0;
+      let determinedType: TransactionType | null = null;
+
+      if (mapping.amountInIndex !== undefined && mapping.amountInIndex >= 0 && mapping.amountOutIndex !== undefined && mapping.amountOutIndex >= 0) {
+        const inVal = row[mapping.amountInIndex];
+        const outVal = row[mapping.amountOutIndex];
+
+        const parseAmt = (v: any) => {
+          if (typeof v === 'number') return v;
+          const s = String(v || '').trim();
+          if (!s) return 0;
+          return parseFloat(s.replace(/[^0-9.-]/g, '')) || 0;
+        };
+
+        const inAmount = parseAmt(inVal);
+        const outAmount = parseAmt(outVal);
+
+        if (inAmount > 0) {
+          amount = inAmount;
+          determinedType = TransactionType.INCOME;
+        } else if (outAmount > 0) {
+          amount = outAmount;
+          determinedType = TransactionType.EXPENSE;
+        }
+      } else {
+        const amountVal = row[mapping.amountIndex];
+        if (typeof amountVal === 'number') {
+          amount = amountVal;
+        } else {
+          const s = String(amountVal || '').trim();
+          if (!s) throw new Error("Empty Amount");
+          const cleanAmt = s.replace(/[^0-9.-]/g, '');
+          const parsedFloat = parseFloat(cleanAmt);
+          if (isNaN(parsedFloat)) throw new Error("Invalid Amount");
+          amount = parsedFloat;
+        }
+      }
+
+      // Asset Resolution
+      let currentAssetId = defaultAssetId;
+      if (mapping.assetIndex !== undefined && mapping.assetIndex >= 0) {
+        const assetVal = String(row[mapping.assetIndex] || '').trim();
+        if (assetVal) {
+          const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
+          const searchNorm = normalize(assetVal);
+          let bestMatchId = null;
+          let highestScore = 0;
+
+          for (const a of assets) {
+            const nameNorm = normalize(a.name);
+            if (searchNorm === nameNorm) {
+              bestMatchId = a.id;
+              highestScore = 999;
+              break;
+            }
+
+            let score = 0;
+            const tokenize = (str: string) => str.toLowerCase().split(/[^a-z0-9가-힣]+/).filter(t => t.length > 0);
+            const nameTokens = new Set(tokenize(a.name));
+            const searchTokens = tokenize(assetVal);
+
+            for (const token of searchTokens) {
+              if (token.length < 2 && isNaN(Number(token))) continue;
+              if (nameTokens.has(token)) score += 10;
+              else {
+                for (const nt of nameTokens) {
+                  if (nt.length > 2 && token.length > 2 && (nt.includes(token) || token.includes(nt))) {
+                    score += 2;
+                    break;
+                  }
+                }
+              }
+            }
+            if (nameNorm.length > 2 && searchNorm.includes(nameNorm)) score += 15;
+
+            if (score > highestScore) {
+              highestScore = score;
+              bestMatchId = a.id;
+            }
+          }
+          if (bestMatchId && highestScore >= 5) {
+            currentAssetId = bestMatchId;
+          }
+        }
+      }
+
+      if (currentAssetId === 'dynamic') throw new Error("Account not found");
+
+      // Date Parsing
+      const parseLooseDate = (val: any): Date | null => {
+        if (val instanceof Date) return val;
+        let s = String(val || '').trim();
+        if (!s) return null;
+
+        const complexMatch = s.match(/(\d{4})[\.\/\-년]\s*(\d{1,2})[\.\/\-월]\s*(\d{1,2})[일]?\s*(?:(오전|오후|AM|PM)\s*)?(\d{1,2})?:?(\d{1,2})?(?::(\d{1,2}))?/i);
+        if (complexMatch) {
+          let [_, y, m, d, meridiem, hourStr, min, sec] = complexMatch;
+          let hour = hourStr ? parseInt(hourStr, 10) : 0;
+          let minute = min ? parseInt(min, 10) : 0;
+          let second = sec ? parseInt(sec, 10) : 0;
+          if (meridiem) {
+            if ((meridiem === '오후' || meridiem.toUpperCase() === 'PM') && hour < 12) hour += 12;
+            if ((meridiem === '오전' || meridiem.toUpperCase() === 'AM') && hour === 12) hour = 0;
+          }
+          return new Date(parseInt(y), parseInt(m) - 1, parseInt(d), hour, minute, second);
+        }
+
+        const simpleDateMatch = s.match(/^(\d{4})\s*[\.\/\-년]\s*(\d{1,2})\s*[\.\/\-월]\s*(\d{1,2})[일]?/);
+        if (simpleDateMatch) {
+          const [_, y, m, d] = simpleDateMatch;
+          return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+        }
+
+        const cleanS = s.replace(/[\.\/]/g, '-').replace(/\s/g, '');
+        if (/^\d{8}$/.test(cleanS)) {
+          return new Date(parseInt(cleanS.substring(0, 4)), parseInt(cleanS.substring(4, 6)) - 1, parseInt(cleanS.substring(6, 8)));
+        }
+
+        const dDate = new Date(s);
+        return isNaN(dDate.getTime()) ? null : dDate;
+      };
+
+      const d = parseLooseDate(dateVal);
+      if (!d) throw new Error("Invalid Date");
+
+      const dateStr = d.toISOString().split('T')[0];
+      const timestamp = d.getTime();
+
+      // Merchant & Memo
+      let merchantVal = undefined;
+      let finalMemo = String(memoVal || '').trim();
+
+      if (mapping.merchantIndex !== undefined && mapping.merchantIndex >= 0) {
+        const rawMerchant = String(row[mapping.merchantIndex] || '').trim();
+        if (rawMerchant) {
+          merchantVal = rawMerchant;
+          if (!finalMemo.toLowerCase().includes(`@${rawMerchant.toLowerCase()}`)) {
+            finalMemo = finalMemo ? `${finalMemo} @${rawMerchant}` : `@${rawMerchant}`;
+          }
+        }
+      }
+
+      if (mapping.tagIndex !== undefined && mapping.tagIndex >= 0) {
+        const rawTag = String(row[mapping.tagIndex] || '').trim();
+        if (rawTag) {
+          const cleanTag = rawTag.replace(/\s+/g, '_');
+          const formattedTag = cleanTag.startsWith('#') ? cleanTag : `#${cleanTag}`;
+          if (!finalMemo.toLowerCase().includes(formattedTag.toLowerCase())) {
+            finalMemo = `${finalMemo} ${formattedTag}`;
+          }
+        }
+      }
+
+      if (!finalMemo) throw new Error("Empty Description");
+
+      // Installment
+      let installmentObj = undefined;
+      if (mapping.installmentIndex !== undefined && mapping.installmentIndex >= 0) {
+        const rawInst = String(row[mapping.installmentIndex] || '').trim();
+        const monthsMatch = rawInst.match(/(\d+)/);
+        if (monthsMatch) {
+          const totalMonths = parseInt(monthsMatch[1], 10);
+          if (totalMonths > 1) {
+            installmentObj = {
+              totalMonths,
+              currentMonth: 1,
+              isInterestFree: true,
+              remainingBalance: Math.abs(amount)
+            };
+          }
+        }
+      }
+
+      // Category
+      let categoryVal = Category.OTHER;
+      if (mapping.categoryIndex !== undefined && mapping.categoryIndex >= 0) {
+        const rawCat = String(row[mapping.categoryIndex] || '').trim();
+        if (rawCat) {
+          const match = categories.find(c => c.name.toLowerCase() === rawCat.toLowerCase());
+          categoryVal = match ? (match.id as any) : (rawCat as any);
+        }
+      }
+
+      if ((categoryVal === Category.OTHER || !categoryVal) && finalMemo) {
+        const memoLower = finalMemo.toLowerCase();
+        for (const cat of categories) {
+          if (cat.keywords?.some(k => memoLower.includes(k.toLowerCase()))) {
+            categoryVal = cat.id as any;
+            break;
+          }
+        }
+      }
+
+      // Build Transaction
+      let type = determinedType || (amount < 0 ? TransactionType.EXPENSE : TransactionType.INCOME);
+      const finalAmount = Math.abs(amount);
+
+      return {
+        transaction: {
+          id: `imported-${Date.now()}-${index}`,
+          date: dateStr,
+          timestamp,
+          amount: finalAmount,
+          type,
+          category: categoryVal,
+          memo: finalMemo,
+          merchant: merchantVal,
+          installment: installmentObj,
+          assetId: currentAssetId,
+          originalText: finalMemo
+        }
+      };
+    } catch (err) {
+      return { reason: (err as Error).message };
+    }
+  },
+
   /**
-   * Maps raw grid data to transaction objects based on user selection.
-   * Performs basic validation and parsing.
+   * Converts raw grid data into ImportRows.
    */
+  mapRawDataToImportRows: (
+    grid: any[][],
+    mapping: ColumnMapping,
+    defaultAssetId: string,
+    assets: any[] = [],
+    categories: CategoryItem[] = []
+  ): ImportRow[] => {
+    const rows: ImportRow[] = [];
+    const baseHashCounts = new Map<string, number>();
+
+    // Skip header row
+    for (let i = 1; i < grid.length; i++) {
+      const rawRowData = grid[i];
+      if (!rawRowData || rawRowData.some(cell => cell !== '') === false) continue;
+
+      const { transaction, reason } = ImportService.validateRow(rawRowData, i, mapping, defaultAssetId, assets, categories);
+
+      if (transaction) {
+        // Generate Unique HashKey for duplicate prevention
+        const baseHash = ImportService.generateHashKey(
+          transaction.assetId!,
+          transaction.timestamp!,
+          transaction.amount!,
+          transaction.memo!
+        );
+        const currentCount = baseHashCounts.get(baseHash) || 0;
+        baseHashCounts.set(baseHash, currentCount + 1);
+        transaction.hashKey = `${baseHash}#${currentCount}`;
+
+        rows.push({
+          index: i,
+          data: rawRowData,
+          status: 'valid',
+          transaction
+        });
+      } else {
+        rows.push({
+          index: i,
+          data: rawRowData,
+          status: 'invalid',
+          reason: reason || 'Unknown Error'
+        });
+      }
+    }
+    return rows;
+  },
+
+  // (Keeping the rest of the legacy mapping for backward compatibility if needed, 
+  // but we should eventually migrate ImportWizardModal to use mapRawDataToImportRows)
   mapRawDataToTransactions: (
     grid: any[][],
     mapping: ColumnMapping,
@@ -239,348 +526,13 @@ export const ImportService = {
     assets: any[] = [],
     categories: CategoryItem[] = []
   ): { valid: Partial<Transaction>[], invalid: any[] } => {
-    const valid: Partial<Transaction>[] = [];
-    const invalid: any[] = [];
-    // Fix: Use Occurrence Counting instead of simple Set to allow legitimate duplicate transactions
-    const baseHashCounts = new Map<string, number>();
-
-    // Skip header row
-    const startRow = 1;
-
-    for (let i = startRow; i < grid.length; i++) {
-      const row = grid[i];
-      if (!row || row.length === 0) continue;
-
-      try {
-        // 1. Extract Values
-        const dateVal = row[mapping.dateIndex];
-        const memoVal = row[mapping.memoIndex];
-
-        // Amount Resolution (Banking vs General)
-        let amount = 0;
-        let determinedType: TransactionType | null = null;
-
-        if (mapping.amountInIndex !== undefined && mapping.amountInIndex >= 0 && mapping.amountOutIndex !== undefined && mapping.amountOutIndex >= 0) {
-          // BANKING MODE: Dual Columns
-          const inVal = row[mapping.amountInIndex];
-          const outVal = row[mapping.amountOutIndex];
-
-          const parseAmt = (v: any) => {
-            if (typeof v === 'number') return v;
-            return parseFloat(String(v).replace(/[^0-9.-]/g, '')) || 0;
-          };
-
-          const inAmount = parseAmt(inVal);
-          const outAmount = parseAmt(outVal);
-
-          if (inAmount > 0) {
-            amount = inAmount;
-            determinedType = TransactionType.INCOME;
-          } else if (outAmount > 0) {
-            amount = outAmount;
-            determinedType = TransactionType.EXPENSE;
-          } else {
-            // Both zero or empty -> Skip or treat as zero?
-            // If both zero, amount remains 0.
-          }
-        } else {
-          // GENERAL MODE: Single Column
-          const amountVal = row[mapping.amountIndex];
-          if (typeof amountVal === 'number') {
-            amount = amountVal;
-          } else {
-            const cleanAmt = String(amountVal).replace(/[^0-9.-]/g, '');
-            const parsedFloat = parseFloat(cleanAmt);
-            if (isNaN(parsedFloat)) throw new Error("Invalid Amount");
-            amount = parsedFloat;
-          }
-        }
-
-        // Asset Resolution
-        let currentAssetId = defaultAssetId;
-        if (mapping.assetIndex !== undefined && mapping.assetIndex >= 0) {
-          const assetVal = String(row[mapping.assetIndex] || '').trim();
-          if (assetVal) {
-            // Enhanced Fuzzy Matching
-            // 1. Normalize both strings (lowercase, remove spaces & special chars)
-            const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
-            const searchNorm = normalize(assetVal);
-
-            let bestMatchId = null;
-            let highestScore = 0;
-
-            // Iterate ALL assets to find the best candidate
-            for (const a of assets) {
-              let score = 0;
-
-              const tokenize = (str: string) => str.toLowerCase().split(/[^a-z0-9가-힣]+/).filter(t => t.length > 0);
-              const nameTokens = new Set(tokenize(a.name));
-              const corpusTokens = new Set([
-                ...tokenize(a.description || ''),
-                ...tokenize(a.institution || ''),
-                ...tokenize(a.accountNumber || ''),
-                ...(a.bankDetails?.isMainAccount ? ['main'] : [])
-              ]);
-
-              // 1. Exact Name Match (Instant Winner)
-              const nameNorm = normalize(a.name);
-              if (searchNorm === nameNorm) {
-                bestMatchId = a.id;
-                highestScore = 999;
-                break;
-              }
-
-              // 2. Token Scoring
-              const searchTokens = tokenize(assetVal);
-              for (const token of searchTokens) {
-                if (token.length < 2 && isNaN(Number(token))) continue;
-
-                if (nameTokens.has(token)) {
-                  score += 10;
-                } else if (corpusTokens.has(token)) {
-                  score += 5;
-                } else {
-                  // Partial match
-                  for (const nt of nameTokens) {
-                    if (nt.length > 2 && token.length > 2 && (nt.includes(token) || token.includes(nt))) {
-                      score += 2;
-                      break;
-                    }
-                  }
-                }
-              }
-
-              // 3. Containment Boost
-              if (nameNorm.length > 2 && searchNorm.includes(nameNorm)) {
-                score += 15;
-              }
-
-              if (score > highestScore) {
-                highestScore = score;
-                bestMatchId = a.id;
-              }
-
-              if (score > 5) {
-                console.log(`[Score] Candidate: ${a.name} (${score}) vs "${assetVal}"`);
-              }
-            }
-
-            if (bestMatchId && highestScore >= 5) {
-              currentAssetId = bestMatchId;
-              console.log(`✅ MATCH SELECTED: Score ${highestScore}`);
-            }
-          }
-        }
-
-        if (currentAssetId === 'dynamic') {
-          throw new Error("Missing or Unmatched Asset");
-        }
-
-        // 2. Validate & Parse Date
-        let dateStr = '';
-        let timestamp = 0;
-
-        // 2. Validate & Parse Date (Robust)
-        // 2. Validate & Parse Date (Robust)
-        const parseLooseDate = (val: any): Date | null => {
-          if (val instanceof Date) return val;
-          if (!val) return null;
-          let s = String(val).trim();
-
-          // 1. Try to extract YYYY-MM-DD pattern first
-          // Matches "2024/04/03 오후 8:13", "2025.05.01 14:00", "2024년 5월 1일"
-          // Enhanced Regex to support Korean "년/월/일" characters and loose separators
-          const complexMatch = s.match(/(\d{4})[\.\/\-년]\s*(\d{1,2})[\.\/\-월]\s*(\d{1,2})[일]?\s*(?:(오전|오후|AM|PM)\s*)?(\d{1,2})?:?(\d{1,2})?(?::(\d{1,2}))?/i);
-
-          if (complexMatch) {
-            let [_, y, m, d, meridiem, hourStr, min, sec] = complexMatch;
-
-            // Default time to midnight if not present
-            let hour = hourStr ? parseInt(hourStr, 10) : 0;
-            let minute = min ? parseInt(min, 10) : 0;
-            let second = sec ? parseInt(sec, 10) : 0;
-
-            // Handle AM/PM
-            if (meridiem) {
-              if ((meridiem === '오후' || meridiem.toUpperCase() === 'PM') && hour < 12) hour += 12;
-              if ((meridiem === '오전' || meridiem.toUpperCase() === 'AM') && hour === 12) hour = 0;
-            }
-
-            const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d), hour, minute, second);
-            return isNaN(date.getTime()) ? null : date;
-          }
-
-          // 2. Fallback: Standard Date-only Parsing
-          // Matches "2024 05 01", "2024.5.1", etc.
-          const simpleDateMatch = s.match(/^(\d{4})\s*[\.\/\-년]\s*(\d{1,2})\s*[\.\/\-월]\s*(\d{1,2})[일]?/);
-
-          if (simpleDateMatch) {
-            const [_, y, m, d] = simpleDateMatch;
-            // Return midnight date
-            return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-          }
-
-          // 3. Fallback: Clean string and try standard Date constructor
-          const cleanS = s.replace(/[\.\/]/g, '-').replace(/\s/g, '');
-          if (/^\d{8}$/.test(cleanS)) {
-            const y = parseInt(cleanS.substring(0, 4));
-            const m = parseInt(cleanS.substring(4, 6)) - 1;
-            const d = parseInt(cleanS.substring(6, 8));
-            return new Date(y, m, d);
-          }
-
-          const d = new Date(s);
-          return isNaN(d.getTime()) ? null : d;
-        };
-
-        const d = parseLooseDate(dateVal);
-        if (d) {
-          dateStr = d.toISOString().split('T')[0];
-          timestamp = d.getTime();
-        } else {
-          // Try one more fallback for Excel serial dates if needed, but SheetJS usually handles them.
-          // If SheetJS failed to parse cellDates: true, we might get the raw number here?
-          // But existing code assumes string or Date.
-          throw new Error(`Invalid Date Format: "${dateVal}"`);
-        }
-
-        // 3. Validate & Parse Amount - MOVED UP to Step 1 for Banking Mode support
-        // Only validation remains here if needed, but we essentially parsed it above.
-        if (isNaN(amount)) throw new Error("Invalid Amount");
-
-        // 6. Merchant (Optional) & Memo Enhancement
-        let merchantVal = undefined;
-        let finalMemo = String(memoVal || '').trim();
-
-        if (mapping.merchantIndex !== undefined && mapping.merchantIndex >= 0) {
-          const rawMerchant = String(row[mapping.merchantIndex] || '').trim();
-          if (rawMerchant) {
-            merchantVal = rawMerchant;
-            // Auto-Tagging Logic: Append @Merchant to Memo if not already present
-            // Checks if memo already contains "@Merchant" (case-insensitive check, case-sensitive append)
-            if (!finalMemo.toLowerCase().includes(`@${rawMerchant.toLowerCase()}`)) {
-              finalMemo = finalMemo ? `${finalMemo} @${rawMerchant}` : `@${rawMerchant}`;
-            }
-          }
-        }
-
-        if (mapping.tagIndex !== undefined && mapping.tagIndex >= 0) {
-          const rawTag = String(row[mapping.tagIndex] || '').trim();
-          if (rawTag) {
-            // Append formatted tag (Space -> Underscore)
-            const cleanTag = rawTag.replace(/\s+/g, '_');
-            const formattedTag = cleanTag.startsWith('#') ? cleanTag : `#${cleanTag}`;
-            if (!finalMemo.toLowerCase().includes(formattedTag.toLowerCase())) {
-              finalMemo = `${finalMemo} ${formattedTag}`;
-            }
-          }
-        }
-
-        if (!finalMemo) throw new Error("Empty Memo");
-
-        // 6.5 Installment Parsing (Optional)
-        let installmentObj = undefined;
-        if (mapping.installmentIndex !== undefined && mapping.installmentIndex >= 0) {
-          const rawInst = String(row[mapping.installmentIndex] || '').trim();
-          // Parse "3개월", "3", "일시불", etc.
-          const monthsMatch = rawInst.match(/(\d+)/);
-          if (monthsMatch) {
-            const totalMonths = parseInt(monthsMatch[1], 10);
-            if (totalMonths > 1) {
-              installmentObj = {
-                totalMonths: totalMonths,
-                currentMonth: 1, // Assume start of installment
-                isInterestFree: true, // Default to true unless parsed otherwise?
-                remainingBalance: Math.abs(amount) // Initial balance is total amount
-              };
-            }
-          }
-        }
-
-        // 5. Category (Optional)
-        // If mapped, try to match by name, otherwise store raw string (legacy mode supports names)
-        let categoryVal = Category.OTHER; // Default to Other
-        // If we have categories provided, let's try to find "Other" ID or default
-        // But Transaction.category expects ID or Name. 
-
-        if (mapping.categoryIndex !== undefined && mapping.categoryIndex >= 0) {
-          const rawCat = String(row[mapping.categoryIndex] || '').trim();
-          if (rawCat) {
-            // Try to find matching CategoryItem by Name
-            const match = categories.find(c => c.name.toLowerCase() === rawCat.toLowerCase());
-            if (match) {
-              categoryVal = match.id as any;
-            } else {
-              // If no ID match, store the raw name - system might handle it
-              categoryVal = rawCat as any;
-            }
-          }
-        }
-
-        // Smart Suggestion: If Category is still default/empty, try keyword matching on Memo
-        if ((categoryVal === Category.OTHER || !categoryVal) && finalMemo) {
-          const memoLower = finalMemo.toLowerCase();
-          for (const cat of categories) {
-            if (cat.keywords && cat.keywords.length > 0) {
-              // Check if any keyword matches
-              const isMatch = cat.keywords.some(k => memoLower.includes(k.toLowerCase()));
-              if (isMatch) {
-                categoryVal = cat.id as any;
-                console.log(`💡 Smart Suggestion: "${finalMemo}" -> ${cat.name}`);
-                break; // Stop at first match
-              }
-            }
-          }
-        }
-
-        // 7. Build Object
-        // Fix: Determine type from sign, then store absolute amount.
-        let type = TransactionType.EXPENSE;
-        if (determinedType) {
-          type = determinedType;
-        } else {
-          type = amount < 0 ? TransactionType.EXPENSE : TransactionType.INCOME;
-        }
-        const finalAmount = Math.abs(amount);
-
-        // 1. Generate Base Hash (Content only)
-        const baseHash = ImportService.generateHashKey(currentAssetId, timestamp, finalAmount, finalMemo);
-
-        // 2. Count Occurrences of this Base Hash
-        const currentCount = baseHashCounts.get(baseHash) || 0;
-        baseHashCounts.set(baseHash, currentCount + 1);
-
-        // 3. Generate Final Unique Hash Key with Index
-        // This ensures the 1st "Starbucks" is #0, 2nd is #1, etc.
-        const hashKey = `${baseHash}#${currentCount}`;
-
-        valid.push({
-          id: `imported-${Date.now()}-${i}`,
-          date: dateStr,
-          timestamp: timestamp,
-          amount: finalAmount, // Always positive
-          type: type,
-          category: categoryVal,
-          memo: finalMemo,
-          merchant: merchantVal,
-          installment: installmentObj,
-          assetId: currentAssetId,
-          hashKey: hashKey,
-          originalText: finalMemo
-        });
-
-      } catch (err) {
-        invalid.push({ row: i + 1, data: row, reason: (err as Error).message });
-      }
-    }
-    return { valid, invalid };
+    const rows = ImportService.mapRawDataToImportRows(grid, mapping, defaultAssetId, assets, categories);
+    return {
+      valid: rows.filter(r => r.status === 'valid').map(r => r.transaction!),
+      invalid: rows.filter(r => r.status === 'invalid').map(r => ({ row: r.index + 1, data: r.data, reason: r.reason }))
+    };
   },
 
-  /**
-   * Main logic for processing imported transactions.
-   * 1. Filters duplicates via hashKey.
-   * 2. Performs Transfer Matching Algorithm.
-   */
   processImportedTransactions: (
     newTransactions: Partial<Transaction>[],
     existingTransactions: Transaction[]
@@ -590,32 +542,14 @@ export const ImportService = {
   } => {
     const finalNewTxs: Transaction[] = [];
     const updatedExistingTxs: Transaction[] = [];
-
-    // Track hash keys to prevent duplicates
     const processedHashKeys = new Set(existingTransactions.map(t => t.hashKey).filter(Boolean));
 
-    // CRITICAL FIX: Track IDs that have been matched IN THIS BATCH to prevent double-spending the same match
-    const newlyMatchedIds = new Set<string>();
-
     for (const draftTx of newTransactions) {
-      // 1. DUPLICATE CHECK
-      if (draftTx.hashKey && processedHashKeys.has(draftTx.hashKey)) {
-        console.log(`Skipping duplicate: ${draftTx.memo} (${draftTx.amount})`);
-        continue;
-      }
+      if (draftTx.hashKey && processedHashKeys.has(draftTx.hashKey)) continue;
       processedHashKeys.add(draftTx.hashKey!);
-
-      // Prepare the transaction object
-      const newTx = { ...draftTx } as Transaction;
-
-      // 2. TRANSFER MATCHING ALGORITHM - REMOVED (V2 Request)
-      // Transactions are now imported purely as Income/Expense.
-      // Reconciliation will happen in a separate post-import step if needed.
-
-      finalNewTxs.push(newTx);
+      finalNewTxs.push({ ...draftTx } as Transaction);
     }
 
     return { finalNewTxs, updatedExistingTxs };
   },
 };
-

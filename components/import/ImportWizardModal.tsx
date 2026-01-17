@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ImportService, ColumnMapping, ImportPreset } from '../../services/importService';
+import { ImportService, ColumnMapping, ImportPreset, ImportRow } from '../../services/importService';
 import { Transaction, Asset, CategoryItem } from '../../types';
 import { Upload, ArrowRight, X, AlertTriangle, Check, Trash2 } from 'lucide-react';
 import { Virtuoso } from 'react-virtuoso';
@@ -54,9 +54,12 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
     const [allPresets, setAllPresets] = useState<ImportPreset[]>([]);
 
     // Preview Data
-    const [validTxs, setValidTxs] = useState<Partial<Transaction>[]>([]);
-    const [invalidRows, setInvalidRows] = useState<any[]>([]);
+    const [importRows, setImportRows] = useState<ImportRow[]>([]);
     const [previewTab, setPreviewTab] = useState<'VALID' | 'INVALID'>('VALID');
+
+    // Memos for performance
+    const validRows = React.useMemo(() => importRows.filter(r => r.status === 'valid'), [importRows]);
+    const invalidRows = React.useMemo(() => importRows.filter(r => r.status === 'invalid'), [importRows]);
 
     // Load Presets
     useEffect(() => {
@@ -70,8 +73,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
         if (isOpen) {
             setStep(initialFile ? 'ASSET_SELECTION' : 'UPLOAD');
             setRawData([]);
-            setValidTxs([]);
-            setInvalidRows([]);
+            setImportRows([]);
             setMapping({
                 dateIndex: -1,
                 amountIndex: -1,
@@ -160,15 +162,14 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             }
 
             // Auto-advance to PREVIEW
-            const { valid, invalid } = ImportService.mapRawDataToTransactions(
+            const rows = ImportService.mapRawDataToImportRows(
                 rawData,
                 matchingPreset.mapping,
                 targetAssetId,
                 assets,
                 categories
             );
-            setValidTxs(valid);
-            setInvalidRows(invalid);
+            setImportRows(rows);
             setStep('PREVIEW');
 
         } else {
@@ -233,32 +234,55 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
         );
 
         // Generate preview
-        const { valid, invalid } = ImportService.mapRawDataToTransactions(rawData, mapping, targetAssetId, assets, categories);
-        setValidTxs(valid);
-        setInvalidRows(invalid);
+        const rows = ImportService.mapRawDataToImportRows(rawData, mapping, targetAssetId, assets, categories);
+        setImportRows(rows);
         setStep('PREVIEW');
     };
 
     const handleFinalConfirm = () => {
         // We just pass it up to App.tsx which calculates duplicates/transfers
-        onConfirm(validTxs as Transaction[]);
+        const validTxs = validRows.map(r => r.transaction as Transaction);
+        onConfirm(validTxs);
         onClose();
     };
 
     // Phase 2: Inline Editing & Deletion
-    const handleTransactionUpdate = (index: number, field: keyof Transaction, value: any) => {
-        setValidTxs(prev => {
+    const handleUpdateRowData = (rowIndex: number, colIndex: number, newValue: any) => {
+        setImportRows(prev => {
             const next = [...prev];
-            if (next[index]) {
-                next[index] = { ...next[index], [field]: value };
-            }
+            const rowIdx = next.findIndex(r => r.index === rowIndex);
+            if (rowIdx === -1) return prev;
+
+            // 1. Update Raw Data
+            const updatedData = [...next[rowIdx].data];
+            updatedData[colIndex] = newValue;
+
+            // 2. Re-validate atomic row
+            const { transaction, reason } = ImportService.validateRow(
+                updatedData,
+                rowIndex,
+                mapping,
+                targetAssetId,
+                assets,
+                categories
+            );
+
+            // 3. Update Row State
+            next[rowIdx] = {
+                ...next[rowIdx],
+                data: updatedData,
+                status: transaction ? 'valid' : 'invalid',
+                transaction: transaction || undefined,
+                reason: reason || undefined
+            };
+
             return next;
         });
     };
 
-    const handleDeleteRow = (index: number) => {
-        if (window.confirm("Remove this transaction from import?")) {
-            setValidTxs(prev => prev.filter((_, i) => i !== index));
+    const handleDeleteRow = (rowIndex: number) => {
+        if (window.confirm("Remove this row from import?")) {
+            setImportRows(prev => prev.filter(r => r.index !== rowIndex));
         }
     };
 
@@ -642,6 +666,33 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
     );
 
 
+    // Dynamic Columns for Preview
+    const activeColumns = React.useMemo(() => {
+        const cols = [];
+        if (mapping.dateIndex >= 0) cols.push({ id: 'date', label: 'Date', index: mapping.dateIndex, width: '110px' });
+        if (mapping.memoIndex >= 0) cols.push({ id: 'memo', label: 'Description', index: mapping.memoIndex, width: '180px' });
+
+        // Amount logic
+        if (mapping.amountIndex >= 35 || mapping.amountIndex >= 0) { // Mapping usually >=0
+            // The mapping object might have -1 for unmapped.
+        }
+
+        // Refined check
+        if (mapping.amountIndex >= 0) {
+            cols.push({ id: 'amount', label: 'Amount', index: mapping.amountIndex, width: '110px' });
+        } else if ((mapping.amountInIndex !== undefined && mapping.amountInIndex >= 0) || (mapping.amountOutIndex !== undefined && mapping.amountOutIndex >= 0)) {
+            cols.push({ id: 'amount_combined', label: 'Amount', index: -2, width: '110px' });
+        }
+
+        if (mapping.categoryIndex !== undefined && mapping.categoryIndex >= 0) cols.push({ id: 'category', label: 'Category', index: mapping.categoryIndex, width: '140px' });
+        if (mapping.assetIndex !== undefined && mapping.assetIndex >= 0) cols.push({ id: 'asset', label: 'Account', index: mapping.assetIndex, width: '120px' });
+        if (mapping.merchantIndex !== undefined && mapping.merchantIndex >= 0) cols.push({ id: 'merchant', label: 'Merchant', index: mapping.merchantIndex, width: '120px' });
+        if (mapping.tagIndex !== undefined && mapping.tagIndex >= 0) cols.push({ id: 'tag', label: 'Tag', index: mapping.tagIndex, width: '100px' });
+        if (mapping.installmentIndex !== undefined && mapping.installmentIndex >= 0) cols.push({ id: 'installment', label: 'Inst.', index: mapping.installmentIndex, width: '80px' });
+
+        return cols;
+    }, [mapping]);
+
     const renderPreviewStep = () => (
         <div className="space-y-4 h-full flex flex-col">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-shrink-0 p-1">
@@ -656,7 +707,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                     <div className="text-left">
                         <div className="flex items-center gap-2 text-emerald-700 font-black text-xl mb-0.5">
                             <Check size={20} className="bg-emerald-200 p-0.5 rounded-full text-emerald-800" />
-                            {validTxs.length}
+                            {validRows.length}
                         </div>
                         <p className="text-xs font-bold text-emerald-600/80">Valid Transactions</p>
                     </div>
@@ -666,12 +717,11 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                 {/* Invalid Tab */}
                 <button
                     onClick={() => setPreviewTab('INVALID')}
-                    disabled={invalidRows.length === 0}
                     className={`p-4 rounded-2xl border flex items-center justify-between transition-all duration-200 ${previewTab === 'INVALID'
                         ? 'bg-rose-50 border-rose-500 shadow-md ring-1 ring-rose-500'
                         : invalidRows.length > 0
                             ? 'bg-rose-50/50 border-rose-100/50 hover:bg-rose-50 hover:border-rose-200 cursor-pointer'
-                            : 'bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed'
+                            : 'bg-slate-50 border-slate-100 opacity-60 cursor-default'
                         }`}
                 >
                     <div className="text-left">
@@ -679,116 +729,171 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                             <AlertTriangle size={20} className={`p-0.5 rounded-full ${invalidRows.length > 0 ? 'bg-rose-200 text-rose-800' : 'bg-slate-200 text-slate-500'}`} />
                             {invalidRows.length}
                         </div>
-                        <p className={`text-xs font-bold ${invalidRows.length > 0 ? 'text-rose-600/80' : 'text-slate-400'}`}>Skipped / Invalid</p>
+                        <p className={`text-xs font-bold ${invalidRows.length > 0 ? 'text-rose-600/80' : 'text-slate-400'}`}>Requires Correction</p>
                     </div>
                     {previewTab === 'INVALID' && <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />}
                 </button>
             </div>
 
-            {/* Main Content Area (Virtualized Table or Invalid List) */}
-            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm h-[500px]">
-                {previewTab === 'VALID' ? (
+            {/* Main Content Area (Virtualized Table) */}
+            <div className="border border-slate-200 rounded-[24px] overflow-hidden bg-white shadow-sm flex-1 min-h-[500px] flex flex-col">
+                <div className="flex-1 overflow-x-auto">
                     <Virtuoso
-                        style={{ height: '100%' }}
-                        data={validTxs}
-                        fixedHeaderContent={() => (
-                            <div className="bg-slate-50 border-b border-slate-200 flex items-center px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-10">
-                                <div className="w-[100px] flex-shrink-0">Date</div>
-                                <div className="w-[180px] flex-shrink-0">Description</div>
-                                <div className="w-[100px] flex-shrink-0">Amount</div>
-                                <div className="w-[140px] flex-shrink-0">Category</div>
-                                <div className="flex-1"></div>
-                                <div className="w-[40px] flex-shrink-0 text-center">Action</div>
-                            </div>
-                        )}
-                        itemContent={(index, tx) => (
-                            <div className="flex items-center px-4 py-2 border-b border-slate-50 hover:bg-slate-50/50 transition-colors gap-2 text-xs">
-                                {/* Date Input */}
-                                <div className="w-[100px] flex-shrink-0">
-                                    <input
-                                        type="date"
-                                        value={tx.date || ''}
-                                        onChange={(e) => handleTransactionUpdate(index, 'date', e.target.value)}
-                                        className="w-full bg-transparent border-none p-1 focus:ring-1 focus:ring-slate-200 rounded text-slate-600 font-bold"
-                                    />
+                        style={{ height: '500px', minWidth: activeColumns.reduce((acc, c) => acc + parseInt(c.width), 340) + 'px' }}
+                        computeItemKey={(index, row) => `row-${row.index}`}
+                        data={previewTab === 'VALID' ? validRows : invalidRows}
+                        components={{
+                            Header: () => (
+                                <div className="bg-slate-50 border-b border-slate-200 flex items-center px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-[0.1em] sticky top-0 z-50 gap-2">
+                                    {activeColumns.map(col => (
+                                        <div key={col.id} style={{ width: col.width }} className="flex-shrink-0 pl-1">{col.label}</div>
+                                    ))}
+                                    <div className="flex-1 px-4 min-w-[150px] pl-1">{previewTab === 'INVALID' ? 'Problem' : 'Detected Info'}</div>
+                                    <div className="w-[40px] flex-shrink-0 text-center"></div>
                                 </div>
+                            )
+                        }}
+                        itemContent={(_, row) => {
+                            const isInvalid = row.status === 'invalid';
+                            const tx = row.transaction || {};
 
-                                {/* Memo Input */}
-                                <div className="w-[180px] flex-shrink-0">
-                                    <input
-                                        type="text"
-                                        value={tx.memo || ''}
-                                        onChange={(e) => handleTransactionUpdate(index, 'memo', e.target.value)}
-                                        className="w-full bg-transparent border-none p-1 focus:ring-1 focus:ring-slate-200 rounded text-slate-900 font-medium"
-                                    />
+                            // Simple error detection for cell styling
+                            const hasDateError = isInvalid && (row.reason?.toLowerCase().includes('date') || !tx.date);
+                            const hasAmountError = isInvalid && (row.reason?.toLowerCase().includes('amount') || !tx.amount);
+                            const hasAssetError = isInvalid && row.reason?.toLowerCase().includes('account');
+                            const hasDescriptionError = isInvalid && row.reason?.toLowerCase().includes('description');
+
+                            return (
+                                <div className={`flex items-center px-4 py-2 border-b border-slate-50 hover:bg-slate-50/50 transition-colors gap-2 text-xs ${isInvalid ? 'bg-rose-50/20' : ''}`}>
+                                    {activeColumns.map(col => {
+                                        if (col.id === 'date') {
+                                            return (
+                                                <div key={col.id} style={{ width: col.width }} className="flex-shrink-0">
+                                                    <input
+                                                        type="text"
+                                                        defaultValue={row.data[col.index]}
+                                                        onBlur={(e) => handleUpdateRowData(row.index, col.index, e.target.value)}
+                                                        className={`w-full bg-transparent border-none p-1 focus:ring-1 focus:ring-slate-200 rounded text-slate-600 font-bold ${hasDateError ? 'text-rose-600 bg-rose-50 ring-1 ring-rose-200' : ''}`}
+                                                        placeholder="YYYY-MM-DD"
+                                                    />
+                                                </div>
+                                            );
+                                        }
+
+                                        if (col.id === 'memo') {
+                                            return (
+                                                <div key={col.id} style={{ width: col.width }} className="flex-shrink-0">
+                                                    <input
+                                                        type="text"
+                                                        defaultValue={row.data[col.index]}
+                                                        onBlur={(e) => handleUpdateRowData(row.index, col.index, e.target.value)}
+                                                        className={`w-full bg-transparent border-none p-1 focus:ring-1 focus:ring-slate-200 rounded text-slate-900 font-medium ${hasDescriptionError ? 'text-rose-600 bg-rose-50 ring-1 ring-rose-200' : ''}`}
+                                                    />
+                                                </div>
+                                            );
+                                        }
+
+                                        if (col.id === 'amount' || col.id === 'amount_combined') {
+                                            let displayVal = '';
+                                            let updateIdx = -1;
+
+                                            if (col.id === 'amount') {
+                                                displayVal = row.data[col.index];
+                                                updateIdx = col.index;
+                                            } else {
+                                                // Dual column: find the one that has a value
+                                                const inVal = row.data[mapping.amountInIndex!];
+                                                const outVal = row.data[mapping.amountOutIndex!];
+                                                displayVal = inVal || outVal || '';
+                                                updateIdx = inVal ? mapping.amountInIndex! : mapping.amountOutIndex!;
+                                            }
+
+                                            return (
+                                                <div key={col.id} style={{ width: col.width }} className="flex-shrink-0">
+                                                    <input
+                                                        type="text"
+                                                        defaultValue={displayVal}
+                                                        onBlur={(e) => updateIdx >= 0 && handleUpdateRowData(row.index, updateIdx, e.target.value)}
+                                                        className={`w-full bg-transparent border-none p-1 focus:ring-1 focus:ring-slate-200 rounded font-bold ${hasAmountError ? 'text-rose-600 bg-rose-50 ring-1 ring-rose-200' : tx.type === 'INCOME' ? 'text-emerald-600' : 'text-slate-900'}`}
+                                                    />
+                                                </div>
+                                            );
+                                        }
+
+                                        if (col.id === 'category') {
+                                            return (
+                                                <div key={col.id} style={{ width: col.width }} className="flex-shrink-0">
+                                                    <select
+                                                        value={tx.category || ''}
+                                                        onChange={(e) => {
+                                                            setImportRows(prev => prev.map(r => r.index === row.index ? {
+                                                                ...r,
+                                                                transaction: { ...r.transaction, category: e.target.value } as any
+                                                            } : r));
+                                                        }}
+                                                        className="w-full bg-slate-100 border-none p-1.5 rounded-lg text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-slate-900 cursor-pointer"
+                                                    >
+                                                        <option value="Uncategorized">Uncategorized</option>
+                                                        {categories.map(c => (
+                                                            <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            );
+                                        }
+
+                                        // Fallback for other text columns (Asset, Merchant, Tag, Installment)
+                                        const colIndex = col.index;
+                                        const isAssetCol = col.id === 'asset';
+                                        return (
+                                            <div key={col.id} style={{ width: col.width }} className="flex-shrink-0">
+                                                <input
+                                                    type="text"
+                                                    defaultValue={row.data[colIndex]}
+                                                    onBlur={(e) => handleUpdateRowData(row.index, colIndex, e.target.value)}
+                                                    className={`w-full bg-transparent border-none p-1 focus:ring-1 focus:ring-slate-200 rounded text-slate-600 ${isAssetCol && hasAssetError ? 'text-rose-600 bg-rose-50 ring-1 ring-rose-200' : ''}`}
+                                                />
+                                            </div>
+                                        );
+                                    })}
+
+                                    {/* Status / Reason / Detected Details */}
+                                    <div className="flex-1 px-4 min-w-[150px]">
+                                        {isInvalid ? (
+                                            <span className="text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded font-bold leading-none inline-block max-w-full truncate" title={row.reason}>
+                                                {row.reason}
+                                            </span>
+                                        ) : (
+                                            <div className="flex items-center gap-2 opacity-60">
+                                                {tx.assetId && (
+                                                    <span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded font-medium">
+                                                        {assets.find(a => a.id === tx.assetId)?.name || 'Unknown'}
+                                                    </span>
+                                                )}
+                                                {tx.merchant && (
+                                                    <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">
+                                                        @{tx.merchant}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Delete Action */}
+                                    <div className="w-[40px] flex-shrink-0 flex justify-center">
+                                        <button
+                                            onClick={() => handleDeleteRow(row.index)}
+                                            className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                                            title="Remove Row"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
                                 </div>
-
-                                {/* Amount Input */}
-                                <div className="w-[100px] flex-shrink-0">
-                                    <input
-                                        type="number"
-                                        value={tx.amount || 0}
-                                        onChange={(e) => handleTransactionUpdate(index, 'amount', parseFloat(e.target.value))}
-                                        className={`w-full bg-transparent border-none p-1 focus:ring-1 focus:ring-slate-200 rounded font-bold ${tx.type === 'INCOME' ? 'text-emerald-600' : 'text-slate-900'}`}
-                                    />
-                                </div>
-
-                                {/* Category Selector */}
-                                <div className="w-[140px] flex-shrink-0">
-                                    <select
-                                        value={tx.category || ''}
-                                        onChange={(e) => handleTransactionUpdate(index, 'category', e.target.value)}
-                                        className="w-full bg-slate-100 border-none p-1.5 rounded-lg text-xs font-bold text-slate-700 focus:ring-2 focus:ring-slate-900 cursor-pointer"
-                                    >
-                                        <option value="Uncategorized">Uncategorized</option>
-                                        {categories.map(c => (
-                                            <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="flex-1"></div>
-
-                                {/* Delete Action */}
-                                <div className="w-[40px] flex-shrink-0 flex justify-center">
-                                    <button
-                                        onClick={() => handleDeleteRow(index)}
-                                        className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-                                        title="Remove Row"
-                                    >
-                                        <Trash2 size={14} />
-                                    </button>
-                                </div>
-                            </div>
-                        )}
+                            );
+                        }}
                     />
-                ) : (
-                    // Invalid Rows View
-                    <div className="h-full overflow-y-auto custom-scrollbar p-0">
-                        <div className="bg-slate-50 border-b border-slate-200 flex items-center px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-10">
-                            <div className="w-[60px]">Row</div>
-                            <div className="flex-1">Reason</div>
-                        </div>
-                        {invalidRows.map((err, idx) => (
-                            <div key={idx} className="flex items-start px-4 py-3 border-b border-slate-50 hover:bg-slate-50/50 gap-4 text-xs">
-                                <span className="font-mono bg-slate-100 px-2 py-1 rounded text-[10px] font-bold text-slate-600 min-w-[60px] text-center">
-                                    {err.row}
-                                </span>
-                                <div className="flex-1 text-rose-600 font-medium">
-                                    {err.reason}
-                                </div>
-                            </div>
-                        ))}
-                        {invalidRows.length === 0 && (
-                            <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                                <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-2">
-                                    <Check size={24} className="text-emerald-500" />
-                                </div>
-                                <p className="text-sm font-bold">No invalid rows found</p>
-                            </div>
-                        )}
-                    </div>
-                )}
+                </div>
             </div>
 
             <div className="pt-2 flex flex-col-reverse sm:flex-row justify-between items-center gap-2 sm:gap-0 flex-shrink-0">
@@ -804,9 +909,10 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                     </button>
                     <button
                         onClick={handleFinalConfirm}
-                        className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 text-white rounded-full shadow-md shadow-slate-200 hover:bg-slate-800 hover:shadow-xl transition-all font-bold text-sm"
+                        disabled={validRows.length === 0}
+                        className={`w-full sm:w-auto px-6 py-2.5 bg-slate-900 text-white rounded-full shadow-md shadow-slate-200 hover:bg-slate-800 hover:shadow-xl transition-all font-bold text-sm ${validRows.length === 0 ? 'opacity-50 cursor-not-allowed bg-slate-400 shadow-none' : ''}`}
                     >
-                        Confirm Import ({validTxs.length})
+                        Confirm Import ({validRows.length})
                     </button>
                 </div>
             </div>
