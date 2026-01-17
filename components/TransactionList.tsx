@@ -98,9 +98,35 @@ const TransactionList: React.FC<TransactionListProps> = ({
     }, [selectedIds, onDeleteTransactions, handleCancelSelection]);
 
 
+    // Deduplication Set (Memoized)
+    const presentTxIds = useMemo(() => new Set(transactions.map(t => t.id)), [transactions]);
+
     const { sortedData, groupCounts, groupLabels, groupDailyTotals } = useMemo(() => {
+        // V3 Deduplication & Sorting Strategy:
+        // We filter out "Destination" transfers if their partner "Source" is also in the list.
+        // This must be done BEFORE sorting and grouping to ensure virtualization and counts are accurate.
+
+        const filtered = transactions.filter(tx => {
+            if (tx.type !== 'TRANSFER') return true;
+
+            const hasPartner = !!tx.linkedTransactionId;
+            if (!hasPartner) return true;
+
+            const partnerExists = presentTxIds.has(tx.linkedTransactionId!);
+            if (!partnerExists) return true;
+
+            // Strict Deduplication:
+            // We only hide ONE half of the pair. 
+            // We'll use a stable sort basis (ID comparison) to decide which one to hide.
+            // Hide the one that is lexicographically "after" the partner to ensure consistency.
+            if (tx.id > tx.linkedTransactionId!) {
+                return false;
+            }
+            return true;
+        });
+
         // Sort transactions by Date Descending
-        const sorted = [...transactions].sort((a, b) => {
+        const sorted = filtered.sort((a, b) => {
             if (a.date !== b.date) return b.date.localeCompare(a.date);
             return (b.timestamp || 0) - (a.timestamp || 0); // stable sort within day
         });
@@ -140,11 +166,10 @@ const TransactionList: React.FC<TransactionListProps> = ({
         });
 
         return { sortedData: sorted, groupCounts: counts, groupLabels: labels, groupDailyTotals: dailyTotals };
-    }, [transactions]);
+    }, [transactions, presentTxIds]); // presentTxIds added to dependencies
 
 
-    // Deduplication Set (Memoized)
-    const presentTxIds = useMemo(() => new Set(transactions.map(t => t.id)), [transactions]);
+
 
     // Memoize Context to prevent Virtuoso Item re-renders
     const virtuosoContext = useMemo(() => ({

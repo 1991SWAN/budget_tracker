@@ -43,6 +43,7 @@ export const SupabaseService = {
             accountNumber: row.account_number,
             excludeFromTotal: row.exclude_from_total,
             theme: row.theme,
+            initialBalance: Number(row.initial_balance) || 0,
         })) as Asset[];
     },
 
@@ -55,6 +56,7 @@ export const SupabaseService = {
             name: asset.name,
             type: asset.type,
             balance: asset.balance,
+            initial_balance: asset.initialBalance,
             currency: asset.currency,
             description: asset.description,
             interest_rate: asset.interestRate,
@@ -85,28 +87,54 @@ export const SupabaseService = {
     // --- Transactions ---
     getTransactions: async (): Promise<Transaction[]> => {
         console.log('[Supabase] getTransactions called');
-        // Fetch All Transactions
-        const { data, error } = await supabase
-            .from('transactions')
-            .select('*')
-            .order('date', { ascending: false });
 
-        if (error) {
-            console.error('Error fetching transactions:', error);
-            return [];
+        // V3.1 Pagination Logic:
+        // Supabase/PostgREST typically has a hard limit of 1000 rows per request.
+        // We use .range() to fetch in batches until all data is retrieved.
+        let allData: any[] = [];
+        let from = 0;
+        const step = 1000;
+        let hasMore = true;
+
+        while (hasMore) {
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('*')
+                .order('date', { ascending: false })
+                .range(from, from + step - 1);
+
+            if (error) {
+                console.error('Error fetching transactions:', error);
+                return [];
+            }
+
+            if (data && data.length > 0) {
+                allData = [...allData, ...data];
+                from += step;
+                if (data.length < step) hasMore = false;
+            } else {
+                hasMore = false;
+            }
+
+            // Safety limit to prevent runaway loops (max 10,000 records)
+            if (from >= 10000) {
+                console.warn('[Supabase] Pagination reached safety limit (10k).');
+                break;
+            }
         }
-        console.log('[Supabase] getTransactions done. Count:', data?.length);
+
+        console.log(`[Supabase] getTransactions done. Loaded ${allData.length} records.`);
 
         // Client-Side Join Optimization:
         // Create a Map of ID -> AssetID for quick lookup
         const txAssetMap = new Map<string, string>();
-        data.forEach((row: any) => {
+        allData.forEach((row: any) => {
             if (row.id && row.asset_id) {
                 txAssetMap.set(row.id, row.asset_id);
             }
         });
 
-        return data.map((row: any) => ({
+        return allData.map((row: any) => ({
             ...row,
             amount: Number(row.amount),
             assetId: row.asset_id,
@@ -534,79 +562,30 @@ export const SupabaseService = {
         }
 
         if (options.transactions) {
-            // Smart Reset: Calculate net transaction effect per asset and revert it to preserve 'Initial Balance'.
-            // 1. Fetch all transactions (lightweight, only needed fields)
-            // 1. Fetch all transactions (including linked_transaction_id to identify transfer pairs)
-            const { data: allTxs } = await supabase.from('transactions').select('asset_id, to_asset_id, linked_transaction_id, amount, type');
+            // SMART RESET (V3.1):
+            // Since we now have an explicit initial_balance, we don't need to back-calculate everything.
+            // A "Reset" simply wipes transactions and reverts the current balance to the starting point.
 
-            if (allTxs && allTxs.length > 0 && !options.assets) {
-                // 2. Aggregate impact per asset
-                const assetImpact: Record<string, number> = {};
-                console.log(`[SmartReset] Found ${allTxs.length} transactions to revert.`);
-
-                allTxs.forEach(tx => {
-                    // Ensure amount is positive for calculation logic (absolute magnitude)
-                    const amt = Math.abs(Number(tx.amount));
-
-                    if (!assetImpact[tx.asset_id]) assetImpact[tx.asset_id] = 0;
-
-                    // STRICT LOGIC: Treat every transaction independently based on its role for THIS asset.
-                    // No more assumptions about "pairs". If it's on the ledger, it counts.
-
-                    if (tx.type === 'INCOME') {
-                        // Income: Balance was increased -> Revert: Decrease
-                        // Wait... "Revert" means restoring the ORIGINAL balance before these txs existed.
-                        // Current Balance = Original + Income - Expense
-                        // So: Original = Current - Income + Expense
-                        // Impact = Net Change (Income - Expense).
-                        // We are calculating NET CHANGE here.
-                        assetImpact[tx.asset_id] += amt;
-                    }
-                    else if (tx.type === 'EXPENSE') {
-                        assetImpact[tx.asset_id] -= amt;
-                    }
-                    else if (tx.type === 'TRANSFER') {
-                        if (tx.to_asset_id) {
-                            // Case A: Source (Outgoing) -> Money left this asset.
-                            assetImpact[tx.asset_id] -= amt;
-                        } else if (tx.linked_transaction_id) {
-                            // Case B: Destination (Incoming) -> Money entered this asset.
-                            // Previously skipped, now STRICTLY counted.
-                            assetImpact[tx.asset_id] += amt;
-                        } else {
-                            // Case C: Unlinked/Legacy -> Treat as Outflow (Expense-like)
-                            assetImpact[tx.asset_id] -= amt;
-                        }
-                    }
-                });
-
-                console.log('[SmartReset] Calculated Asset Impacts (Strict Mode):', assetImpact);
-
-                // 3. Apply Reversion to Assets
-                const { data: currentAssets } = await supabase.from('assets').select('id, balance');
+            if (!options.assets) {
+                // Fetch current assets to know their initial balances
+                const { data: currentAssets } = await supabase.from('assets').select('*');
                 if (currentAssets) {
-                    for (const asset of currentAssets) {
-                        const netChange = assetImpact[asset.id] || 0;
-                        if (netChange !== 0) {
-                            // To revert: Original = Current - NetChange
-                            // Example: Current 900. NetChange -100 (Expense). Original = 900 - (-100) = 1000. Correct.
-                            const originalBalance = Number(asset.balance) - netChange;
+                    for (const row of currentAssets) {
+                        const initialBalance = Number(row.initial_balance) || 0;
+                        console.log(`[SmartReset] Reverting Asset ${row.id} to initial balance: ${initialBalance}`);
 
-                            console.log(`[SmartReset] Reverting Asset ${asset.id}: ${asset.balance} -> ${originalBalance} (Net: ${netChange})`);
-
-                            const { error: updateError } = await supabase
-                                .from('assets')
-                                .update({ balance: originalBalance })
-                                .eq('id', asset.id);
-
-                            if (updateError) console.error(`[SmartReset] Failed to update asset ${asset.id}:`, updateError);
-                        }
+                        await supabase
+                            .from('assets')
+                            .update({ balance: initialBalance })
+                            .eq('id', row.id);
                     }
                 }
             }
 
+            // Delete all transactions
             await supabase.from('transactions').delete().neq('id', dummyId);
         }
+
 
         if (options.recurring) {
             // Fix: Table name is 'recurring_transactions', not 'recurring'

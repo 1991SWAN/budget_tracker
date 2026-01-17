@@ -102,6 +102,8 @@ export interface Asset {
   name: string;
   type: AssetType;
   balance: number;
+  initialBalance: number;
+
   currency: string;
   color?: string;
   description?: string;

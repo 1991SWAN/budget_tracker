@@ -181,6 +181,21 @@ const App: React.FC = () => {
     });
   }, [transactions, searchTerm, dateRange, filterType, filterCategories, filterAssets, assets, categories]);
 
+  // --- Debug Support: Expose data to Window for Console Verification ---
+  if (typeof window !== 'undefined') {
+    (window as any).__DEBUG_DATA__ = {
+      transactions: transactions || [],
+      assets: assets || [],
+      filteredTransactions: filteredTransactions || [],
+      currentUser: user?.id
+    };
+    // Only log once when data actually exists to avoid spamming
+    if (transactions?.length > 0 && !(window as any).__DEBUG_LOGGED) {
+      console.log(`[Debug] Data exposed to window.__DEBUG_DATA__. UID: ${user?.id}, Total Txs: ${transactions.length}`);
+      (window as any).__DEBUG_LOGGED = true;
+    }
+  }
+
 
 
   // V3 Transfer Reconciliation Hook
@@ -603,27 +618,39 @@ const App: React.FC = () => {
         const oldAsset = assets.find(a => a.id === editedAsset.id);
         if (!oldAsset) return;
 
+        const mode = (editedAsset as any)._adjustmentMode;
         const diff = editedAsset.balance - oldAsset.balance;
-        const metadataOnly = { ...editedAsset, balance: oldAsset.balance };
 
-        // 1. Update Metadata (if changed, or just always to be safe)
-        // We use the OLD balance here to ensure the transaction logic below is the sole source of balance truth.
-        await SupabaseService.saveAsset(metadataOnly);
-        setAssets(prev => prev.map(a => a.id === metadataOnly.id ? metadataOnly : a));
-
-        // 2. Handle Balance Adjustment via Transaction
-        if (diff !== 0) {
-          const tx: Transaction = {
-            id: 'adj-' + Date.now(),
-            date: new Date().toISOString().split('T')[0],
-            amount: Math.abs(diff),
-            type: diff > 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
-            category: Category.OTHER,
-            memo: 'Manual Balance Adjustment',
-            assetId: editedAsset.id,
-            // emoji: '🔧'
+        if (mode === 'SETTING') {
+          // 1. Historical Correction: Shift both Initial and Current balance
+          // New Initial = Old Initial + Diff
+          const correctedAsset = {
+            ...editedAsset,
+            initialBalance: (oldAsset.initialBalance || 0) + diff
           };
-          await handleAddTransaction(tx);
+          delete (correctedAsset as any)._adjustmentMode;
+          await SupabaseService.saveAsset(correctedAsset);
+          setAssets(prev => prev.map(a => a.id === correctedAsset.id ? correctedAsset : a));
+          console.log(`[BalanceCorrection] Asset ${correctedAsset.id} initial balance shifted by ${diff}`);
+        } else {
+          // 2. Spot Adjustment: Create transaction (Default behavior)
+          const metadataOnly = { ...editedAsset, balance: oldAsset.balance };
+          delete (metadataOnly as any)._adjustmentMode;
+          await SupabaseService.saveAsset(metadataOnly);
+          setAssets(prev => prev.map(a => a.id === metadataOnly.id ? metadataOnly : a));
+
+          if (diff !== 0) {
+            const tx: Transaction = {
+              id: 'adj-' + Date.now(),
+              date: new Date().toISOString().split('T')[0],
+              amount: Math.abs(diff),
+              type: diff > 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
+              category: Category.OTHER,
+              memo: 'Manual Balance Adjustment',
+              assetId: editedAsset.id,
+            };
+            await handleAddTransaction(tx);
+          }
         }
       }} onPay={openPayCard}
         onClearHistory={async (assetId) => {
@@ -631,8 +658,9 @@ const App: React.FC = () => {
             await SupabaseService.deleteTransactionsByAsset(assetId);
             setTransactions(prev => prev.filter(t => t.assetId !== assetId && t.toAssetId !== assetId));
 
-            // Also reset the asset balance in local state to 0 (matching new backend logic)
-            setAssets(prev => prev.map(a => a.id === assetId ? { ...a, balance: 0 } : a));
+            // Also reset the asset balance in local state to its initialBalance (Source of Truth)
+            const targetAsset = assets.find(a => a.id === assetId);
+            setAssets(prev => prev.map(a => a.id === assetId ? { ...a, balance: targetAsset?.initialBalance || 0 } : a));
 
             addToast("History cleared and balance reset to 0.", 'success');
             console.log("History cleared for asset", assetId);

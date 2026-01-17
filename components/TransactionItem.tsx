@@ -174,12 +174,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     const isLinkedTransfer = isTransfer && ((toAsset) || (fromAsset && !toAsset));
 
     // V3 Deduplication Logic:
-    // If we are the "Target" (Receiver) AND the "Source" (Sender) is also currently displayed in this list,
-    // then HIDE ourselves to prevent duplicates.
-    // If the Source is NOT in the list (e.g. filtered view), then SHOW ourselves.
-    if (isTransfer && !toAsset && transaction.linkedTransactionId && presentTxIds?.has(transaction.linkedTransactionId)) {
-        return null;
-    }
+    // MOVED: Now handled in TransactionList.tsx pre-filtering to avoid Virtualization glitches.
+
 
     return (
         <div
