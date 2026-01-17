@@ -23,6 +23,7 @@ export interface CategoryItem {
   is_default: boolean;
   sort_order: number;
   color?: string;
+  keywords?: string[];
   created_at?: string;
 }
 

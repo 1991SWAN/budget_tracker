@@ -8,7 +8,7 @@ AI는 모든 답변과 코드 작성 시 이 문서를 최우선 기준으로 �
 ## 0. 🚦 Work Process Policy (작업 절차 원칙)
 **"무엇을 하든 문서화 작업을 거치고 승인 받은 후 진행한다."**
 
-*   **Documentation First (No Exception)**: 모든 작업(새 기능, 버그 수정, 리팩토링 등)은 코드를 작성하기 전 반드시 **계획서나 분석서**를 작성해야 합니다.
+*   **Documentation First (No Exception)**: 모든 작업(새 기능, 버그 수정, 리팩토링 등)은 코드를 작성하기 전 반드시 **계획서나 분석서**를 한글로 작성해야 합니다.
     *   **새로운 기능**: `implementation_plan.md` (구현 계획서)
     *   **버그 수정**: `bug_report.md` 또는 `analysis_report.md` (원인 분석 및 해결 방안)
     *   **단순 수정**: 최소한 `issue_summary.md` (변경 사유 및 영향 범위)

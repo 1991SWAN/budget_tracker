@@ -15,13 +15,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
     const handleExport = async () => {
         try {
             // Fetch fresh data
-            const [txs, assets, recurring, goals] = await Promise.all([
+            const [txs, assets, recurring, goals, categories] = await Promise.all([
                 SupabaseService.getTransactions(),
                 SupabaseService.getAssets(),
                 SupabaseService.getRecurring(),
-                SupabaseService.getGoals()
+                SupabaseService.getGoals(),
+                SupabaseService.getCategories()
             ]);
-            ExportService.exportData(txs, assets, recurring, goals);
+            ExportService.exportData(txs, assets, recurring, goals, categories);
         } catch (e) {
             console.error("Export failed", e);
             alert("Failed to export data.");

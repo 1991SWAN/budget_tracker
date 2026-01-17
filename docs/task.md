@@ -119,3 +119,9 @@
     - [x] `useInitialization`: 초기 데이터 로딩 로직 분리 (Implemented as `useAppData`).
     - [x] `useInitialization`: 초기 데이터 로딩 로직 분리 (Implemented as `useAppData`).
     - [x] **성능 튜닝**: 대량 데이터 렌더링 최적화 지속 (TransactionList optimized).
+
+- [ ] **Import UI/UX 개선** (Feature/import-ui-ux)
+    - [x] **Phase 1**: MappingStep 시각적 개선 (테이블/컬럼 UI 고도화).
+    - [ ] **Phase 1.5**: MappingStep 행 삭제/정리 기능 (User Request).
+    - [x] **Phase 2**: 프리뷰 인라인 편집 (Implemented with Virtualization).
+    - [ ] **Phase 3**: 스마트 카테고리 제안 (추후).

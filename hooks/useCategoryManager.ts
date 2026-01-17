@@ -149,13 +149,13 @@ export const useCategoryManager = () => {
     }, [loadCategories]);
 
     // CRUD Operations
-    const addCategory = useCallback(async (name: string, type: 'EXPENSE' | 'INCOME', emoji: string = '🏷️', color: string = 'bg-slate-500') => {
+    const addCategory = useCallback(async (name: string, type: 'EXPENSE' | 'INCOME', emoji: string = '🏷️', color: string = 'bg-slate-500', keywords: string[] = []) => {
         try {
             const maxOrder = categories.reduce((max, c) => Math.max(max, c.sort_order), 0);
             const newCategory: CategoryItem = {
                 id: generateUUID(),
                 user_id: '',
-                name, emoji, type, color,
+                name, emoji, type, color, keywords,
                 is_default: false,
                 sort_order: maxOrder + 1,
                 created_at: new Date().toISOString()

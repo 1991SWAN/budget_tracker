@@ -545,12 +545,21 @@ export const SupabaseService = {
                 console.log(`[SmartReset] Found ${allTxs.length} transactions to revert.`);
 
                 allTxs.forEach(tx => {
-                    // Ensure amount is positive for calculation logic
+                    // Ensure amount is positive for calculation logic (absolute magnitude)
                     const amt = Math.abs(Number(tx.amount));
 
                     if (!assetImpact[tx.asset_id]) assetImpact[tx.asset_id] = 0;
 
+                    // STRICT LOGIC: Treat every transaction independently based on its role for THIS asset.
+                    // No more assumptions about "pairs". If it's on the ledger, it counts.
+
                     if (tx.type === 'INCOME') {
+                        // Income: Balance was increased -> Revert: Decrease
+                        // Wait... "Revert" means restoring the ORIGINAL balance before these txs existed.
+                        // Current Balance = Original + Income - Expense
+                        // So: Original = Current - Income + Expense
+                        // Impact = Net Change (Income - Expense).
+                        // We are calculating NET CHANGE here.
                         assetImpact[tx.asset_id] += amt;
                     }
                     else if (tx.type === 'EXPENSE') {
@@ -558,27 +567,20 @@ export const SupabaseService = {
                     }
                     else if (tx.type === 'TRANSFER') {
                         if (tx.to_asset_id) {
-                            // Case A: Source Transfer (Outgoing)
-                            // 1. Subtract from Source (Self)
+                            // Case A: Source (Outgoing) -> Money left this asset.
                             assetImpact[tx.asset_id] -= amt;
-
-                            // 2. Add to Destination (Target)
-                            // This anticipates the impact on the other asset
-                            if (!assetImpact[tx.to_asset_id]) assetImpact[tx.to_asset_id] = 0;
-                            assetImpact[tx.to_asset_id] += amt;
                         } else if (tx.linked_transaction_id) {
-                            // Case B: Destination Transfer (Incoming, Linked)
-                            // SKIPPED: Already handled by Case A (Source) above.
-                            // If we process this, we would incorrectly subtract the amount again.
+                            // Case B: Destination (Incoming) -> Money entered this asset.
+                            // Previously skipped, now STRICTLY counted.
+                            assetImpact[tx.asset_id] += amt;
                         } else {
-                            // Case C: Unlinked Transfer (Legacy or Broken Link)
-                            // Treat as simple Outflow
+                            // Case C: Unlinked/Legacy -> Treat as Outflow (Expense-like)
                             assetImpact[tx.asset_id] -= amt;
                         }
                     }
                 });
 
-                console.log('[SmartReset] Calculated Asset Impacts:', assetImpact);
+                console.log('[SmartReset] Calculated Asset Impacts (Strict Mode):', assetImpact);
 
                 // 3. Apply Reversion to Assets
                 const { data: currentAssets } = await supabase.from('assets').select('id, balance');

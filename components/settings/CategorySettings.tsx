@@ -15,7 +15,7 @@ const CategoryFormModal = ({
 }: {
     initialData?: CategoryItem;
     initialBudget?: number;
-    onSave: (data: { name: string; type: 'EXPENSE' | 'INCOME' | 'TRANSFER'; emoji: string; color: string; budgetAmount?: number }) => void;
+    onSave: (data: { name: string; type: 'EXPENSE' | 'INCOME' | 'TRANSFER'; emoji: string; color: string; budgetAmount?: number; keywords: string[] }) => void;
     onCancel: () => void;
 }) => {
     const [name, setName] = useState(initialData?.name || '');
@@ -23,6 +23,7 @@ const CategoryFormModal = ({
     const [emoji, setEmoji] = useState(initialData?.emoji || '🏷️');
     const [color, setColor] = useState(initialData?.color || 'bg-slate-500');
     const [budget, setBudget] = useState<string>(initialBudget ? initialBudget.toString() : '');
+    const [keywords, setKeywords] = useState(initialData?.keywords?.join(', ') || '');
 
     // Simple Color Palette
     const colors = [
@@ -75,6 +76,18 @@ const CategoryFormModal = ({
                         />
                     </div>
 
+                    <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Keywords (Comma Separated)</label>
+                        <input
+                            type="text"
+                            value={keywords}
+                            onChange={(e) => setKeywords(e.target.value)}
+                            className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="e.g. Starbucks, Uber, Netflix"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">Used for auto-categorization during import.</p>
+                    </div>
+
                     <div className="flex gap-4">
                         <div className="flex-1">
                             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Emoji</label>
@@ -104,7 +117,11 @@ const CategoryFormModal = ({
                 <div className="flex gap-2 pt-6">
                     <button onClick={onCancel} className="flex-1 py-3 text-slate-500 hover:bg-slate-100 rounded-xl font-medium">Cancel</button>
                     <button
-                        onClick={() => onSave({ name, type, emoji, color, budgetAmount: budget ? Number(budget) : undefined })}
+                        onClick={() => onSave({
+                            name, type, emoji, color,
+                            budgetAmount: budget ? Number(budget) : undefined,
+                            keywords: keywords.split(',').map(k => k.trim()).filter(Boolean)
+                        })}
                         className="flex-1 py-3 bg-primary text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50"
                         disabled={!name.trim()}
                     >
@@ -246,7 +263,7 @@ export const CategorySettings = ({ onNavigate }: { onNavigate: (view: View) => v
                             updateCategory({ ...editingItem, ...data });
                         } else {
                             // addCategory in useCategoryManager now returns the ID
-                            const newId = await addCategory(data.name, data.type, data.emoji, data.color);
+                            const newId = await addCategory(data.name, data.type, data.emoji, data.color, data.keywords);
                             if (newId) categoryId = newId;
                         }
 

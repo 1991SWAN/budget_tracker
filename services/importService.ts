@@ -506,13 +506,29 @@ export const ImportService = {
         if (mapping.categoryIndex !== undefined && mapping.categoryIndex >= 0) {
           const rawCat = String(row[mapping.categoryIndex] || '').trim();
           if (rawCat) {
-            // Try to find matching CategoryItem
+            // Try to find matching CategoryItem by Name
             const match = categories.find(c => c.name.toLowerCase() === rawCat.toLowerCase());
             if (match) {
               categoryVal = match.id as any;
             } else {
-              // If no ID match, store the raw name - the system might handle it or user can fix it
+              // If no ID match, store the raw name - system might handle it
               categoryVal = rawCat as any;
+            }
+          }
+        }
+
+        // Smart Suggestion: If Category is still default/empty, try keyword matching on Memo
+        if ((categoryVal === Category.OTHER || !categoryVal) && finalMemo) {
+          const memoLower = finalMemo.toLowerCase();
+          for (const cat of categories) {
+            if (cat.keywords && cat.keywords.length > 0) {
+              // Check if any keyword matches
+              const isMatch = cat.keywords.some(k => memoLower.includes(k.toLowerCase()));
+              if (isMatch) {
+                categoryVal = cat.id as any;
+                console.log(`💡 Smart Suggestion: "${finalMemo}" -> ${cat.name}`);
+                break; // Stop at first match
+              }
             }
           }
         }

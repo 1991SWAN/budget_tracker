@@ -1,79 +1,98 @@
-import React, { useState, useRef } from 'react';
-import { X, Upload, ArrowRight, Check, AlertTriangle, FileText } from 'lucide-react';
+
+import React, { useState, useRef, useEffect } from 'react';
 import { ImportService, ColumnMapping, ImportPreset } from '../../services/importService';
-import { Transaction } from '../../types';
+import { Transaction, Asset, CategoryItem } from '../../types';
+import { Upload, ArrowRight, X, AlertTriangle, Check, Trash2 } from 'lucide-react';
+import { Virtuoso } from 'react-virtuoso';
 import { useToast } from '../../contexts/ToastContext';
 
 interface ImportWizardModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: (transactions: Transaction[]) => void;
-    assetName: string;
-    assetId: string;
-    assets: any[]; // New prop
-    initialFile?: File; // New prop for Sidebar Dropzone
-    categories: any[]; // Categories for mapping
+    onConfirm: (validTxs: Transaction[]) => void;
+    initialFile?: File;
+    assetId?: string; // Optional: Pre-selected Asset Context
+    assetName?: string;
+    assets: Asset[];
+    categories: CategoryItem[];
 }
 
-type WizardStep = 'UPLOAD' | 'ASSET_SELECTION' | 'MAPPING' | 'PREVIEW';
 
-export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
-    isOpen,
-    onClose,
-    onConfirm,
-    assetName,
-    assetId,
-    assets = [],
-    initialFile,
-    categories = []
-}) => {
+
+export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, onClose, onConfirm, initialFile, assetId, assets, categories }) => {
+    // Steps: UPLOAD -> ASSET_SELECTION -> MAPPING -> PREVIEW
+    const [step, setStep] = useState<'UPLOAD' | 'ASSET_SELECTION' | 'MAPPING' | 'PREVIEW'>('UPLOAD');
+    const [isDragging, setIsDragging] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const { addToast } = useToast();
-    const [step, setStep] = useState<WizardStep>('UPLOAD');
+
+    // Data
     const [rawData, setRawData] = useState<any[][]>([]);
     const [fileName, setFileName] = useState('');
-
-    // Target Asset State (Global Override)
-    const [targetAssetId, setTargetAssetId] = useState(assetId);
-
-    // Preset State
-    const [allPresets, setAllPresets] = useState<ImportPreset[]>([]);
-    const [selectedPresetId, setSelectedPresetId] = useState<string>('custom');
-    const [saveAsPreset, setSaveAsPreset] = useState(false);
-    const [updateCurrentPreset, setUpdateCurrentPreset] = useState(false);
-    const [presetName, setPresetName] = useState('');
-    const [matchingPreset, setMatchingPreset] = useState<ImportPreset | null>(null);
-    const [applyPreset, setApplyPreset] = useState(true);
+    const [targetAssetId, setTargetAssetId] = useState(assetId || 'dynamic'); // 'dynamic' means use column mapping
 
     // Mapping State
     const [mapping, setMapping] = useState<ColumnMapping>({
-        dateIndex: 0,
-        memoIndex: 1,
-        amountIndex: 2,
+        dateIndex: -1,
+        amountIndex: -1,
+        amountInIndex: -1,
+        amountOutIndex: -1,
+        memoIndex: -1,
         assetIndex: -1,
         categoryIndex: -1,
-        merchantIndex: -1
+        merchantIndex: -1,
+        tagIndex: -1,
+        installmentIndex: -1,
     });
 
-    // Preview State
+    // Preset State
+    const [selectedPresetId, setSelectedPresetId] = useState<string>('custom');
+    const [presetName, setPresetName] = useState('');
+    const [updateCurrentPreset, setUpdateCurrentPreset] = useState(false);
+    const [matchingPreset, setMatchingPreset] = useState<any | null>(null);
+    const [applyPreset, setApplyPreset] = useState(false);
+    const [allPresets, setAllPresets] = useState<ImportPreset[]>([]);
+
+    // Preview Data
     const [validTxs, setValidTxs] = useState<Partial<Transaction>[]>([]);
     const [invalidRows, setInvalidRows] = useState<any[]>([]);
+    const [previewTab, setPreviewTab] = useState<'VALID' | 'INVALID'>('VALID');
 
-    const [isDragging, setIsDragging] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // Initialize Presets & Asset ID
-    React.useEffect(() => {
+    // Load Presets
+    useEffect(() => {
         if (isOpen) {
             setAllPresets(ImportService.getPresets());
-            setTargetAssetId(assetId);
+        }
+    }, [isOpen]);
 
-            // If we have an initial file passed (e.g. from Sidebar drop), process it immediately
+    // Reset when opening
+    React.useEffect(() => {
+        if (isOpen) {
+            setStep(initialFile ? 'ASSET_SELECTION' : 'UPLOAD');
+            setRawData([]);
+            setValidTxs([]);
+            setInvalidRows([]);
+            setMapping({
+                dateIndex: -1,
+                amountIndex: -1,
+                amountInIndex: -1,
+                amountOutIndex: -1,
+                memoIndex: -1,
+                assetIndex: -1,
+                categoryIndex: -1,
+                merchantIndex: -1,
+                tagIndex: -1,
+                installmentIndex: -1,
+            });
+            setTargetAssetId(assetId || 'dynamic');
+            setPresetName('');
+            setMatchingPreset(null);
+            setApplyPreset(false);
+
             if (initialFile) {
+                // If passed a file directly, parse it immediately
                 ImportService.parseFileToGrid(initialFile).then(grid => {
                     processFileGrid(grid, initialFile.name);
-                }).catch(err => {
-                    console.error("Failed to parse initial file", err);
-                    alert("Failed to read the dropped file.");
                 });
             }
         }
@@ -89,9 +108,28 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
             return;
         }
 
-        setRawData(grid);
+        // Clean empty rows from the end
+        const cleanGrid = grid.filter(row => row.some((cell: any) => cell !== undefined && cell !== null && String(cell).trim() !== ''));
+
+        setRawData(cleanGrid);
         setFileName(fName);
         setStep('ASSET_SELECTION');
+    };
+
+    const handleDeleteRawRow = (index: number) => {
+        if (index === 0) {
+            // Deleting Header -> Next row becomes header
+            if (rawData.length <= 1) {
+                alert("Cannot delete the last row.");
+                return;
+            }
+            if (window.confirm("Disconnect current header and use the next row as header?")) {
+                setRawData(prev => prev.slice(1));
+            }
+        } else {
+            // Deleting Body Row
+            setRawData(prev => prev.filter((_, i) => i !== index));
+        }
     };
 
     // Check for matching preset when step or asset changes
@@ -116,7 +154,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
 
             // Validation: If General Import (dynamic), Asset Column MUST be mapped
             if (targetAssetId === 'dynamic' && matchingPreset.mapping.assetIndex === -1) {
-                addToast("Preset incomplete for General Import. Please map Account column.", 'warning');
+                addToast("Preset incomplete for General Import. Please map Account column.", 'error');
                 setStep('MAPPING');
                 return;
             }
@@ -205,6 +243,23 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
         // We just pass it up to App.tsx which calculates duplicates/transfers
         onConfirm(validTxs as Transaction[]);
         onClose();
+    };
+
+    // Phase 2: Inline Editing & Deletion
+    const handleTransactionUpdate = (index: number, field: keyof Transaction, value: any) => {
+        setValidTxs(prev => {
+            const next = [...prev];
+            if (next[index]) {
+                next[index] = { ...next[index], [field]: value };
+            }
+            return next;
+        });
+    };
+
+    const handleDeleteRow = (index: number) => {
+        if (window.confirm("Remove this transaction from import?")) {
+            setValidTxs(prev => prev.filter((_, i) => i !== index));
+        }
     };
 
     // --- Drag & Drop Handlers ---
@@ -402,127 +457,162 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
                 </div>
             </div>
 
-            {/* Compact Table Mapping UI */}
-            <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white">
-                <div className="overflow-x-auto custom-scrollbar">
-                    <table className="w-full text-xs text-left whitespace-nowrap">
-                        <thead className="bg-slate-50 border-b border-slate-200">
-                            <tr>
-                                {rawData[0]?.map((col: any, idx: number) => {
-                                    const role = getColumnRole(idx);
-                                    let containerClass = 'bg-white border border-transparent';
-                                    let labelClass = 'text-slate-500';
+            {/* Compact Table Mapping UI (Virtualized) */}
+            <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white h-[450px]">
+                <div className="h-full overflow-auto custom-scrollbar relative">
+                    {/* Sticky Header */}
+                    <div className="flex bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm min-w-max">
+                        {/* Action Header */}
+                        <div className="w-[50px] flex-shrink-0 p-2 border-r border-slate-100 bg-slate-50 flex items-center justify-center sticky left-0 z-10">
+                            <button
+                                onClick={() => handleDeleteRawRow(0)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                title="Discard this Header Row (Shift Up)"
+                            >
+                                <Trash2 size={14} />
+                            </button>
+                        </div>
+                        {/* Columns */}
+                        {rawData[0]?.map((col: any, idx: number) => {
+                            const role = getColumnRole(idx);
+                            let containerClass = 'bg-white border border-transparent';
+                            let labelClass = 'text-slate-500';
 
-                                    if (role === 'date') {
-                                        containerClass = 'bg-emerald-50 border-emerald-200 shadow-sm';
-                                        labelClass = 'text-emerald-700 opacity-90';
-                                    } else if (role === 'amount') {
-                                        containerClass = 'bg-indigo-50 border-indigo-200 shadow-sm';
-                                        labelClass = 'text-indigo-700 opacity-90';
-                                    } else if (role === 'amountIn') {
-                                        containerClass = 'bg-blue-50 border-blue-200 shadow-sm';
-                                        labelClass = 'text-blue-700 opacity-90';
-                                    } else if (role === 'amountOut') {
-                                        containerClass = 'bg-rose-50 border-rose-200 shadow-sm';
-                                        labelClass = 'text-rose-700 opacity-90';
-                                    } else if (role === 'memo') {
-                                        containerClass = 'bg-slate-100 border-slate-200 shadow-sm';
-                                        labelClass = 'text-slate-700 opacity-90';
-                                    } else if (role === 'asset') {
-                                        containerClass = 'bg-blue-50 border-blue-200 shadow-sm';
-                                        labelClass = 'text-blue-700 opacity-90';
-                                    } else if (role === 'category') {
-                                        containerClass = 'bg-amber-50 border-amber-200 shadow-sm';
-                                        labelClass = 'text-amber-700 opacity-90';
-                                    } else if (role === 'merchant') {
-                                        containerClass = 'bg-violet-50 border-violet-200 shadow-sm';
-                                        labelClass = 'text-violet-700 opacity-90';
-                                    } else if (role === 'tag') {
-                                        containerClass = 'bg-pink-50 border-pink-200 shadow-sm';
-                                        labelClass = 'text-pink-700 opacity-90';
-                                    } else if (role === 'installment') {
-                                        containerClass = 'bg-orange-50 border-orange-200 shadow-sm';
-                                        labelClass = 'text-orange-700 opacity-90';
+                            if (role === 'date') {
+                                containerClass = 'bg-emerald-50 border-emerald-200 shadow-sm';
+                                labelClass = 'text-emerald-700 opacity-90';
+                            } else if (role === 'amount') {
+                                containerClass = 'bg-indigo-50 border-indigo-200 shadow-sm';
+                                labelClass = 'text-indigo-700 opacity-90';
+                            } else if (role === 'amountIn') {
+                                containerClass = 'bg-blue-50 border-blue-200 shadow-sm';
+                                labelClass = 'text-blue-700 opacity-90';
+                            } else if (role === 'amountOut') {
+                                containerClass = 'bg-rose-50 border-rose-200 shadow-sm';
+                                labelClass = 'text-rose-700 opacity-90';
+                            } else if (role === 'memo') {
+                                containerClass = 'bg-slate-100 border-slate-200 shadow-sm';
+                                labelClass = 'text-slate-700 opacity-90';
+                            } else if (role === 'asset') {
+                                containerClass = 'bg-blue-50 border-blue-200 shadow-sm';
+                                labelClass = 'text-blue-700 opacity-90';
+                            } else if (role === 'category') {
+                                containerClass = 'bg-amber-50 border-amber-200 shadow-sm';
+                                labelClass = 'text-amber-700 opacity-90';
+                            } else if (role === 'merchant') {
+                                containerClass = 'bg-violet-50 border-violet-200 shadow-sm';
+                                labelClass = 'text-violet-700 opacity-90';
+                            } else if (role === 'tag') {
+                                containerClass = 'bg-pink-50 border-pink-200 shadow-sm';
+                                labelClass = 'text-pink-700 opacity-90';
+                            } else if (role === 'installment') {
+                                containerClass = 'bg-orange-50 border-orange-200 shadow-sm';
+                                labelClass = 'text-orange-700 opacity-90';
+                            }
+
+                            return (
+                                <div key={idx} className="w-[160px] flex-shrink-0 p-1 border-r border-slate-100 last:border-r-0 bg-white">
+                                    <div className={`flex flex-col gap-2 p-3 rounded-2xl transition-all h-full border-2 ${role === 'ignore' ? 'border-transparent bg-slate-50' : containerClass}`}>
+                                        {/* Raw Header Name */}
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className={`text-[10px] font-black uppercase truncate tracking-wider ${labelClass}`} title={String(col)}>
+                                                {String(col) || `Column ${idx + 1}`}
+                                            </div>
+                                            {role !== 'ignore' && (
+                                                <div className={`w-2 h-2 rounded-full ${role === 'date' ? 'bg-emerald-500' : role === 'amount' ? 'bg-indigo-500' : 'bg-slate-400'}`} />
+                                            )}
+                                        </div>
+
+                                        {/* Mapping Dropdown */}
+                                        <select
+                                            value={role}
+                                            onChange={(e) => handleColumnRoleChange(idx, e.target.value)}
+                                            className={`w-full py-2 px-2.5 text-xs font-bold rounded-xl border-0 focus:ring-2 focus:ring-offset-0 transition-all cursor-pointer ${role === 'ignore'
+                                                ? 'bg-slate-200/50 text-slate-400 hover:bg-slate-200'
+                                                : 'bg-white shadow-sm ring-1 ring-black/5'
+                                                } ${role === 'date' ? 'text-emerald-700' :
+                                                    role === 'amount' ? 'text-indigo-700' :
+                                                        role === 'amountIn' ? 'text-blue-600' :
+                                                            role === 'amountOut' ? 'text-rose-600' :
+                                                                role === 'memo' ? 'text-slate-700' :
+                                                                    role === 'asset' ? 'text-blue-700' :
+                                                                        role === 'category' ? 'text-amber-700' :
+                                                                            role === 'merchant' ? 'text-violet-700' :
+                                                                                role === 'tag' ? 'text-pink-700' :
+                                                                                    role === 'installment' ? 'text-orange-700' : ''}`}
+                                        >
+                                            <option value="ignore">Skip</option>
+                                            <option value="date">Date</option>
+                                            <option value="memo">Description</option>
+
+                                            {/* Conditional Options based on Target Asset */}
+                                            {targetAssetId === 'dynamic' ? (
+                                                <option value="amount">Amount (+/-)</option>
+                                            ) : (
+                                                <>
+                                                    <option value="amountOut">Withdrawal (-)</option>
+                                                    <option value="amountIn">Deposit (+)</option>
+                                                </>
+                                            )}
+
+                                            <option value="category">Category</option>
+                                            <option value="merchant">Merchant</option>
+                                            <option value="tag">Tag (#)</option>
+                                            <option value="installment">Installment (Months)</option>
+
+                                            {/* Only show Account mapping in Dynamic Mode */}
+                                            {targetAssetId === 'dynamic' && <option value="asset">Account</option>}
+                                        </select>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Body Rows */}
+                    <div className="min-w-max">
+                        {rawData.slice(1, 51).map((row, index) => (
+                            <div key={index} className={`flex border-b border-slate-50 hover:bg-slate-50/50 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}>
+                                {/* Action Cell */}
+                                <div className="w-[50px] flex-shrink-0 flex items-center justify-center border-r border-slate-50 sticky left-0 bg-inherit z-10">
+                                    <button
+                                        onClick={() => handleDeleteRawRow(index + 1)} // Index + 1 because data is sliced
+                                        className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                                    >
+                                        <Trash2 size={12} />
+                                    </button>
+                                </div>
+                                {/* Data Cells */}
+                                {row.map((cell: any, cIdx: number) => {
+                                    const role = getColumnRole(cIdx);
+                                    let cellClass = 'text-slate-400';
+                                    let bgClass = '';
+
+                                    if (role === 'date') { cellClass = 'text-emerald-700 font-bold'; bgClass = 'bg-emerald-50/30'; }
+                                    if (role === 'amount') { cellClass = 'text-indigo-700 font-bold'; bgClass = 'bg-indigo-50/30'; }
+                                    if (role === 'amountIn') { cellClass = 'text-blue-600 font-bold'; bgClass = 'bg-blue-50/30'; }
+                                    if (role === 'amountOut') { cellClass = 'text-rose-600 font-bold'; bgClass = 'bg-rose-50/30'; }
+                                    if (role === 'memo') { cellClass = 'text-slate-700 font-medium'; bgClass = 'bg-slate-50/30'; }
+
+                                    // Ignore Style
+                                    if (role === 'ignore') {
+                                        cellClass = 'text-slate-300 line-through decoration-slate-200 decoration-2';
                                     }
 
                                     return (
-                                        <th key={idx} className="p-1 min-w-[140px] border-r border-slate-100 last:border-r-0 align-top">
-                                            <div className={`flex flex-col gap-2 p-2 rounded-xl transition-all h-full ${containerClass}`}>
-                                                {/* Raw Header Name */}
-                                                <div className={`text-[10px] font-bold uppercase truncate mb-0.5 ${labelClass}`} title={String(col)}>
-                                                    {String(col) || `Column ${idx + 1}`}
-                                                </div>
-
-                                                {/* Mapping Dropdown */}
-                                                <select
-                                                    value={role}
-                                                    onChange={(e) => handleColumnRoleChange(idx, e.target.value)}
-                                                    className={`w-full p-1.5 text-xs font-bold rounded-lg border-0 focus:ring-2 transition-all cursor-pointer shadow-sm ${role === 'ignore'
-                                                        ? 'bg-slate-50 text-slate-400 ring-1 ring-slate-200 hover:bg-slate-100'
-                                                        : 'bg-white ring-1 ring-black/5 hover:shadow-md'
-                                                        } ${role === 'date' ? 'text-emerald-700' :
-                                                            role === 'amount' ? 'text-indigo-700' :
-                                                                role === 'amountIn' ? 'text-blue-600' :
-                                                                    role === 'amountOut' ? 'text-rose-600' :
-                                                                        role === 'memo' ? 'text-slate-700' :
-                                                                            role === 'asset' ? 'text-blue-700' :
-                                                                                role === 'category' ? 'text-amber-700' :
-                                                                                    role === 'merchant' ? 'text-violet-700' :
-                                                                                        role === 'tag' ? 'text-pink-700' :
-                                                                                            role === 'installment' ? 'text-orange-700' : ''}`}
-                                                >
-                                                    <option value="ignore">Skip</option>
-                                                    <option value="date">Date</option>
-                                                    <option value="memo">Description</option>
-
-                                                    {/* Conditional Options based on Target Asset */}
-                                                    {targetAssetId === 'dynamic' ? (
-                                                        <option value="amount">Amount (+/-)</option>
-                                                    ) : (
-                                                        <>
-                                                            <option value="amountOut">Withdrawal (-)</option>
-                                                            <option value="amountIn">Deposit (+)</option>
-                                                        </>
-                                                    )}
-
-                                                    <option value="category">Category</option>
-                                                    <option value="merchant">Merchant</option>
-                                                    <option value="tag">Tag (#)</option>
-                                                    <option value="installment">Installment (Months)</option>
-
-                                                    {/* Only show Account mapping in Dynamic Mode */}
-                                                    {targetAssetId === 'dynamic' && <option value="asset">Account</option>}
-                                                </select>
-                                            </div>
-                                        </th>
+                                        <div key={cIdx} className={`w-[160px] flex-shrink-0 p-3 border-r border-slate-50 last:border-r-0 truncate transition-colors text-xs ${cellClass} ${bgClass}`}>
+                                            {String(cell)}
+                                        </div>
                                     );
                                 })}
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-slate-100">
-                            {rawData.slice(1, 8).map((row, rIdx) => (
-                                <tr key={rIdx} className="hover:bg-slate-50/50">
-                                    {row.map((cell: any, cIdx: number) => {
-                                        const role = getColumnRole(cIdx);
-                                        let cellClass = 'text-slate-500';
-                                        if (role === 'date') cellClass = 'text-emerald-700 font-medium';
-                                        if (role === 'amount') cellClass = 'text-indigo-700 font-medium'; // General Mode
-                                        if (role === 'amountIn') cellClass = 'text-blue-600 font-medium'; // Banking Mode
-                                        if (role === 'amountOut') cellClass = 'text-rose-600 font-medium'; // Banking Mode
-                                        if (role === 'memo') cellClass = 'text-slate-900';
-                                        if (role === 'tag') cellClass = 'text-pink-600 font-medium';
-                                        if (role === 'installment') cellClass = 'text-orange-600 font-medium';
-
-                                        return (
-                                            <td key={cIdx} className={`p-2 border-r border-slate-50 last:border-r-0 max-w-[160px] truncate ${cellClass}`}>
-                                                {String(cell)}
-                                            </td>
-                                        );
-                                    })}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </div>
+                        ))}
+                        {rawData.length > 51 && (
+                            <div className="p-4 text-center text-xs text-slate-400 border-t border-slate-50 italic">
+                                ... and {rawData.length - 51} more rows (hidden for simplified view)
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -553,44 +643,155 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({
 
 
     const renderPreviewStep = () => (
-        <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100/50 flex items-center justify-between">
-                    <div>
+        <div className="space-y-4 h-full flex flex-col">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-shrink-0 p-1">
+                {/* Valid Tab */}
+                <button
+                    onClick={() => setPreviewTab('VALID')}
+                    className={`p-4 rounded-2xl border flex items-center justify-between transition-all duration-200 ${previewTab === 'VALID'
+                        ? 'bg-emerald-50 border-emerald-500 shadow-md ring-1 ring-emerald-500'
+                        : 'bg-emerald-50/50 border-emerald-100/50 hover:bg-emerald-50 hover:border-emerald-200'
+                        }`}
+                >
+                    <div className="text-left">
                         <div className="flex items-center gap-2 text-emerald-700 font-black text-xl mb-0.5">
                             <Check size={20} className="bg-emerald-200 p-0.5 rounded-full text-emerald-800" />
                             {validTxs.length}
                         </div>
                         <p className="text-xs font-bold text-emerald-600/80">Valid Transactions</p>
                     </div>
-                </div>
-                <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100/50 flex items-center justify-between">
-                    <div>
-                        <div className="flex items-center gap-2 text-rose-700 font-black text-xl mb-0.5">
-                            <AlertTriangle size={20} className="bg-rose-200 p-0.5 rounded-full text-rose-800" />
+                    {previewTab === 'VALID' && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+                </button>
+
+                {/* Invalid Tab */}
+                <button
+                    onClick={() => setPreviewTab('INVALID')}
+                    disabled={invalidRows.length === 0}
+                    className={`p-4 rounded-2xl border flex items-center justify-between transition-all duration-200 ${previewTab === 'INVALID'
+                        ? 'bg-rose-50 border-rose-500 shadow-md ring-1 ring-rose-500'
+                        : invalidRows.length > 0
+                            ? 'bg-rose-50/50 border-rose-100/50 hover:bg-rose-50 hover:border-rose-200 cursor-pointer'
+                            : 'bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed'
+                        }`}
+                >
+                    <div className="text-left">
+                        <div className={`flex items-center gap-2 font-black text-xl mb-0.5 ${invalidRows.length > 0 ? 'text-rose-700' : 'text-slate-400'}`}>
+                            <AlertTriangle size={20} className={`p-0.5 rounded-full ${invalidRows.length > 0 ? 'bg-rose-200 text-rose-800' : 'bg-slate-200 text-slate-500'}`} />
                             {invalidRows.length}
                         </div>
-                        <p className="text-xs font-bold text-rose-600/80">Skipped / Invalid</p>
+                        <p className={`text-xs font-bold ${invalidRows.length > 0 ? 'text-rose-600/80' : 'text-slate-400'}`}>Skipped / Invalid</p>
                     </div>
-                </div>
+                    {previewTab === 'INVALID' && <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />}
+                </button>
             </div>
 
-            {/* Invalid List */}
-            {invalidRows.length > 0 && (
-                <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50 max-h-[140px] overflow-y-auto custom-scrollbar">
-                    <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-wider">Issues Found</h4>
-                    <ul className="space-y-1.5">
-                        {invalidRows.map((err, idx) => (
-                            <li key={idx} className="text-[10px] text-rose-600 flex items-start gap-2 bg-white p-1.5 rounded-lg border border-rose-50">
-                                <span className="font-mono bg-rose-50 px-1 py-0.5 rounded text-[9px] font-bold">ROW {err.row}</span>
-                                <span className="font-medium">{err.reason}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            )}
+            {/* Main Content Area (Virtualized Table or Invalid List) */}
+            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm h-[500px]">
+                {previewTab === 'VALID' ? (
+                    <Virtuoso
+                        style={{ height: '100%' }}
+                        data={validTxs}
+                        fixedHeaderContent={() => (
+                            <div className="bg-slate-50 border-b border-slate-200 flex items-center px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-10">
+                                <div className="w-[100px] flex-shrink-0">Date</div>
+                                <div className="w-[180px] flex-shrink-0">Description</div>
+                                <div className="w-[100px] flex-shrink-0">Amount</div>
+                                <div className="w-[140px] flex-shrink-0">Category</div>
+                                <div className="flex-1"></div>
+                                <div className="w-[40px] flex-shrink-0 text-center">Action</div>
+                            </div>
+                        )}
+                        itemContent={(index, tx) => (
+                            <div className="flex items-center px-4 py-2 border-b border-slate-50 hover:bg-slate-50/50 transition-colors gap-2 text-xs">
+                                {/* Date Input */}
+                                <div className="w-[100px] flex-shrink-0">
+                                    <input
+                                        type="date"
+                                        value={tx.date || ''}
+                                        onChange={(e) => handleTransactionUpdate(index, 'date', e.target.value)}
+                                        className="w-full bg-transparent border-none p-1 focus:ring-1 focus:ring-slate-200 rounded text-slate-600 font-bold"
+                                    />
+                                </div>
 
-            <div className="pt-2 flex flex-col-reverse sm:flex-row justify-between items-center gap-2 sm:gap-0">
+                                {/* Memo Input */}
+                                <div className="w-[180px] flex-shrink-0">
+                                    <input
+                                        type="text"
+                                        value={tx.memo || ''}
+                                        onChange={(e) => handleTransactionUpdate(index, 'memo', e.target.value)}
+                                        className="w-full bg-transparent border-none p-1 focus:ring-1 focus:ring-slate-200 rounded text-slate-900 font-medium"
+                                    />
+                                </div>
+
+                                {/* Amount Input */}
+                                <div className="w-[100px] flex-shrink-0">
+                                    <input
+                                        type="number"
+                                        value={tx.amount || 0}
+                                        onChange={(e) => handleTransactionUpdate(index, 'amount', parseFloat(e.target.value))}
+                                        className={`w-full bg-transparent border-none p-1 focus:ring-1 focus:ring-slate-200 rounded font-bold ${tx.type === 'INCOME' ? 'text-emerald-600' : 'text-slate-900'}`}
+                                    />
+                                </div>
+
+                                {/* Category Selector */}
+                                <div className="w-[140px] flex-shrink-0">
+                                    <select
+                                        value={tx.category || ''}
+                                        onChange={(e) => handleTransactionUpdate(index, 'category', e.target.value)}
+                                        className="w-full bg-slate-100 border-none p-1.5 rounded-lg text-xs font-bold text-slate-700 focus:ring-2 focus:ring-slate-900 cursor-pointer"
+                                    >
+                                        <option value="Uncategorized">Uncategorized</option>
+                                        {categories.map(c => (
+                                            <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="flex-1"></div>
+
+                                {/* Delete Action */}
+                                <div className="w-[40px] flex-shrink-0 flex justify-center">
+                                    <button
+                                        onClick={() => handleDeleteRow(index)}
+                                        className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                                        title="Remove Row"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    />
+                ) : (
+                    // Invalid Rows View
+                    <div className="h-full overflow-y-auto custom-scrollbar p-0">
+                        <div className="bg-slate-50 border-b border-slate-200 flex items-center px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-10">
+                            <div className="w-[60px]">Row</div>
+                            <div className="flex-1">Reason</div>
+                        </div>
+                        {invalidRows.map((err, idx) => (
+                            <div key={idx} className="flex items-start px-4 py-3 border-b border-slate-50 hover:bg-slate-50/50 gap-4 text-xs">
+                                <span className="font-mono bg-slate-100 px-2 py-1 rounded text-[10px] font-bold text-slate-600 min-w-[60px] text-center">
+                                    {err.row}
+                                </span>
+                                <div className="flex-1 text-rose-600 font-medium">
+                                    {err.reason}
+                                </div>
+                            </div>
+                        ))}
+                        {invalidRows.length === 0 && (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                                <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-2">
+                                    <Check size={24} className="text-emerald-500" />
+                                </div>
+                                <p className="text-sm font-bold">No invalid rows found</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            <div className="pt-2 flex flex-col-reverse sm:flex-row justify-between items-center gap-2 sm:gap-0 flex-shrink-0">
                 <button
                     onClick={onClose}
                     className="w-full sm:w-auto px-4 py-2.5 text-slate-400 hover:text-slate-600 font-bold transition-colors rounded-xl hover:bg-slate-50 text-sm"
