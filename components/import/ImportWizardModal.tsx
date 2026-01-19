@@ -865,11 +865,15 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                                             </span>
                                         ) : (
                                             <div className="flex items-center gap-2 opacity-60">
-                                                {tx.assetId && (
-                                                    <span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded font-medium">
-                                                        {assets.find(a => a.id === tx.assetId)?.name || 'Unknown'}
-                                                    </span>
-                                                )}
+                                                {tx.assetId && (() => {
+                                                    const asset = assets.find(a => a.id === tx.assetId);
+                                                    if (!asset) return null;
+                                                    return (
+                                                        <span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded font-medium">
+                                                            {asset.institution ? `[${asset.institution}] ` : ''}{asset.name}
+                                                        </span>
+                                                    );
+                                                })()}
                                                 {tx.merchant && (
                                                     <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">
                                                         @{tx.merchant}

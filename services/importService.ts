@@ -295,42 +295,67 @@ export const ImportService = {
         if (assetVal) {
           const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
           const searchNorm = normalize(assetVal);
+          const tokenize = (str: string) => str.toLowerCase().split(/[^a-z0-9가-힣]+/).filter(t => t.length > 0);
+          const searchTokens = tokenize(assetVal);
+
           let bestMatchId = null;
           let highestScore = 0;
 
           for (const a of assets) {
             const nameNorm = normalize(a.name);
-            if (searchNorm === nameNorm) {
+            const instNorm = normalize(a.institution || '');
+            const combinedNorm = instNorm + nameNorm;
+            const accLast4 = a.accountNumber ? normalize(a.accountNumber).slice(-4) : '';
+
+            // 1. Perfect matches (Full string)
+            if (searchNorm === combinedNorm || searchNorm === nameNorm) {
               bestMatchId = a.id;
               highestScore = 999;
               break;
             }
 
+            // 2. Token scoring
             let score = 0;
-            const tokenize = (str: string) => str.toLowerCase().split(/[^a-z0-9가-힣]+/).filter(t => t.length > 0);
             const nameTokens = new Set(tokenize(a.name));
-            const searchTokens = tokenize(assetVal);
+            const instTokens = new Set(tokenize(a.institution || ''));
 
             for (const token of searchTokens) {
               if (token.length < 2 && isNaN(Number(token))) continue;
-              if (nameTokens.has(token)) score += 10;
+
+              // Heavy weight for institution match
+              if (instTokens.has(token)) {
+                score += 30;
+              }
+              // Medium weight for name match
+              else if (nameTokens.has(token)) {
+                score += 15;
+              }
+              // Account number match (last 4 digits)
+              else if (accLast4 && token.endsWith(accLast4)) {
+                score += 50;
+              }
               else {
+                // Partial inclusion
                 for (const nt of nameTokens) {
                   if (nt.length > 2 && token.length > 2 && (nt.includes(token) || token.includes(nt))) {
-                    score += 2;
+                    score += 5;
                     break;
                   }
                 }
               }
             }
-            if (nameNorm.length > 2 && searchNorm.includes(nameNorm)) score += 15;
+
+            // Inclusion bonuses
+            if (nameNorm.length > 2 && searchNorm.includes(nameNorm)) score += 10;
+            if (instNorm.length > 2 && searchNorm.includes(instNorm)) score += 20;
 
             if (score > highestScore) {
               highestScore = score;
               bestMatchId = a.id;
             }
           }
-          if (bestMatchId && highestScore >= 5) {
+
+          if (bestMatchId && highestScore >= 10) {
             currentAssetId = bestMatchId;
           }
         }

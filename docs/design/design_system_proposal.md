@@ -78,6 +78,7 @@ SmartPenny의 비주얼 아이덴티티는 **"Premium & Intuitive (프리미엄 
 *   **Mobile**: **Bottom Sheet** (Drag-to-dismiss 지원, Stacked Buttons).
 *   **Desktop**: **Center Dialog** (Headless, Right-aligned Buttons).
 *   **Common**: `bg-black/40 backdrop-blur-sm` Dimming 적용.
+*   **Minimalism (Compactness)**: 모달은 최대한 컴팩트하게 구성합니다. 불필요한 설명이나 중복 필드를 배제하고, 가능한 한 단순한 토글이나 자동 로직을 사용하여 화면 공간을 효율적으로 활용합니다.
 
 ---
 

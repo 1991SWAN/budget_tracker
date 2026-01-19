@@ -622,16 +622,12 @@ const App: React.FC = () => {
         const diff = editedAsset.balance - oldAsset.balance;
 
         if (mode === 'SETTING') {
-          // 1. Historical Correction: Shift both Initial and Current balance
-          // New Initial = Old Initial + Diff
-          const correctedAsset = {
-            ...editedAsset,
-            initialBalance: (oldAsset.initialBalance || 0) + diff
-          };
+          // 1. Historical Correction: Form already handled the shifting/logic
+          const correctedAsset = { ...editedAsset };
           delete (correctedAsset as any)._adjustmentMode;
           await SupabaseService.saveAsset(correctedAsset);
           setAssets(prev => prev.map(a => a.id === correctedAsset.id ? correctedAsset : a));
-          console.log(`[BalanceCorrection] Asset ${correctedAsset.id} initial balance shifted by ${diff}`);
+          console.log(`[BalanceCorrection] Asset ${correctedAsset.id} initial balance saved.`);
         } else {
           // 2. Spot Adjustment: Create transaction (Default behavior)
           const metadataOnly = { ...editedAsset, balance: oldAsset.balance };
