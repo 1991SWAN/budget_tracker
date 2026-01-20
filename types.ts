@@ -125,6 +125,15 @@ export interface Asset {
   limit?: number; // Deprecated, move to creditDetails
 }
 
+export interface AssetOpeningBalance {
+  id: string;
+  user_id: string;
+  asset_id: string;
+  amount: number;
+  date: string;
+  created_at: string;
+}
+
 
 
 // Dictionary for Tag Autocomplete
@@ -157,6 +166,7 @@ export interface Transaction {
     isInterestFree: boolean;
     remainingBalance: number; // helper for display
   };
+  isReconciliationIgnored?: boolean;
 }
 
 export interface RecurringTransaction {

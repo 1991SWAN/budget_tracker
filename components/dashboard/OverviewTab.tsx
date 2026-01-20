@@ -23,7 +23,7 @@ interface OverviewTabProps {
     activityFilter: 'today' | 'week' | 'month';
 }
 
-const BudgetStatusWidget = ({ transactions }: { transactions: Transaction[] }) => {
+const BudgetStatusWidget = ({ transactions, assets }: { transactions: Transaction[], assets: Asset[] }) => {
     const { categories } = useCategoryManager();
     const { budgets } = useBudgetManager();
 
@@ -36,11 +36,22 @@ const BudgetStatusWidget = ({ transactions }: { transactions: Transaction[] }) =
                 if (!budget) return null;
 
                 const spent = transactions
-                    .filter(t =>
-                        t.type === TransactionType.EXPENSE &&
-                        t.date.startsWith(currentMonth) &&
-                        (t.category === category.id || t.category === category.name)
-                    )
+                    .filter(t => {
+                        const isExpense = t.type === TransactionType.EXPENSE;
+                        const isCorrectCategory = (t.category === category.id || t.category === category.name);
+                        if (!isExpense || !isCorrectCategory) return false;
+
+                        const card = assets.find(a => a.id === t.assetId && a.type === AssetType.CREDIT_CARD);
+                        if (card) {
+                            // Credit Card spending follows the current cycle
+                            const { usageStartDate, usageEndDate } = FinanceCalculator.calculateCreditCardBalances(card, transactions);
+                            const tDate = new Date(t.date);
+                            return tDate >= usageStartDate && tDate <= usageEndDate;
+                        } else {
+                            // Cash/Bank follows calendar month
+                            return t.date.startsWith(currentMonth);
+                        }
+                    })
                     .reduce((sum, t) => sum + t.amount, 0);
 
                 return {
@@ -53,7 +64,7 @@ const BudgetStatusWidget = ({ transactions }: { transactions: Transaction[] }) =
             })
             .filter((item): item is NonNullable<typeof item> => item !== null)
             .sort((a, b) => b.percent - a.percent); // Sort by usage % descending
-    }, [categories, budgets, transactions]);
+    }, [categories, budgets, transactions, assets]);
 
     // If no budgets, show empty state (do not return null)
     const hasBudgets = budgetStatus.length > 0;
@@ -111,11 +122,26 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
         const income = transactions
             .filter(t => t.date.startsWith(currentMonth) && t.type === TransactionType.INCOME)
             .reduce((sum, t) => sum + t.amount, 0);
-        const expense = transactions
-            .filter(t => t.date.startsWith(currentMonth) && t.type === TransactionType.EXPENSE)
+
+        // 1. Non-Card Expenses (Calendar Month)
+        const cashExpense = transactions
+            .filter(t =>
+                t.date.startsWith(currentMonth) &&
+                t.type === TransactionType.EXPENSE &&
+                !assets.find(a => a.id === t.assetId && a.type === AssetType.CREDIT_CARD)
+            )
             .reduce((sum, t) => sum + t.amount, 0);
-        return { income, expense };
-    }, [transactions, currentMonth]);
+
+        // 2. Card Expenses (Current Billing Cycle / Usage Period)
+        const cardExpense = assets
+            .filter(a => a.type === AssetType.CREDIT_CARD)
+            .reduce((sum, card) => {
+                const { nextBill } = FinanceCalculator.calculateCreditCardBalances(card, transactions);
+                return sum + nextBill;
+            }, 0);
+
+        return { income, expense: cashExpense + cardExpense };
+    }, [transactions, currentMonth, assets]);
 
     const totalNetWorth = useMemo(() => assets.reduce((sum, a) => sum + a.balance, 0), [assets]);
     const totalMonthlyFixed = useMemo(() => recurring.reduce((sum, r) => sum + r.amount, 0), [recurring]);
@@ -133,7 +159,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
             .sort((a, b) => b.value - a.value);
     }, [transactions, currentMonth]);
 
-    // --- Safe To Spend Calculation (Refactored) ---
+    // --- Safe To Spend Calculation (Budget-Centric) ---
     const safeToSpend = useMemo(() => {
         const budget = monthlyBudget;
 
@@ -144,21 +170,10 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
             return sum;
         }, 0);
 
-        // 2. Upcoming Credit Card Payments (Using FinanceCalculator)
-        const upcomingCardPayments = assets
-            .filter(a => a.type === AssetType.CREDIT_CARD)
-            .reduce((sum, card) => {
-                // Calculate Statement Balance (Next Bill)
-                const { statementBalance } = FinanceCalculator.calculateCreditCardBalances(card, transactions);
-
-                if (card.creditDetails?.billingCycle.paymentDay && card.creditDetails.billingCycle.paymentDay > today.getDate()) {
-                    return sum + statementBalance;
-                }
-                return sum;
-            }, 0);
-
-        return budget - monthlyStats.expense - remainingFixedBills - upcomingCardPayments;
-    }, [monthlyBudget, monthlyStats.expense, recurring, assets, transactions, today]);
+        // PHILOSOPHY: We only care about current active spending (monthlyStats.expense already includes card usage)
+        // Past Debt (unpaid statement balance) is NOT subtracted here to focus on plan adherence.
+        return budget - monthlyStats.expense - remainingFixedBills;
+    }, [monthlyBudget, monthlyStats.expense, recurring, today]);
     // --- Daily Pacing & Burn Rate ---
     const { dailyCap, burnRateStatus, burnRateColor } = useMemo(() => {
         const now = new Date();
@@ -311,39 +326,76 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
                             <span className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-2xl">🌊</span>
                             <h3 className="text-lg font-bold text-slate-900">Monthly Flow</h3>
                         </div>
-                        <Button
-                            onClick={onOpenBudgetModal}
-                            variant="ghost"
-                            size="sm"
-                            className="bg-slate-100 hover:bg-slate-200 text-xs rounded-full px-3"
-                        >
-                            Edit Budget
-                        </Button>
                     </div>
 
                     <div className="space-y-5">
                         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                             <div className="flex justify-between text-sm mb-2">
-                                <span className="text-slate-500 font-bold text-xs uppercase">Income vs Expense</span>
+                                <span className="text-slate-500 font-bold text-xs uppercase text-[10px] tracking-wider">Cash Flow (Income vs Expense)</span>
                             </div>
-                            <div className="flex items-end gap-2 h-24 mt-2">
-                                <div className="w-1/2 bg-emerald-100 rounded-t-xl relative group flex flex-col justify-end overflow-hidden">
-                                    <div className="w-full bg-emerald-500 absolute bottom-0 transition-all duration-500" style={{ height: '70%' }}></div>
-                                    <span className="relative z-10 p-2 text-xs font-bold text-emerald-900 text-center">{monthlyStats.income.toLocaleString()}</span>
-                                </div>
-                                <div className="w-1/2 bg-rose-100 rounded-t-xl relative group flex flex-col justify-end overflow-hidden">
-                                    <div className="w-full bg-rose-500 absolute bottom-0 transition-all duration-500 transform translate-y-0" style={{ height: `${Math.min((monthlyStats.expense / monthlyStats.income) * 100, 100)}%` }}></div>
-                                    <span className="relative z-10 p-2 text-xs font-bold text-rose-900 text-center">{monthlyStats.expense.toLocaleString()}</span>
-                                </div>
+                            <div className="flex items-end gap-4 h-28 mt-4">
+                                {(() => {
+                                    const maxVal = Math.max(monthlyStats.income, monthlyStats.expense, 1);
+                                    const incomeHeight = (monthlyStats.income / maxVal) * 100;
+                                    const expenseHeight = (monthlyStats.expense / maxVal) * 100;
+
+                                    return (
+                                        <>
+                                            {/* Income Bar */}
+                                            <div
+                                                className="w-1/2 bg-emerald-100 rounded-t-2xl relative group flex flex-col justify-end overflow-hidden transition-all duration-500 hover:shadow-lg hover:shadow-emerald-500/10 cursor-default"
+                                                style={{ height: `${Math.max(incomeHeight, 20)}%` }}
+                                            >
+                                                <div className="w-full bg-emerald-500 absolute bottom-0 h-full"></div>
+
+                                                {/* Label - Always visible but subtle */}
+                                                <div className="absolute top-2 w-full text-center z-10">
+                                                    <span className="text-[9px] block text-white/80 uppercase font-black tracking-widest transition-opacity group-hover:opacity-100">Income</span>
+                                                </div>
+
+                                                {/* Amount - Reveal on hover with glass feel */}
+                                                <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 backdrop-blur-[2px] bg-emerald-600/20">
+                                                    <div className="text-center px-2">
+                                                        <span className="text-sm font-black text-white drop-shadow-md">
+                                                            {monthlyStats.income.toLocaleString()}
+                                                            <span className="text-[10px] ml-0.5 opacity-70">₩</span>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Expense Bar */}
+                                            <div
+                                                className="w-1/2 bg-rose-100 rounded-t-2xl relative group flex flex-col justify-end overflow-hidden transition-all duration-500 hover:shadow-lg hover:shadow-rose-500/10 cursor-default"
+                                                style={{ height: `${Math.max(expenseHeight, 20)}%` }}
+                                            >
+                                                <div className="w-full bg-rose-500 absolute bottom-0 h-full"></div>
+
+                                                {/* Label - Always visible but subtle */}
+                                                <div className="absolute top-2 w-full text-center z-10">
+                                                    <span className="text-[9px] block text-white/80 uppercase font-black tracking-widest transition-opacity group-hover:opacity-100">Expense</span>
+                                                </div>
+
+                                                {/* Amount - Reveal on hover with glass feel */}
+                                                <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 backdrop-blur-[2px] bg-rose-600/20">
+                                                    <div className="text-center px-2">
+                                                        <span className="text-sm font-black text-white drop-shadow-md">
+                                                            {monthlyStats.expense.toLocaleString()}
+                                                            <span className="text-[10px] ml-0.5 opacity-70">₩</span>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </div>
-
-
                     </div>
                 </Card>
 
                 {/* Budget Status Widget */}
-                <BudgetStatusWidget transactions={transactions} />
+                <BudgetStatusWidget transactions={transactions} assets={assets} />
             </div>
 
             {/* Activity Feed (Full Width) */}

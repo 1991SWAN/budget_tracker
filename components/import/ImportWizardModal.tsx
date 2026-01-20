@@ -552,7 +552,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                                             value={role}
                                             onChange={(e) => handleColumnRoleChange(idx, e.target.value)}
                                             className={`w-full py-2 px-2.5 text-xs font-bold rounded-xl border-0 focus:ring-2 focus:ring-offset-0 transition-all cursor-pointer ${role === 'ignore'
-                                                ? 'bg-slate-200/50 text-slate-400 hover:bg-slate-200'
+                                                ? 'bg-slate-200/80 text-slate-700 hover:bg-slate-200'
                                                 : 'bg-white shadow-sm ring-1 ring-black/5'
                                                 } ${role === 'date' ? 'text-emerald-700' :
                                                     role === 'amount' ? 'text-indigo-700' :
@@ -620,7 +620,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
 
                                     // Ignore Style
                                     if (role === 'ignore') {
-                                        cellClass = 'text-slate-300 line-through decoration-slate-200 decoration-2';
+                                        cellClass = 'text-slate-700 opacity-80';
                                     }
 
                                     return (

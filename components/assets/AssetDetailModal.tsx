@@ -141,12 +141,16 @@ export const AssetDetailModal: React.FC<{
                                         <div className="text-4xl opacity-20">🏦</div>
                                     </div>
                                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                        <p className="text-xs text-slate-500 font-bold uppercase mb-1">Next Bill (Est.)</p>
-                                        <p className="text-2xl font-extrabold text-slate-900">{Math.round(creditStats.statementBalance).toLocaleString()}</p>
+                                        <p className="text-xs text-slate-500 font-bold uppercase mb-1">Past Due / Due</p>
+                                        <p className="text-2xl font-extrabold text-slate-900">{Math.round(creditStats.pastDue).toLocaleString()}</p>
                                     </div>
                                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                        <p className="text-xs text-slate-500 font-bold uppercase mb-1">Next Bill</p>
+                                        <p className="text-2xl font-extrabold text-slate-900">{Math.round(creditStats.nextBill).toLocaleString()}</p>
+                                    </div>
+                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 col-span-2">
                                         <p className="text-xs text-slate-500 font-bold uppercase mb-1">Future Unbilled</p>
-                                        <p className="text-2xl font-extrabold text-slate-900">{Math.round(creditStats.unbilledBalance).toLocaleString()}</p>
+                                        <p className="text-2xl font-extrabold text-slate-600 italic">+{Math.round(creditStats.unbilled).toLocaleString()} <span className="text-xs font-normal opacity-50 uppercase">in future installments</span></p>
                                     </div>
                                 </div>
                             )}

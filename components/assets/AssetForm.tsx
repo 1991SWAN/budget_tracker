@@ -128,15 +128,22 @@ export const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCan
                     <div className="flex items-center justify-between mb-1">
                         <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest">Balance</p>
                         {isEditing && (
-                            <label className="flex items-center gap-1.5 cursor-pointer group">
-                                <input
-                                    type="checkbox"
-                                    checked={isHistoricalMode}
-                                    onChange={e => setIsHistoricalMode(e.target.checked)}
-                                    className="w-3 h-3 rounded border-white/20 bg-white/10 text-emerald-500 focus:ring-0"
-                                />
-                                <span className={`text-[9px] font-bold transition-colors ${isHistoricalMode ? 'text-emerald-400' : 'text-white/40 group-hover:text-white/60'}`}>Historical Correction</span>
-                            </label>
+                            <div className="flex bg-white/10 rounded-full p-0.5 border border-white/5">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsHistoricalMode(false)}
+                                    className={`px-3 py-0.5 rounded-full text-[9px] font-black transition-all duration-300 ${!isHistoricalMode ? 'bg-white text-slate-900 shadow-sm' : 'text-white/30 hover:text-white/50'}`}
+                                >
+                                    SPOT
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsHistoricalMode(true)}
+                                    className={`px-3 py-0.5 rounded-full text-[9px] font-black transition-all duration-300 ${isHistoricalMode ? 'bg-emerald-500 text-white shadow-sm' : 'text-white/30 hover:text-white/50'}`}
+                                >
+                                    HISTORICAL
+                                </button>
+                            </div>
                         )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -168,9 +175,64 @@ export const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCan
 
                 {/* Contextual Details (Compact) */}
                 {formData.type === AssetType.CREDIT_CARD && (
-                    <div className="bg-rose-50/50 p-3 rounded-3xl border border-rose-100/50 grid grid-cols-2 gap-2">
-                        <Input label="Limit" type="number" size="sm" value={creditForm.limit} onChange={e => setCreditForm({ ...creditForm, limit: Number(e.target.value) })} />
-                        <Input label="APR" type="number" size="sm" value={creditForm.apr} onChange={e => setCreditForm({ ...creditForm, apr: Number(e.target.value) })} />
+                    <div className="bg-rose-50/50 p-4 rounded-3xl border border-rose-100/50 space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            <Input
+                                label="Limit"
+                                type="number"
+                                size="sm"
+                                value={creditForm.limit}
+                                onChange={e => setCreditForm({ ...creditForm, limit: Number(e.target.value) })}
+                            />
+                            <Input
+                                label="APR %"
+                                type="number"
+                                size="sm"
+                                value={creditForm.apr}
+                                onChange={e => setCreditForm({ ...creditForm, apr: Number(e.target.value) })}
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 border-t border-rose-100/50 pt-3">
+                            <div className="col-span-2">
+                                <p className="text-[10px] font-bold text-rose-400 uppercase tracking-wider mb-2 ml-1">Billing Cycle</p>
+                            </div>
+                            <Input
+                                label="Pay Day"
+                                type="number"
+                                placeholder="e.g. 14"
+                                size="sm"
+                                value={creditForm.billingCycle?.paymentDay}
+                                onChange={e => setCreditForm({
+                                    ...creditForm,
+                                    billingCycle: { ...creditForm.billingCycle!, paymentDay: Number(e.target.value) }
+                                })}
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                                <Input
+                                    label="Start"
+                                    type="number"
+                                    placeholder="1"
+                                    size="sm"
+                                    value={creditForm.billingCycle?.usageStartDay}
+                                    onChange={e => setCreditForm({
+                                        ...creditForm,
+                                        billingCycle: { ...creditForm.billingCycle!, usageStartDay: Number(e.target.value) }
+                                    })}
+                                />
+                                <Input
+                                    label="End"
+                                    type="number"
+                                    placeholder="30"
+                                    size="sm"
+                                    value={creditForm.billingCycle?.usageEndDay}
+                                    onChange={e => setCreditForm({
+                                        ...creditForm,
+                                        billingCycle: { ...creditForm.billingCycle!, usageEndDay: Number(e.target.value) }
+                                    })}
+                                />
+                            </div>
+                        </div>
                     </div>
                 )}
 

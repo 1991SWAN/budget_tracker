@@ -614,7 +614,11 @@ const App: React.FC = () => {
           // Let's just open modal.
         }}
       />}
-      {view === 'assets' && <AssetManager assets={assets} transactions={transactions} onAdd={a => { SupabaseService.saveAsset(a); setAssets(prev => [...prev, a]); }} onDelete={id => { SupabaseService.deleteAsset(id); setAssets(prev => prev.filter(a => a.id !== id)); }} onEdit={async (editedAsset) => {
+      {view === 'assets' && <AssetManager assets={assets} transactions={transactions} onAdd={async (a) => {
+        await SupabaseService.saveAsset(a);
+        await SupabaseService.saveOpeningBalance({ asset_id: a.id, amount: a.initialBalance });
+        setAssets(prev => [...prev, a]);
+      }} onDelete={id => { SupabaseService.deleteAsset(id); setAssets(prev => prev.filter(a => a.id !== id)); }} onEdit={async (editedAsset) => {
         const oldAsset = assets.find(a => a.id === editedAsset.id);
         if (!oldAsset) return;
 
@@ -626,6 +630,7 @@ const App: React.FC = () => {
           const correctedAsset = { ...editedAsset };
           delete (correctedAsset as any)._adjustmentMode;
           await SupabaseService.saveAsset(correctedAsset);
+          await SupabaseService.saveOpeningBalance({ asset_id: correctedAsset.id, amount: correctedAsset.initialBalance });
           setAssets(prev => prev.map(a => a.id === correctedAsset.id ? correctedAsset : a));
           console.log(`[BalanceCorrection] Asset ${correctedAsset.id} initial balance saved.`);
         } else {

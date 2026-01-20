@@ -3,17 +3,20 @@ import { Transaction, TransactionType, Asset, AssetType } from '../types';
 export class FinanceCalculator {
 
     /**
-     * Calculates the "Statement Balance" (Fixed Due Amount) and "Unbilled Balance" (Next Month)
+     * Calculates the "Statement Balance" (Past Accumulated Debt) and "Unbilled Balance" (Current Spending)
      * based on the custom billing cycle.
      */
     static calculateCreditCardBalances(asset: Asset, transactions: Transaction[]): {
-        statementBalance: number; // Previous cycle closed, due now
-        unbilledBalance: number;  // Current usage, due next
+        pastDue: number;      // Billed but unpaid from past cycles
+        nextBill: number;     // Spending in the current billing cycle
+        unbilled: number;     // Future installments/expenses
         nextPaymentDate: string;
         billingPeriod: string;
+        usageStartDate: Date;
+        usageEndDate: Date;
     } {
         if (asset.type !== AssetType.CREDIT_CARD || !asset.creditDetails) {
-            return { statementBalance: 0, unbilledBalance: 0, nextPaymentDate: '', billingPeriod: '' };
+            return { pastDue: 0, nextBill: 0, unbilled: 0, nextPaymentDate: '', billingPeriod: '', usageStartDate: new Date(), usageEndDate: new Date() };
         }
 
         const { usageStartDay, paymentDay } = asset.creditDetails.billingCycle;
@@ -21,46 +24,11 @@ export class FinanceCalculator {
         const currentYear = today.getFullYear();
         const currentMonth = today.getMonth(); // 0-indexed
 
-        // Determine "Current Statement Due" logic
-        // 1. Find the most recent Payment Day. If today <= Payment Day, we are in the "Due" window.
-        // 2. Identify the Usage Period for that Payment Day.
-
-        // Example: Payment 25th. Usage 1st - End of Prev Month.
-        // Today Jan 8th. Payment Jan 25th.
-        // Usage Period: Dec 1st - Dec 31st.
-
         let targetPaymentDate = new Date(currentYear, currentMonth, paymentDay);
-        // If today is PAST the payment day (e.g. Jan 26th), the "Next Payment" is Feb 25th.
         if (today.getDate() > paymentDay) {
             targetPaymentDate.setMonth(currentMonth + 1);
         }
 
-        // Now backtrack to find the Usage Period for this Target Payment Date.
-        // Logic depends on "Month gap" between usage and payment.
-        // Usually: Usage (M-1) -> Pay (M) or Usage (M) -> Pay (M+1).
-        // Let's assume standard: Payment is in Month M. Usage ended ~14-25 days before payment.
-
-        // Approximation: Usage End is roughly 14 days before Payment? 
-        // Or strictly defined by start day?
-        // If Usage Start is 1, Usage End is previous month end.
-        // If Usage Start is 14, Usage End is 13th of current month (if paying 25th?? No, 14-13 usually pays next month).
-
-        // Let's deduce Usage End Date based on Start Date relative to Payment Date.
-        // Standard Korean Cycles:
-        // Period: Prev Month 1st - Prev Month End => Pay: Current 14th/25th
-        // Period: Prev Month 14th - Current Month 13th => Pay: Current 25th? Or Next 1st?
-
-        // Algorithm:
-        // 1. Calculate the 'Usage End Date' that corresponds to the 'Target Payment Date'.
-        //    (Usage End is generally 12~45 days before Payment).
-        //    If UsageStart < PaymentDay (e.g. Usage 1st, Pay 25th), it's likely previous month usage.
-        //    If UsageStart > PaymentDay (e.g. Usage 14th, Pay 1st), it's likely (M-2) to (M-1).
-
-        // Simplified Logic for MVP: 
-        // Usage End Date is the day BEFORE User's Usage Start Day.
-        // Find the most recent "Usage End Date" before the "Target Payment Date" but with enough gap (min 10 days).
-
-        // Calculate Usage Period (Existing Logic)
         let usageEndDate = new Date(targetPaymentDate);
         usageEndDate.setDate(usageStartDay - 1);
         if (usageEndDate >= targetPaymentDate) {
@@ -78,57 +46,64 @@ export class FinanceCalculator {
         usageStartDate.setHours(0, 0, 0, 0);
         usageEndDate.setHours(23, 59, 59, 999);
 
-        // Core Refactor: Statement Balance = Total Debt - Future Liability
-        // This ensures proper installment handling (only billing the current portion).
-
-        // 1. Determine Total Debt (Real-time from Asset Balance)
-        // usage: Balance is negative for debt.
+        // Calculate Totals
         const totalDebt = asset.balance < 0 ? Math.abs(asset.balance) : 0;
-
-        // 2. Calculate Future Liability (Expenses that are NOT yet due in this statement)
         const relevantTxs = transactions.filter(t => t.assetId === asset.id);
 
-        let futureLiability = 0;
+        let nextBill = 0;
+        let futureUnbilled = 0;
 
-        relevantTxs.filter(t => t.type === TransactionType.EXPENSE || (t.type === TransactionType.TRANSFER && t.assetId === asset.id)).forEach(tx => {
+        relevantTxs.forEach(tx => {
             const txDate = new Date(tx.date);
-
             if (tx.installment && tx.installment.totalMonths > 1) {
-                // Installment Logic: Sum only portions falling AFTER usageEndDate
-                const monthlyAmount = tx.amount / tx.installment.totalMonths;
+                const totalPrincipal = tx.amount;
+                const months = tx.installment.totalMonths;
+                const monthlyPrincipal = Math.floor(totalPrincipal / months);
+                const firstMonthAdjustment = totalPrincipal - (monthlyPrincipal * months);
+                const isInterestFree = tx.installment.isInterestFree;
+                const apr = asset.creditDetails?.apr || 0;
+                const monthlyRate = apr / 100 / 12;
 
-                for (let i = 0; i < tx.installment.totalMonths; i++) {
-                    const portionDueDate = new Date(txDate);
-                    portionDueDate.setMonth(portionDueDate.getMonth() + i);
+                for (let i = 0; i < months; i++) {
+                    const portionDate = new Date(txDate);
+                    portionDate.setMonth(portionDate.getMonth() + i);
 
-                    // If this portion belongs to a future cycle (after current usageEndDate)
-                    if (portionDueDate > usageEndDate) {
-                        futureLiability += monthlyAmount;
+                    let principalPortion = monthlyPrincipal;
+                    if (i === 0) principalPortion += firstMonthAdjustment;
+
+                    let interestPortion = 0;
+                    if (!isInterestFree && apr > 0) {
+                        const remainingPrincipal = totalPrincipal - (monthlyPrincipal * i);
+                        interestPortion = remainingPrincipal * monthlyRate;
+                    }
+
+                    const totalMonthlyAmount = principalPortion + interestPortion;
+
+                    if (portionDate >= usageStartDate && portionDate <= usageEndDate) {
+                        nextBill += totalMonthlyAmount;
+                    } else if (portionDate > usageEndDate) {
+                        futureUnbilled += totalMonthlyAmount;
                     }
                 }
             } else {
-                // Regular Logic: If transaction date is AFTER usageEndDate
-                if (txDate > usageEndDate) {
-                    futureLiability += tx.amount;
+                if (txDate >= usageStartDate && txDate <= usageEndDate) {
+                    nextBill += tx.amount;
+                } else if (txDate > usageEndDate) {
+                    futureUnbilled += tx.amount;
                 }
             }
         });
 
-        // 3. Statement Balance (Due Now)
-        // If we owe 1200 Total, and 1100 is Future, then 100 is Due Now.
-        // If we paid 50 (Total 1150), and 1100 is Future, then 50 is Due Now.
-        const statementBalance = Math.max(0, totalDebt - futureLiability);
-
-        // 4. Unbilled Balance
-        // Represents all debt that is not yet on the current statement.
-        // This includes Next Month's portion + All subsequent portions.
-        const unbilledBalance = futureLiability;
+        const pastDue = Math.max(0, totalDebt - nextBill - futureUnbilled);
 
         return {
-            statementBalance: Math.max(0, statementBalance),
-            unbilledBalance: Math.max(0, unbilledBalance),
+            pastDue: Math.round(pastDue),
+            nextBill: Math.round(nextBill),
+            unbilled: Math.round(futureUnbilled),
             nextPaymentDate: targetPaymentDate.toISOString().split('T')[0],
-            billingPeriod: `${usageStartDate.getMonth() + 1}/${usageStartDate.getDate()} ~ ${usageEndDate.getMonth() + 1}/${usageEndDate.getDate()}`
+            billingPeriod: `${usageStartDate.getMonth() + 1}/${usageStartDate.getDate()} ~ ${usageEndDate.getMonth() + 1}/${usageEndDate.getDate()}`,
+            usageStartDate,
+            usageEndDate
         };
     }
 

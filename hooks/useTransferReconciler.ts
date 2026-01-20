@@ -23,6 +23,7 @@ export const useTransferReconciler = (
 ) => {
     const [candidates, setCandidates] = useState<TransferCandidate[]>([]);
     const [singleCandidates, setSingleCandidates] = useState<SingleCandidate[]>([]);
+    const [ignoredIds, setIgnoredIds] = useState<Set<string>>(new Set());
     const [isScanning, setIsScanning] = useState(false);
 
     /**
@@ -56,14 +57,8 @@ export const useTransferReconciler = (
         // 1. Scan for Pairs (Existing Logic)
         for (let i = 0; i < sorted.length; i++) {
             const txA = sorted[i];
-            // Skip already linked or transfers
-            if (txA.linkedTransactionId || txA.type === TransactionType.TRANSFER || processedIds.has(txA.id)) {
-                // Should we still check even if filtered here?
-                // No, linked/transfer are done.
-                // But wait, what if Single Logic needs to check `EXPENSE` specifically? 
-                // We'll handle Single Scan in a separate pass or integrated here?
-                // Let's integrate below to avoid re-loop, or just separate for clarity. 
-                // Separate is cleaner as Pair Scan uses Nested Loop.
+            // Skip already linked or transfers OR items ignored
+            if (txA.linkedTransactionId || txA.isReconciliationIgnored || txA.type === TransactionType.TRANSFER || processedIds.has(txA.id) || ignoredIds.has(txA.id)) {
                 continue;
             }
 
@@ -117,7 +112,7 @@ export const useTransferReconciler = (
         // Iterate again (or could have been combined, but separate is safer for logic isolation)
         // We only care about EXPENSES that are NOT processed yet.
         for (const tx of sorted) {
-            if (processedIds.has(tx.id)) continue;
+            if (processedIds.has(tx.id) || ignoredIds.has(tx.id) || tx.isReconciliationIgnored) continue;
             if (tx.type !== TransactionType.EXPENSE) continue;
             if (tx.linkedTransactionId) continue;
 
@@ -177,8 +172,8 @@ export const useTransferReconciler = (
         setCandidates(candidatesFound);
         setSingleCandidates(singlesFound);
         setIsScanning(false);
-        console.log(`[TransferReconciler] Scanned ${transactions.length} txs. Found ${candidatesFound.length} Pairs, ${singlesFound.length} Singles.`);
-    }, [transactions, assets]);
+        console.log(`[TransferReconciler] Scanned ${transactions.length} txs. Found ${candidatesFound.length} Pairs, ${singlesFound.length} Singles. (Ignored: ${ignoredIds.size})`);
+    }, [transactions, assets, ignoredIds]);
 
     /**
      * Trigger Scan on Mount or Transaction Change
@@ -187,7 +182,7 @@ export const useTransferReconciler = (
         if (transactions.length > 0) {
             scanCandidates();
         }
-    }, [scanCandidates, transactions.length]);
+    }, [scanCandidates, transactions]); // Fixed: Track full array for content updates
 
     /**
      * EXECUTE LINK (Pair)
@@ -212,6 +207,13 @@ export const useTransferReconciler = (
 
         try {
             await SupabaseService.linkTransactionsV3(sourceUpdate, targetUpdate);
+            // Session-level ignore to prevent reappearing during background refresh
+            setIgnoredIds(prev => {
+                const updated = new Set(prev);
+                updated.add(withdrawal.id);
+                updated.add(deposit.id);
+                return updated;
+            });
             onRefresh();
             setCandidates(prev => prev.filter(c => c.withdrawal.id !== withdrawal.id));
         } catch (error) {
@@ -255,6 +257,12 @@ export const useTransferReconciler = (
             // New Logic: Create Counterpart Transaction Pair via Service
             await SupabaseService.createTransferPair(transaction, targetAsset.id, targetCategoryId);
 
+            // Session-level ignore
+            setIgnoredIds(prev => {
+                const updated = new Set(prev);
+                updated.add(transaction.id);
+                return updated;
+            });
             onRefresh();
             setSingleCandidates(prev => prev.filter(c => c.transaction.id !== transaction.id));
         } catch (error) {
@@ -265,11 +273,36 @@ export const useTransferReconciler = (
 
 
 
-    const handleIgnore = (id: string, isSingle: boolean = false) => {
-        if (isSingle) {
-            setSingleCandidates(prev => prev.filter(c => c.transaction.id !== id));
-        } else {
-            setCandidates(prev => prev.filter(c => c.withdrawal.id !== id));
+    const handleIgnore = async (id: string, isSingle: boolean = false) => {
+        // Find the transaction object to update
+        const txToIgnore = transactions.find(t => t.id === id);
+        if (!txToIgnore) return;
+
+        try {
+            // Update in DB
+            await SupabaseService.saveTransaction({
+                ...txToIgnore,
+                isReconciliationIgnored: true
+            });
+
+            // Local state update for immediate UI feedback
+            setIgnoredIds(prev => {
+                const updated = new Set(prev);
+                updated.add(id);
+                return updated;
+            });
+
+            if (isSingle) {
+                setSingleCandidates(prev => prev.filter(c => c.transaction.id !== id));
+            } else {
+                setCandidates(prev => prev.filter(c => c.withdrawal.id !== id));
+            }
+
+            // Trigger parent refresh to sync data
+            onRefresh();
+        } catch (error) {
+            console.error("Failed to ignore transaction:", error);
+            alert("Failed to ignore transaction. Please try again.");
         }
     };
 

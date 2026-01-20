@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Dialog } from './ui/Dialog';
 import { Button } from './ui/Button';
 import { Asset, Transaction, CategoryItem } from '../types';
 import TransactionItem from './TransactionItem';
+import { Link2, CreditCard, Sparkles, CheckCircle2, History } from 'lucide-react';
 
 // Interfaces matching the hook
 interface TransferCandidate {
@@ -41,14 +42,33 @@ export const ReconciliationModal: React.FC<ReconciliationModalProps> = ({
     onConvert,
     onIgnore
 }) => {
+    const [activeTab, setActiveTab] = useState<'LINK' | 'CREDIT'>('LINK');
+
     if (!isOpen) return null;
 
-    // Combine and Sort by Date (Most recent first)
-    // We map them to a common structure for display, but keep original data
-    const allItems = [
-        ...candidates.map(c => ({ type: 'pair' as const, date: c.withdrawal.date, data: c })),
-        ...singleCandidates.map(c => ({ type: 'single' as const, date: c.transaction.date, data: c }))
-    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Filter items based on tab
+    const filteredCandidates = candidates.sort((a, b) => new Date(b.withdrawal.date).getTime() - new Date(a.withdrawal.date).getTime());
+    const filteredSingles = singleCandidates.sort((a, b) => new Date(b.transaction.date).getTime() - new Date(a.transaction.date).getTime());
+
+    const totalCount = candidates.length + singleCandidates.length;
+
+    const TabButton = ({ id, label, icon: Icon, count }: { id: 'LINK' | 'CREDIT', label: string, icon: any, count: number }) => (
+        <button
+            onClick={() => setActiveTab(id)}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold transition-all duration-300 relative ${activeTab === id
+                ? 'bg-white text-slate-900 shadow-lg shadow-slate-200 ring-1 ring-slate-100'
+                : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                }`}
+        >
+            <Icon size={16} />
+            <span className="text-sm">{label}</span>
+            {count > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === id ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                    {count}
+                </span>
+            )}
+        </button>
+    );
 
     return (
         <Dialog
@@ -57,56 +77,74 @@ export const ReconciliationModal: React.FC<ReconciliationModalProps> = ({
             title="Link Transfers"
             maxWidth="2xl"
         >
-            <div className="space-y-4 max-h-[60vh] overflow-y-auto p-1">
-                <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-700 mb-4">
-                    💡 Found <strong>{allItems.length}</strong> items. Review and link them to clean up your transaction list.
+            <div className="flex flex-col h-full -mt-2">
+                {/* Intro Info */}
+                <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex items-center gap-3 mb-6 transition-all hover:bg-white hover:shadow-sm">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 shadow-inner">
+                        <Sparkles size={20} />
+                    </div>
+                    <div className="flex-1">
+                        <p className="text-sm font-bold text-slate-800 leading-tight">Smart Discovery</p>
+                        <p className="text-xs text-slate-500 font-medium">Found {totalCount} cleaning opportunities for your records.</p>
+                    </div>
                 </div>
 
-                {allItems.length === 0 ? (
-                    <div className="text-center text-slate-500 py-10">
-                        No candidates found.
-                    </div>
-                ) : (
-                    allItems.map((item, index) => {
-                        if (item.type === 'pair') {
-                            const candidate = item.data as TransferCandidate;
-                            const { withdrawal, deposit } = candidate;
-                            const dateStr = new Date(item.date).toLocaleDateString();
-                            const timeDiff = Math.round(candidate.timeDiff / (1000 * 60)); // minutes
+                {/* Custom Tabs */}
+                <div className="bg-slate-100/50 p-1 rounded-2xl flex gap-1 mb-6 border border-slate-100">
+                    <TabButton
+                        id="LINK"
+                        label="Transaction Links"
+                        icon={Link2}
+                        count={candidates.length}
+                    />
+                    <TabButton
+                        id="CREDIT"
+                        label="Credit Payments"
+                        icon={CreditCard}
+                        count={singleCandidates.length}
+                    />
+                </div>
 
-                            return (
-                                <div key={`pair-${index}`} className="bg-slate-50 rounded-2xl shadow-sm overflow-hidden transition-all hover:shadow-md">
-                                    {/* Header: Date & Time Gap */}
-                                    <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
-                                        <span className="text-xs font-bold text-slate-500 flex items-center gap-1">
-                                            {dateStr}
-                                        </span>
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                                            {timeDiff} min gap
+                {/* Content Area */}
+                <div className="space-y-6 max-h-[55vh] overflow-y-auto px-1 custom-scrollbar">
+                    {activeTab === 'LINK' ? (
+                        filteredCandidates.length === 0 ? (
+                            <div className="text-center text-slate-400 py-16 space-y-3">
+                                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto text-slate-200">
+                                    <CheckCircle2 size={32} />
+                                </div>
+                                <p className="text-sm font-bold">No transfer pairs found.</p>
+                            </div>
+                        ) : (
+                            filteredCandidates.map((candidate, index) => (
+                                <div key={`pair-${index}`} className="group relative bg-white border border-slate-100 rounded-[28px] overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-slate-200/50 hover:border-slate-200">
+                                    {/* Header */}
+                                    <div className="px-5 py-3 bg-slate-50/50 border-b border-slate-50 flex justify-between items-center">
+                                        <div className="flex items-center gap-2">
+                                            <History size={12} className="text-slate-400" />
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                                                {new Date(candidate.withdrawal.date).toLocaleDateString()}
+                                            </span>
+                                        </div>
+                                        <span className="text-[10px] font-black text-slate-500 bg-white border border-slate-100 px-2.5 py-1 rounded-full shadow-sm">
+                                            {Math.round(candidate.timeDiff / (1000 * 60))} MIN OFFSET
                                         </span>
                                     </div>
 
-                                    <div className="p-0">
-                                        {/* Withdrawal (Source) */}
-                                        <div className="pointer-events-none">
+                                    <div className="p-0 divide-y divide-slate-50">
+                                        <div className="pointer-events-none opacity-90 transition-opacity group-hover:opacity-100">
                                             <TransactionItem
-                                                transaction={withdrawal}
-                                                asset={assets.find(a => a.id === withdrawal.assetId)}
+                                                transaction={candidate.withdrawal}
+                                                asset={assets.find(a => a.id === candidate.withdrawal.assetId)}
                                                 categories={categories}
                                                 onEdit={() => { }}
                                                 onDelete={() => { }}
                                             />
                                         </div>
-
-                                        {/* Separator */}
-                                        {/* Separator Removed for compactness */}
-
-
-                                        {/* Deposit (Destination) */}
-                                        <div className="pointer-events-none">
+                                        <div className="pointer-events-none opacity-90 transition-opacity group-hover:opacity-100">
                                             <TransactionItem
-                                                transaction={deposit}
-                                                asset={assets.find(a => a.id === deposit.assetId)}
+                                                transaction={candidate.deposit}
+                                                asset={assets.find(a => a.id === candidate.deposit.assetId)}
                                                 categories={categories}
                                                 onEdit={() => { }}
                                                 onDelete={() => { }}
@@ -114,106 +152,102 @@ export const ReconciliationModal: React.FC<ReconciliationModalProps> = ({
                                         </div>
                                     </div>
 
-                                    {/* Footer */}
-                                    <div className="p-3 bg-slate-100 border-t border-slate-200/60 flex justify-end gap-3">
-                                        <Button
-                                            variant="ghost"
+                                    {/* Action Bar */}
+                                    <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 px-6">
+                                        <button
                                             onClick={() => onIgnore(candidate.withdrawal.id, false)}
-                                            size="sm"
-                                            className="text-slate-400 hover:text-slate-600 hover:bg-white"
+                                            className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-rose-500 transition-colors"
                                         >
-                                            Ignore
-                                        </Button>
+                                            Dismiss
+                                        </button>
                                         <Button
                                             variant="primary"
                                             onClick={() => onLink(candidate)}
                                             size="sm"
-                                            className="bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-900/20 px-6 rounded-xl"
+                                            className="bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-900/20 px-8 rounded-full transform active:scale-95 transition-all font-bold text-xs"
                                         >
-                                            Link Transactions
+                                            Link Transfer
                                         </Button>
                                     </div>
                                 </div>
-                            );
-                        } else {
-                            // Single Candidate
-                            const candidate = item.data as SingleCandidate;
-                            const { transaction, targetAsset } = candidate;
-                            const dateStr = new Date(item.date).toLocaleDateString();
-
-                            return (
-                                <div key={`single-${index}`} className="bg-slate-50 rounded-2xl shadow-sm overflow-hidden transition-all hover:shadow-md">
-                                    {/* Header: Date & Tag */}
-                                    <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
-                                        <span className="text-xs font-bold text-slate-500 flex items-center gap-1">
-                                            {dateStr}
-                                        </span>
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                                            Smart Payment
+                            ))
+                        )
+                    ) : (
+                        filteredSingles.length === 0 ? (
+                            <div className="text-center text-slate-400 py-16 space-y-3">
+                                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto text-slate-200">
+                                    <CheckCircle2 size={32} />
+                                </div>
+                                <p className="text-sm font-bold">No credit payments detected.</p>
+                            </div>
+                        ) : (
+                            filteredSingles.map((candidate, index) => (
+                                <div key={`single-${index}`} className="group relative bg-white border border-slate-100 rounded-[28px] overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-slate-200/50 hover:border-slate-200">
+                                    <div className="px-5 py-3 bg-slate-50/50 border-b border-slate-50 flex justify-between items-center">
+                                        <div className="flex items-center gap-2">
+                                            <History size={12} className="text-slate-400" />
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                                                {new Date(candidate.transaction.date).toLocaleDateString()}
+                                            </span>
+                                        </div>
+                                        <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
+                                            CARD PAYMENT
                                         </span>
                                     </div>
 
                                     <div className="p-0">
-                                        {/* Source Transaction */}
                                         <div className="pointer-events-none">
                                             <TransactionItem
-                                                transaction={transaction}
-                                                asset={assets.find(a => a.id === transaction.assetId)}
+                                                transaction={candidate.transaction}
+                                                asset={assets.find(a => a.id === candidate.transaction.assetId)}
                                                 categories={categories}
                                                 onEdit={() => { }}
                                                 onDelete={() => { }}
                                             />
                                         </div>
-
-                                        {/* Separator - Arrowish */}
-                                        {/* Separator Removed for compactness */}
-
-
-                                        {/* Target Asset Info (Mocking TransactionItem style for consistency) */}
-                                        <div className="px-4 py-3 flex items-center gap-3 opacity-60">
-                                            <div className="w-10 h-10 rounded-full bg-white border border-slate-100 flex items-center justify-center text-lg shadow-sm grayscale">
-                                                💳
-                                            </div>
+                                        <div className="px-5 py-4 flex items-center gap-4 bg-emerald-50/20">
                                             <div className="flex-1">
-                                                <div className="text-sm font-bold text-slate-700">To: {targetAsset.name}</div>
-                                                <div className="text-xs text-slate-400">{targetAsset.institution}</div>
+                                                <div className="text-xs font-black text-slate-400 uppercase tracking-tight mb-0.5">Target Asset</div>
+                                                <div className="text-sm font-bold text-slate-800">{candidate.targetAsset.name}</div>
+                                                <div className="text-[10px] text-slate-500 font-medium">{candidate.targetAsset.institution}</div>
                                             </div>
-                                            <div className="font-bold text-slate-400">
-                                                (Auto-Link)
+                                            <div className="flex items-center gap-1.5 text-emerald-600">
+                                                <Sparkles size={14} />
+                                                <span className="text-[10px] font-black uppercase">Auto-Match</span>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Footer */}
-                                    <div className="p-3 bg-slate-100 border-t border-slate-200/60 flex justify-end gap-3">
-                                        <Button
-                                            variant="ghost"
-                                            onClick={() => onIgnore(transaction.id, true)}
-                                            size="sm"
-                                            className="text-slate-400 hover:text-slate-600 hover:bg-white"
+                                    <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 px-6">
+                                        <button
+                                            onClick={() => onIgnore(candidate.transaction.id, true)}
+                                            className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-rose-500 transition-colors"
                                         >
-                                            Ignore
-                                        </Button>
+                                            Dismiss
+                                        </button>
                                         <Button
                                             variant="primary"
                                             onClick={() => onConvert && onConvert(candidate)}
                                             size="sm"
-                                            className="bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-900/20 px-6 rounded-xl"
+                                            className="bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-900/20 px-8 rounded-full transform active:scale-95 transition-all font-bold text-xs"
                                         >
                                             Confirm Transfer
                                         </Button>
                                     </div>
                                 </div>
-                            );
-                        }
-                    })
-                )}
-            </div>
+                            ))
+                        )
+                    )}
+                </div>
 
-            <div className="mt-6 flex justify-end">
-                <Button variant="outline" onClick={onClose}>
-                    Done
-                </Button>
+                <div className="mt-8 flex justify-center">
+                    <button
+                        onClick={onClose}
+                        className="text-sm font-bold text-slate-400 hover:text-slate-950 transition-colors py-2 px-8"
+                    >
+                        Close
+                    </button>
+                </div>
             </div>
         </Dialog>
     );

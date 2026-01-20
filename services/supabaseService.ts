@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Asset, Transaction, RecurringTransaction, SavingsGoal, AssetType, Category, BillType, CategoryItem, Budget, Tag, TransactionType } from '../types';
+import { Asset, Transaction, RecurringTransaction, SavingsGoal, AssetType, Category, BillType, CategoryItem, Budget, Tag, TransactionType, AssetOpeningBalance } from '../types';
 
 // Initialize Supabase Client
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -24,6 +24,11 @@ export const SupabaseService = {
             console.error('Error fetching assets:', error);
             return [];
         }
+
+        // Fetch Opening Balances
+        const { data: obData } = await supabase.from('asset_opening_balances').select('*');
+        const obMap = new Map(obData?.map((ob: any) => [ob.asset_id, Number(ob.amount)]) || []);
+
         console.log('[Supabase] getAssets done. Count:', data?.length);
         return data.map((row: any) => ({
             ...row,
@@ -31,19 +36,17 @@ export const SupabaseService = {
             // Map JSON fields back to objects
             creditDetails: row.credit_details,
             loanDetails: row.loan_details,
-            // Map snake_case to camelCase where needed if auto-map fails, 
-            // but we kept most columns consistent or use renaming below
             interestRate: row.interest_rate,
-            billingCycle: row.credit_details?.billingCycle, // Legacy support if needed
+            billingCycle: row.credit_details?.billingCycle,
 
-            // New Mappings
             bankDetails: row.bank_details,
             investmentDetails: row.investment_details,
             institution: row.institution,
             accountNumber: row.account_number,
             excludeFromTotal: row.exclude_from_total,
             theme: row.theme,
-            initialBalance: Number(row.initial_balance) || 0,
+            // Source of truth: New dedicated table
+            initialBalance: obMap.get(row.id) || 0,
         })) as Asset[];
     },
 
@@ -56,7 +59,7 @@ export const SupabaseService = {
             name: asset.name,
             type: asset.type,
             balance: asset.balance,
-            initial_balance: asset.initialBalance,
+            // initial_balance: asset.initialBalance, // REMOVED: Managed in separate table
             currency: asset.currency,
             description: asset.description,
             interest_rate: asset.interestRate,
@@ -82,6 +85,32 @@ export const SupabaseService = {
     deleteAsset: async (id: string) => {
         const { error } = await supabase.from('assets').delete().eq('id', id);
         if (error) console.error('Error deleting asset:', error);
+    },
+
+    // --- Opening Balances ---
+    getOpeningBalances: async (): Promise<AssetOpeningBalance[]> => {
+        const { data, error } = await supabase.from('asset_opening_balances').select('*');
+        if (error) {
+            console.error('Error fetching opening balances:', error);
+            return [];
+        }
+        return data as AssetOpeningBalance[];
+    },
+
+    saveOpeningBalance: async (ob: Partial<AssetOpeningBalance>) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        const row = {
+            ...ob,
+            user_id: user?.id,
+            amount: Number(ob.amount),
+        };
+        const { error } = await supabase.from('asset_opening_balances').upsert(row, { onConflict: 'asset_id' });
+        if (error) console.error('Error saving opening balance:', error);
+    },
+
+    deleteOpeningBalance: async (assetId: string) => {
+        const { error } = await supabase.from('asset_opening_balances').delete().eq('asset_id', assetId);
+        if (error) console.error('Error deleting opening balance:', error);
     },
 
     // --- Transactions ---
@@ -144,6 +173,7 @@ export const SupabaseService = {
             linkedTransactionSourceAssetId: row.linked_transaction_id ? txAssetMap.get(row.linked_transaction_id) : undefined,
             hashKey: row.hash_key,
 
+            isReconciliationIgnored: !!row.is_reconciliation_ignored,
             // Reconstruct Installment Object from Flat Columns (Preferred) or JSON (Fallback)
             installment: (row.installment_total_months > 1 || row.installment) ? {
                 totalMonths: row.installment_total_months || row.installment?.totalMonths || row.installment?.total_months,
@@ -178,6 +208,7 @@ export const SupabaseService = {
             installment_total_months: tx.installment?.totalMonths ?? null,
             installment_current_month: tx.installment?.currentMonth ?? null,
             is_interest_free: tx.installment?.isInterestFree ?? null,
+            is_reconciliation_ignored: tx.isReconciliationIgnored ?? false,
             hash_key: tx.hashKey || null
         };
         const { error } = await supabase.from('transactions').upsert(row);
@@ -210,6 +241,7 @@ export const SupabaseService = {
             installment_total_months: tx.installment?.totalMonths ?? null,
             installment_current_month: tx.installment?.currentMonth ?? null,
             is_interest_free: tx.installment?.isInterestFree ?? null,
+            is_reconciliation_ignored: tx.isReconciliationIgnored ?? false,
 
             // Hash Key for Duplicate Detection
             hash_key: tx.hashKey || null
@@ -274,10 +306,12 @@ export const SupabaseService = {
 
         // 3. Act: Only reset balance if verified empty
         if (count === 0) {
-            console.log(`[Verified] Asset ${assetId} history cleared. Resetting balance to 0.`);
+            console.log(`[Verified] Asset ${assetId} history cleared. Resetting balance to initial balance.`);
+            const { data: obData } = await supabase.from('asset_opening_balances').select('amount').eq('asset_id', assetId).maybeSingle();
+            const initialBalance = obData ? Number(obData.amount) : 0;
             const { error: updateError } = await supabase
                 .from('assets')
-                .update({ balance: 0 })
+                .update({ balance: initialBalance })
                 .eq('id', assetId);
 
             if (updateError) {
@@ -567,11 +601,15 @@ export const SupabaseService = {
             // A "Reset" simply wipes transactions and reverts the current balance to the starting point.
 
             if (!options.assets) {
-                // Fetch current assets to know their initial balances
-                const { data: currentAssets } = await supabase.from('assets').select('*');
+                // Fetch current assets and their opening balances
+                const { data: currentAssets } = await supabase.from('assets').select('id');
+                const { data: openingBalances } = await supabase.from('asset_opening_balances').select('asset_id, amount');
+
+                const obMap = new Map(openingBalances?.map(ob => [ob.asset_id, ob.amount]) || []);
+
                 if (currentAssets) {
                     for (const row of currentAssets) {
-                        const initialBalance = Number(row.initial_balance) || 0;
+                        const initialBalance = Number(obMap.get(row.id)) || 0;
                         console.log(`[SmartReset] Reverting Asset ${row.id} to initial balance: ${initialBalance}`);
 
                         await supabase
@@ -604,6 +642,8 @@ export const SupabaseService = {
         if (options.assets) {
             // Deleting assets might cascade to transactions if foreign keys exist, 
             // but we usually handle transactions separately above.
+            // also clear opening balances
+            await supabase.from('asset_opening_balances').delete().neq('id', dummyId);
             await supabase.from('assets').delete().neq('id', dummyId);
         }
 

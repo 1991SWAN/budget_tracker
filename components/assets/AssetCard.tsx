@@ -65,12 +65,12 @@ export const AssetCard: React.FC<AssetCardProps> = ({ asset, transactions, onCli
                     {asset.type === AssetType.CREDIT_CARD && creditStats && (
                         <div className="mt-3 pt-3 border-t border-white/10 flex gap-4">
                             <div>
-                                <p className="text-[10px] uppercase font-bold opacity-60">Next Bill</p>
-                                <p className="text-sm font-bold">{Math.round(creditStats.statementBalance).toLocaleString()}</p>
+                                <p className="text-[10px] uppercase font-bold opacity-60">Past Debt</p>
+                                <p className="text-sm font-bold">{Math.round(creditStats.pastDue).toLocaleString()}</p>
                             </div>
                             <div className="pl-4 border-l border-white/10">
-                                <p className="text-[10px] uppercase font-bold opacity-60">Unbilled</p>
-                                <p className="text-sm font-bold">{Math.round(creditStats.unbilledBalance).toLocaleString()}</p>
+                                <p className="text-[10px] uppercase font-bold opacity-60">Next Bill</p>
+                                <p className="text-sm font-bold">{Math.round(creditStats.nextBill).toLocaleString()}</p>
                             </div>
                             {asset.limit && (
                                 <div className="pl-4 border-l border-white/10 hidden sm:block">
