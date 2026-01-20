@@ -185,7 +185,6 @@ export const ImportService = {
     // This prevents "TextDecoder" from corrupting binary BIFF8/ZIP content.
     if (file.name.match(/\.(xls|xlsx)$/i)) {
       try {
-        console.log(`Detected Excel file (${file.name}), attempting binary read...`);
         // type: 'array' handles binary buffers (BIFF8, ZIP) correctly
         const workbook = read(buffer, { type: 'array', cellDates: true });
 
