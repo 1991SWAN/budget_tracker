@@ -213,13 +213,19 @@ const TransactionList: React.FC<TransactionListProps> = ({
                         const dailyTotal = groupDailyTotals[index];
 
                         return (
-                            <div className="bg-slate-50/95 backdrop-blur-md px-6 py-2 border-b border-slate-100 flex justify-between items-center sticky top-0 z-10">
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                    {dateLabel}
-                                </span>
-                                <span className={`text-xs font-bold ${dailyTotal > 0 ? 'text-emerald-600' : dailyTotal < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
-                                    {dailyTotal !== 0 ? (dailyTotal > 0 ? '+' : '') + dailyTotal.toLocaleString() : '-'}
-                                </span>
+                            <div className="bg-slate-50/98 backdrop-blur-sm px-5 py-2 border-y border-slate-100/60 flex justify-between items-center sticky top-0 z-10">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-0.5 h-3 bg-indigo-500 rounded-full" />
+                                    <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">
+                                        {dateLabel}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Total</span>
+                                    <span className={`text-xs font-bold tabular-nums tracking-tight ${dailyTotal > 0 ? 'text-emerald-600' : dailyTotal < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                                        {dailyTotal !== 0 ? (dailyTotal > 0 ? '+' : '') + dailyTotal.toLocaleString() : '0'}
+                                    </span>
+                                </div>
                             </div>
                         );
                     }}

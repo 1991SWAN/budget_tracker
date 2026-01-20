@@ -48,10 +48,36 @@ const FilterBar: React.FC<FilterBarProps> = ({
         }
     };
 
-    const handleDatePreset = (days: number) => {
+    const handleDatePreset = (type: 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'lastMonth' | 'thisYear') => {
         const end = new Date();
         const start = new Date();
-        start.setDate(end.getDate() - days);
+
+        switch (type) {
+            case 'today':
+                // Already set to now
+                break;
+            case 'yesterday':
+                start.setDate(end.getDate() - 1);
+                end.setDate(end.getDate() - 1);
+                break;
+            case 'thisWeek':
+                const day = start.getDay();
+                const diff = start.getDate() - day + (day === 0 ? -6 : 1); // Monday
+                start.setDate(diff);
+                break;
+            case 'thisMonth':
+                start.setDate(1);
+                break;
+            case 'lastMonth':
+                start.setMonth(start.getMonth() - 1);
+                start.setDate(1);
+                end.setDate(0); // Last day of prev month
+                break;
+            case 'thisYear':
+                start.setMonth(0, 1);
+                break;
+        }
+
         onDateRangeChange({
             start: start.toISOString().split('T')[0],
             end: end.toISOString().split('T')[0]
@@ -91,16 +117,55 @@ const FilterBar: React.FC<FilterBarProps> = ({
                         className={`rounded-full px-4 h-10 border-slate-200 transition-colors ${dateRange ? 'bg-slate-900 text-white border-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
                         <span>📅</span>
-                        <span className="ml-1 hidden md:inline">{dateRange ? 'Period Set' : 'Date'}</span>
+                        <span className="ml-1 hidden md:inline">
+                            {dateRange
+                                ? `${dateRange.start.slice(5)} ~ ${dateRange.end.slice(5)}`
+                                : 'Date'}
+                        </span>
                         {dateRange && <span className="ml-2 text-xs opacity-60 hover:opacity-100" onClick={clearDate}>✕</span>}
                     </Button>
 
                     {activeDropdown === 'date' && (
-                        <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-3xl shadow-xl border border-slate-100 p-2 flex flex-col gap-1 animate-in fade-in zoom-in-95 z-50">
-                            <Button variant="ghost" size="sm" onClick={() => handleDatePreset(0)} className="justify-start rounded-xl">Today</Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDatePreset(7)} className="justify-start rounded-xl">Last 7 Days</Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDatePreset(30)} className="justify-start rounded-xl">Last 30 Days</Button>
-                            <Button variant="ghost" size="sm" onClick={() => onDateRangeChange(null)} className="justify-start text-rose-500 rounded-xl">Clear Date</Button>
+                        <div className="absolute top-full right-0 mt-2 w-72 bg-white rounded-3xl shadow-2xl border border-slate-100 p-3 flex flex-col gap-3 animate-in fade-in zoom-in-95 z-50">
+                            <div className="px-2 py-1 text-xs font-bold text-slate-400 uppercase tracking-wider">Presets</div>
+                            <div className="grid grid-cols-2 gap-1">
+                                <Button variant="ghost" size="sm" onClick={() => handleDatePreset('today')} className="justify-start rounded-xl text-xs h-9">Today</Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDatePreset('yesterday')} className="justify-start rounded-xl text-xs h-9">Yesterday</Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDatePreset('thisWeek')} className="justify-start rounded-xl text-xs h-9">This Week</Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDatePreset('thisMonth')} className="justify-start rounded-xl text-xs h-9">This Month</Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDatePreset('lastMonth')} className="justify-start rounded-xl text-xs h-9">Last Month</Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDatePreset('thisYear')} className="justify-start rounded-xl text-xs h-9">This Year</Button>
+                            </div>
+
+                            <div className="h-[1px] bg-slate-100 mx-2"></div>
+
+                            <div className="px-2 py-1 text-xs font-bold text-slate-400 uppercase tracking-wider">Custom Range</div>
+                            <div className="flex flex-col gap-2 px-1">
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">Start</span>
+                                        <input
+                                            type="date"
+                                            value={dateRange?.start || ''}
+                                            onChange={(e) => onDateRangeChange({ start: e.target.value, end: dateRange?.end || e.target.value })}
+                                            className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 transition-colors"
+                                        />
+                                    </div>
+                                    <div className="flex-1">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">End</span>
+                                        <input
+                                            type="date"
+                                            value={dateRange?.end || ''}
+                                            onChange={(e) => onDateRangeChange({ start: dateRange?.start || e.target.value, end: e.target.value })}
+                                            className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 transition-colors"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Button variant="ghost" size="sm" onClick={() => onDateRangeChange(null)} className="justify-center text-rose-500 rounded-xl text-xs font-bold mt-1">
+                                Reset Date Filter
+                            </Button>
                         </div>
                     )}
                 </div>
