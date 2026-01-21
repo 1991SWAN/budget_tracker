@@ -78,11 +78,32 @@ export const ModalContainer: React.FC<ModalContainerProps> = ({
                     {modalType === 'pay-card' && (
                         <>
                             <p className="text-sm text-slate-500 mb-2">Pay off your credit card debt from another account.</p>
-                            <input type="number" placeholder="Payment Amount" value={formData.amount || ''} onChange={e => setFormData({ ...formData, amount: e.target.value })} className="w-full p-4 border border-rose-200 bg-rose-50 rounded-xl font-bold text-2xl text-rose-900 focus:outline-none" />
-                            <label className="block text-xs font-semibold text-slate-500 uppercase">Withdraw From</label>
-                            <select value={paymentAsset} onChange={e => setPaymentAsset(e.target.value)} className="w-full p-2 border rounded-lg">
-                                {assets.filter(a => a.type !== AssetType.CREDIT_CARD).map(a => <option key={a.id} value={a.id}>{a.institution ? `${a.institution} ${a.name}` : a.name} ({a.balance.toLocaleString()})</option>)}
-                            </select>
+                            <div className="flex gap-2">
+                                <div className="flex-1">
+                                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Date</label>
+                                    <input type="date" value={formData.date || ''} onChange={e => setFormData({ ...formData, date: e.target.value })} className="w-full p-2 border rounded-lg text-sm" />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Category</label>
+                                    <select value={formData.category || Category.TRANSFER} onChange={e => setFormData({ ...formData, category: e.target.value })} className="w-full p-2 border rounded-lg text-sm">
+                                        {Object.values(Category).map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Amount</label>
+                                <input type="number" placeholder="Payment Amount" value={formData.amount || ''} onChange={e => setFormData({ ...formData, amount: e.target.value })} className="w-full p-4 border border-rose-200 bg-rose-50 rounded-xl font-bold text-2xl text-rose-900 focus:outline-none" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Withdraw From</label>
+                                <select value={paymentAsset} onChange={e => setPaymentAsset(e.target.value)} className="w-full p-2 border rounded-lg">
+                                    {assets.filter(a => a.type !== AssetType.CREDIT_CARD).map(a => <option key={a.id} value={a.id}>{a.institution ? `${a.institution} ${a.name}` : a.name} ({a.balance.toLocaleString()})</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Memo / Description</label>
+                                <input type="text" placeholder="Memo" value={formData.memo || ''} onChange={e => setFormData({ ...formData, memo: e.target.value })} className="w-full p-2 border rounded-lg text-sm" />
+                            </div>
                         </>
                     )}
                     {modalType === 'goal' && (

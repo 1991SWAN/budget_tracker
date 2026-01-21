@@ -51,6 +51,9 @@ const App: React.FC = () => {
     recurring, setRecurring,
     goals, setGoals,
     monthlyBudget, setMonthlyBudget,
+    hasMoreTransactions,
+    fetchMoreTransactions,
+    isFetchingMore,
     refreshData: loadData
   } = useAppData(user);
 
@@ -129,7 +132,21 @@ const App: React.FC = () => {
   // Note: We moved search filtering to the main filter block below to combine logic
   // const searchedTransactions = useTransactionSearch(transactions, searchTerm); 
 
-  const { addTransaction: handleAddTransaction, addTransactions: handleAddTransactions, updateTransaction: handleUpdateTransaction, deleteTransaction: handleDeleteTransaction, deleteTransactions: handleDeleteTransactions } = useTransactionManager(transactions, setTransactions, assets, setAssets);
+  const {
+    addTransaction: handleAddTransaction,
+    addTransactions: handleAddTransactions,
+    updateTransaction: handleUpdateTransaction,
+    deleteTransaction: handleDeleteTransaction,
+    deleteTransactions: handleDeleteTransactions
+  } = useTransactionManager(
+    transactions,
+    setTransactions,
+    async () => {
+      // Reload assets after transaction changes (DB Trigger has updated them)
+      const freshAssets = await SupabaseService.getAssets();
+      setAssets(freshAssets);
+    }
+  );
   const { categories } = useCategoryManager();
 
   const handleEditTransaction = useCallback((tx: Transaction) => {
@@ -325,18 +342,33 @@ const App: React.FC = () => {
 
     if (modalType === 'pay-card') {
       const payAmount = Number(formData.amount);
-      const tx: Transaction = {
-        id: 'cp-' + Date.now(),
-        date: new Date().toISOString().split('T')[0],
+      const sourceId = crypto.randomUUID();
+      const targetId = crypto.randomUUID();
+
+      // 1. Source Transaction (Withdrawal from Bank)
+      const sourceTx: Transaction = {
+        id: sourceId,
+        date: formData.date || new Date().toISOString().split('T')[0],
+        timestamp: Date.now(),
         amount: payAmount,
         type: TransactionType.TRANSFER,
-        category: Category.TRANSFER,
-        memo: `Credit Card Payoff: ${selectedItem.name}`,
+        category: formData.category || Category.TRANSFER,
+        memo: formData.memo || `Credit Card Payoff: ${selectedItem.name}`,
         assetId: paymentAsset,
         toAssetId: selectedItem.id,
-        // emoji: '💳'
+        linkedTransactionId: targetId
       };
-      handleAddTransaction(tx);
+
+      // 2. Target Transaction (Deposit/Debt reduction for Card)
+      const targetTx: Transaction = {
+        ...sourceTx,
+        id: targetId,
+        assetId: selectedItem.id,
+        toAssetId: undefined,
+        linkedTransactionId: sourceId
+      };
+
+      handleAddTransactions([sourceTx, targetTx]);
       closeModal();
       return;
     }
@@ -374,7 +406,34 @@ const App: React.FC = () => {
         SupabaseService.saveGoal(updatedGoal);
         setGoals(prev => prev.map(g => g.id === updatedGoal.id ? updatedGoal : g));
       }
-      handleAddTransaction({ id: 'gc-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: amount, type: TransactionType.TRANSFER, category: Category.INVESTMENT, memo: `Goal: ${selectedItem.name}`, assetId: paymentAsset, toAssetId: destinationAsset || undefined, emoji: '💰' });
+      const sourceId = crypto.randomUUID();
+      const targetId = crypto.randomUUID();
+
+      const sourceTx: Transaction = {
+        id: sourceId,
+        date: new Date().toISOString().split('T')[0],
+        timestamp: Date.now(),
+        amount: amount,
+        type: TransactionType.TRANSFER,
+        category: Category.INVESTMENT,
+        memo: `Goal: ${selectedItem.name}`,
+        assetId: paymentAsset,
+        toAssetId: destinationAsset || undefined,
+        linkedTransactionId: targetId
+      };
+
+      if (sourceTx.toAssetId) {
+        const targetTx: Transaction = {
+          ...sourceTx,
+          id: targetId,
+          assetId: sourceTx.toAssetId,
+          toAssetId: undefined,
+          linkedTransactionId: sourceId
+        };
+        handleAddTransactions([sourceTx, targetTx]);
+      } else {
+        handleAddTransaction(sourceTx);
+      }
       addToast('Funds added to goal', 'success');
     }
 
@@ -601,6 +660,10 @@ const App: React.FC = () => {
             onEdit={handleEditTransaction}
             onDelete={handleDeleteTransaction}
             onDeleteTransactions={handleDeleteTransactions}
+            searchTerm={searchTerm}
+            onLoadMore={fetchMoreTransactions}
+            hasMore={hasMoreTransactions}
+            isFetchingMore={isFetchingMore}
           />
         </ErrorBoundary>
       </div>}

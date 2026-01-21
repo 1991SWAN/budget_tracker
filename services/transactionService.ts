@@ -2,46 +2,27 @@ import { supabase } from './dbClient';
 import { Transaction, TransactionType } from '../types';
 
 export const TransactionService = {
-    getTransactions: async (): Promise<Transaction[]> => {
-        let allData: any[] = [];
-        let from = 0;
-        const step = 1000;
-        let hasMore = true;
+    getTransactions: async (limit: number = 50, offset: number = 0): Promise<Transaction[]> => {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .order('date', { ascending: false })
+            .order('timestamp', { ascending: false })
+            .range(offset, offset + limit - 1);
 
-        while (hasMore) {
-            const { data, error } = await supabase
-                .from('transactions')
-                .select('*')
-                .order('date', { ascending: false })
-                .range(from, from + step - 1);
-
-            if (error) {
-                console.error('Error fetching transactions:', error);
-                return [];
-            }
-
-            if (data && data.length > 0) {
-                allData = [...allData, ...data];
-                from += step;
-                if (data.length < step) hasMore = false;
-            } else {
-                hasMore = false;
-            }
-
-            if (from >= 10000) {
-                console.warn('[TransactionService] Pagination reached safety limit (10k).');
-                break;
-            }
+        if (error) {
+            console.error('Error fetching transactions:', error);
+            return [];
         }
 
         const txAssetMap = new Map<string, string>();
-        allData.forEach((row: any) => {
+        data.forEach((row: any) => {
             if (row.id && row.asset_id) {
                 txAssetMap.set(row.id, row.asset_id);
             }
         });
 
-        return allData.map((row: any) => ({
+        return data.map((row: any) => ({
             ...row,
             amount: Number(row.amount),
             assetId: row.asset_id,
@@ -175,5 +156,75 @@ export const TransactionService = {
             amount: targetUpdate.amount
         }).eq('id', targetUpdate.id);
         if (err2) throw err2;
+    },
+
+    getReconciliationCandidates: async (windowMinutes: number = 2): Promise<{ pairs: any[], singles: any[] }> => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { pairs: [], singles: [] };
+
+        const { data, error } = await supabase.rpc('find_reconciliation_candidates', {
+            p_user_id: user.id,
+            p_window_minutes: windowMinutes
+        });
+
+        if (error) {
+            console.error('[TransactionService] RPC Error:', error);
+            return { pairs: [], singles: [] };
+        }
+
+        console.log(`[TransactionService] RPC returned ${data?.pairs?.length || 0} pairs, ${data?.singles?.length || 0} singles for user ${user.id}`);
+
+        if (!data) return { pairs: [], singles: [] };
+
+        // Helper to map snake_case DB row to camelCase Transaction type
+        const mapTx = (row: any) => {
+            if (!row) return null;
+            return {
+                ...row,
+                amount: Number(row.amount),
+                assetId: row.asset_id || row.assetId,
+                toAssetId: row.to_asset_id || row.toAssetId,
+                linkedTransactionId: row.linked_transaction_id || row.linkedTransactionId,
+                isReconciliationIgnored: !!(row.is_reconciliation_ignored || row.isReconciliationIgnored),
+                installment: (row.installment_total_months > 1 || row.installment) ? {
+                    totalMonths: row.installment_total_months || row.installment?.totalMonths || row.installment?.total_months,
+                    currentMonth: row.installment_current_month || row.installment?.currentMonth || row.installment?.current_month || 1,
+                    isInterestFree: row.is_interest_free ?? row.installment?.isInterestFree ?? row.installment?.is_interest_free ?? true,
+                    remainingBalance: row.installment?.remainingBalance || row.installment?.remaining_balance || row.amount
+                } : undefined
+            };
+        };
+
+        const mappedPairs = (data.pairs || []).map((p: any) => {
+            const withdrawal = mapTx(p.withdrawal || p.withdrawal);
+            const deposit = mapTx(p.deposit || p.deposit);
+            if (!withdrawal || !deposit) return null;
+
+            return {
+                ...p,
+                withdrawal,
+                deposit,
+                timeDiff: Number(p.timeDiff || p.timediff || 0)
+            };
+        }).filter(Boolean);
+
+        const mappedSingles = (data.singles || []).map((s: any) => {
+            const rawTx = s.transaction || s.transaction;
+            const rawAsset = s.targetAsset || s.targetasset;
+
+            if (!rawTx || !rawAsset) return null;
+
+            return {
+                ...s,
+                transaction: mapTx(rawTx),
+                targetAsset: {
+                    ...rawAsset,
+                    userId: rawAsset.user_id || rawAsset.userId,
+                    openingBalance: Number(rawAsset.opening_balance || rawAsset.openingBalance || 0)
+                }
+            };
+        }).filter(Boolean);
+
+        return { pairs: mappedPairs, singles: mappedSingles as any[] };
     }
 };

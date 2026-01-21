@@ -14,6 +14,9 @@ interface TransactionListProps {
     onDelete: (tx: Transaction) => void;
     onDeleteTransactions?: (ids: string[]) => void;
     searchTerm: string;
+    onLoadMore?: () => void;
+    hasMore?: boolean;
+    isFetchingMore?: boolean;
 }
 
 // Helper to format Human Readable Date Labels
@@ -46,7 +49,10 @@ const TransactionList: React.FC<TransactionListProps> = ({
     categories,
     onEdit,
     onDelete,
-    onDeleteTransactions
+    onDeleteTransactions,
+    onLoadMore,
+    hasMore,
+    isFetchingMore
 }) => {
     // Selection State
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -203,10 +209,14 @@ const TransactionList: React.FC<TransactionListProps> = ({
             {/* Minimal List Container */}
             <div className={`h-full bg-white md:rounded-3xl border-y md:border border-slate-200 shadow-sm overflow-hidden transition-all ${isSelectionMode ? 'pb-20' : ''}`}>
                 <GroupedVirtuoso
-                    key={transactions.length}
                     style={{ height: '100%' }}
                     groupCounts={groupCounts}
                     context={virtuosoContext}
+                    endReached={() => {
+                        if (onLoadMore && hasMore && !isFetchingMore) {
+                            onLoadMore();
+                        }
+                    }}
                     groupContent={(index) => {
                         const dateStr = groupLabels[index];
                         const dateLabel = getDateLabel(dateStr);

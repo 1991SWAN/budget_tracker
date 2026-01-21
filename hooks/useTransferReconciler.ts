@@ -25,164 +25,44 @@ export const useTransferReconciler = (
     const [singleCandidates, setSingleCandidates] = useState<SingleCandidate[]>([]);
     const [ignoredIds, setIgnoredIds] = useState<Set<string>>(new Set());
     const [isScanning, setIsScanning] = useState(false);
+    const [lastScanCount, setLastScanCount] = useState(0);
 
     /**
      * Scan for potential transfer pairs AND single-sided payments.
      * V3 Window: 5 Minutes.
      * Target: Unlinked Income/Expense pairs with same Absolute Amount.
      */
-    const scanCandidates = useCallback(() => {
+    const scanCandidates = useCallback(async () => {
         setIsScanning(true);
-        const candidatesFound: TransferCandidate[] = [];
-        const singlesFound: SingleCandidate[] = [];
-        const processedIds = new Set<string>();
+        try {
+            const { pairs, singles } = await SupabaseService.getReconciliationCandidates();
+            console.log(`[TransferReconciler] Received from server: ${pairs?.length || 0} Pairs, ${singles?.length || 0} Singles`);
 
-        // Sort by date desc
-        const sorted = [...transactions].sort((a, b) =>
-            new Date(b.date).getTime() - new Date(a.date).getTime()
-        );
+            // Further filter by ignoredIds in memory for immediate UI response
+            const filteredPairs = (pairs || []).filter(p => !ignoredIds.has(p.withdrawal.id) && !ignoredIds.has(p.deposit.id));
+            const filteredSingles = (singles || []).filter(s => !ignoredIds.has(s.transaction.id));
 
-        // Create Asset lookup for type checking
-        const assetMap = new Map<string, Asset>();
-        // Also create a lookup for Liability Assets by Name/Institution for Keyword Matching
-        const liabilityAssets: Asset[] = [];
+            setCandidates(filteredPairs);
+            setSingleCandidates(filteredSingles);
+            setLastScanCount(filteredPairs.length + filteredSingles.length);
 
-        assets.forEach(a => {
-            assetMap.set(a.id, a);
-            if (a.type === AssetType.CREDIT_CARD || a.type === AssetType.LOAN) {
-                liabilityAssets.push(a);
-            }
-        });
-
-        // 1. Scan for Pairs (Existing Logic)
-        for (let i = 0; i < sorted.length; i++) {
-            const txA = sorted[i];
-            // Skip already linked or transfers OR items ignored
-            if (txA.linkedTransactionId || txA.isReconciliationIgnored || txA.type === TransactionType.TRANSFER || processedIds.has(txA.id) || ignoredIds.has(txA.id)) {
-                continue;
-            }
-
-            // Pre-filter: If Asset is excluded type (Credit Card / Loan), skip for PAIR matching?
-            // Existing logic says: Skip CC/Loan for Pair Matching source/target because they should be handled differently?
-            // Actually existing logic says: "Pre-filter: If Asset is excluded type... continue"
-            const assetA = assetMap.get(txA.assetId);
-            if (!assetA || assetA.type === AssetType.CREDIT_CARD || assetA.type === AssetType.LOAN) continue;
-
-            const timeA = new Date(txA.timestamp || txA.date).getTime();
-            const windowSize = 300000;
-
-            for (let j = i + 1; j < sorted.length; j++) {
-                const txB = sorted[j];
-                if (txB.linkedTransactionId || txB.type === TransactionType.TRANSFER || processedIds.has(txB.id)) continue;
-
-                // Pre-filter: Check Asset B type
-                const assetB = assetMap.get(txB.assetId);
-                if (!assetB || assetB.type === AssetType.CREDIT_CARD || assetB.type === AssetType.LOAN) continue;
-
-                // Constraint 1: Must be different assets
-                if (txA.assetId === txB.assetId) continue;
-
-                const timeB = new Date(txB.timestamp || txB.date).getTime();
-                const timeDiff = Math.abs(timeA - timeB);
-
-                if (timeDiff > windowSize) break; // Out of window (sorted desc)
-
-                if (Math.abs(txA.amount) === Math.abs(txB.amount)) {
-                    // Constraint 2: Type Check (Expense vs Income)
-                    if (txA.type !== txB.type) {
-                        // Found a pair!
-                        const withdrawal = txA.type === TransactionType.EXPENSE ? txA : txB;
-                        const deposit = txA.type === TransactionType.EXPENSE ? txB : txA;
-
-                        candidatesFound.push({
-                            withdrawal,
-                            deposit,
-                            score: 1.0,
-                            timeDiff
-                        });
-                        processedIds.add(txA.id);
-                        processedIds.add(txB.id);
-                        break; // Move to next A
-                    }
-                }
-            }
+            console.log(`[TransferReconciler] FINAL UI STATE: ${filteredPairs.length} Pairs, ${filteredSingles.length} Singles. (Total: ${filteredPairs.length + filteredSingles.length})`);
+        } catch (error) {
+            console.error("[TransferReconciler] Failed to scan candidates:", error);
+        } finally {
+            setIsScanning(false);
         }
-
-        // 2. Scan for Singles (Smart Payment Detection)
-        // Iterate again (or could have been combined, but separate is safer for logic isolation)
-        // We only care about EXPENSES that are NOT processed yet.
-        for (const tx of sorted) {
-            if (processedIds.has(tx.id) || ignoredIds.has(tx.id) || tx.isReconciliationIgnored) continue;
-            if (tx.type !== TransactionType.EXPENSE) continue;
-            if (tx.linkedTransactionId) continue;
-
-            // Check Keywords against Liability Assets
-            const textToSearch = (tx.memo + ' ' + (tx.merchant || '') + ' ' + (tx.originalText || '')).toLowerCase();
-
-            // User requested "결제" keyword check too.
-            // But "결제" alone doesn't tell us WHICH card.
-            // So we need "결제" AND (Asset Name OR Institution).
-            // OR just Asset Name/Institution is strong enough?
-            // User said: "memo에 '결제'라는 단어도 포함해줘" -> implies add it to the list of keywords.
-            // But if I just find "결제", I don't know the target.
-            // So I will assume "Target Matching" is still the primary filter.
-            // If I match a Target Asset Name, that's enough. 
-            // Maybe "결제" increases confidence?
-            // Actually, let's stick to: Match Asset Name or Institution.
-
-            for (const asset of liabilityAssets) {
-                const keywords = [
-                    asset.name.toLowerCase(),
-                    asset.institution?.toLowerCase(),
-                    // logic for 'payment' or '결제' is generic, let's treat it as a booster or mandatory?
-                    // "Hyundai Card" -> Keyword "Hyundai"
-                ].filter(k => k) as string[];
-
-                // Simple check: Does text contain any unique keyword of the asset?
-                // We need to be careful with common words.
-                // e.g. "Chase" is good. "Card" is bad.
-                // Let's assume Asset Name / Institution are specific enough for now.
-
-                const match = keywords.some(k => textToSearch.includes(k));
-
-                // Also check for user requested "Pay" or "Payment" or "결제" as a qualifier?
-                // Or is the Name enough? "Hyundai Dept Store", "Hyundai Card"?
-                // If I spent at "Hyundai Dept Store", it shouldn't be a transfer to "Hyundai Card".
-                // So maybe we DO need "Payment"/"결제"/"Pay" keyword presence + Asset Name?
-                // Or just be loose and let user decide?
-                // Let's be slightly loose but prioritize explicit matches.
-
-                if (match) {
-                    // Filter out likely regular spending at same brand?
-                    // E.g. "Starbucks" asset vs "Starbucks" expense.
-                    // Usually assets are banks. 
-
-                    // Let's create candidate
-                    singlesFound.push({
-                        transaction: tx,
-                        targetAsset: asset,
-                        matchReason: `Matched '${asset.name}' info in memo`
-                    });
-                    processedIds.add(tx.id); // Mark as candidate to avoid duplicates if multiple assets match (first wins)
-                    break;
-                }
-            }
-        }
-
-        setCandidates(candidatesFound);
-        setSingleCandidates(singlesFound);
-        setIsScanning(false);
-        console.log(`[TransferReconciler] Scanned ${transactions.length} txs. Found ${candidatesFound.length} Pairs, ${singlesFound.length} Singles. (Ignored: ${ignoredIds.size})`);
-    }, [transactions, assets, ignoredIds]);
+    }, [ignoredIds]);
 
     /**
      * Trigger Scan on Mount or Transaction Change
      */
     useEffect(() => {
-        if (transactions.length > 0) {
+        if (transactions.length > 0 && !isScanning) {
+            console.log(`[TransferReconciler] Data changed (${transactions.length} txs). Triggering fresh scan...`);
             scanCandidates();
         }
-    }, [scanCandidates, transactions]); // Fixed: Track full array for content updates
+    }, [scanCandidates, transactions]); // Full array dependency for robust triggering
 
     /**
      * EXECUTE LINK (Pair)

@@ -12,37 +12,29 @@ export const useAppData = (user: any) => {
     const [goals, setGoals] = useState<SavingsGoal[]>([]);
     const [monthlyBudget, setMonthlyBudget] = useState<number>(0);
     const [isDataLoaded, setIsDataLoaded] = useState(false);
+    const [hasMoreTransactions, setHasMoreTransactions] = useState(true);
+    const [isFetchingMore, setIsFetchingMore] = useState(false);
+    const PAGE_SIZE = 50;
 
     const loadData = async () => {
         try {
-            console.log('[useAppData] loadData called. User ID:', user?.id);
-
-            if (!user) {
-                console.log("[useAppData] No user. Skipping load.");
-                return;
-            }
+            if (!user) return;
 
             const [txs, assts, recs, gls] = await Promise.all([
-                SupabaseService.getTransactions(),
+                SupabaseService.getTransactions(PAGE_SIZE, 0),
                 SupabaseService.getAssets(),
                 SupabaseService.getRecurring(),
                 SupabaseService.getGoals()
             ]);
 
-            console.log(`[useAppData] Loaded: Txs=${txs.length}, Assets=${assts.length}`);
-
             setTransactions(txs);
             setAssets(assts);
             setRecurring(recs);
             setGoals(gls);
+            setHasMoreTransactions(txs.length === PAGE_SIZE);
 
-            // Load Profile for Budget
             const profile = await SupabaseService.getProfile();
-            if (profile) {
-                setMonthlyBudget(profile.monthlyBudget);
-            } else {
-                setMonthlyBudget(0);
-            }
+            setMonthlyBudget(profile?.monthlyBudget || 0);
             setIsDataLoaded(true);
         } catch (e) {
             console.error(e);
@@ -50,28 +42,41 @@ export const useAppData = (user: any) => {
         }
     };
 
+    const fetchMoreTransactions = async () => {
+        if (isFetchingMore || !hasMoreTransactions || !user) return;
+        setIsFetchingMore(true);
+        try {
+            const nextTxs = await SupabaseService.getTransactions(PAGE_SIZE, transactions.length);
+            if (nextTxs.length < PAGE_SIZE) setHasMoreTransactions(false);
+            setTransactions(prev => [...prev, ...nextTxs]);
+        } catch (e) {
+            console.error("Failed to fetch more transactions", e);
+        } finally {
+            setIsFetchingMore(false);
+        }
+    };
+
     useEffect(() => {
-        console.log('[useAppData] Auth State Changed:', user?.id);
         if (user) {
-            // Small delay for Auth Session propagation
-            const timer = setTimeout(() => {
-                loadData();
-            }, 500);
+            const timer = setTimeout(() => loadData(), 500);
             return () => clearTimeout(timer);
         } else {
-            // Reset data on logout
             setTransactions([]);
             setAssets([]);
             setRecurring([]);
             setGoals([]);
             setMonthlyBudget(0);
             setIsDataLoaded(false);
+            setHasMoreTransactions(true);
         }
     }, [user]);
 
     return {
         assets, setAssets,
         transactions, setTransactions,
+        hasMoreTransactions,
+        fetchMoreTransactions,
+        isFetchingMore,
         recurring, setRecurring,
         goals, setGoals,
         monthlyBudget, setMonthlyBudget,

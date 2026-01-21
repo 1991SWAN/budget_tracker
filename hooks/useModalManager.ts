@@ -70,7 +70,12 @@ export const useModalManager = (assets: Asset[]) => {
     const openPayCard = (card: Asset) => {
         setModalType('pay-card');
         setSelectedItem(card);
-        setFormData({ amount: Math.abs(card.balance) });
+        setFormData({
+            amount: Math.abs(card.balance),
+            date: new Date().toISOString().split('T')[0],
+            memo: `Credit Card Payoff: ${card.name}`,
+            category: Category.TRANSFER
+        });
         setPaymentAsset(assets.find(a => a.type !== AssetType.CREDIT_CARD)?.id || '');
         setPaymentError(null);
     };
