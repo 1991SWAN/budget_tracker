@@ -37,6 +37,20 @@ export const useTransactionManager = (
         }
     }, [setTransactions, addToast, onTransactionChange]);
 
+    const updateTransactions = useCallback(async (txs: Transaction[]) => {
+        if (txs.length === 0) return;
+        try {
+            await SupabaseService.saveTransactions(txs);
+            const updatedIds = new Set(txs.map(t => t.id));
+            setTransactions(prev => prev.map(t => updatedIds.has(t.id) ? txs.find(ut => ut.id === t.id)! : t));
+            if (onTransactionChange) await onTransactionChange();
+            addToast(`${txs.length} transactions updated`, 'success');
+        } catch (error) {
+            console.error('Failed to update transactions', error);
+            addToast('Failed to update transactions', 'error');
+        }
+    }, [setTransactions, addToast, onTransactionChange]);
+
     const updateTransaction = useCallback(async (oldTx: Transaction, newTx: Transaction) => {
         try {
             // 1. Handle Unlinking if type changed FROM transfer TO something else
@@ -51,20 +65,18 @@ export const useTransactionManager = (
                         category: Category.OTHER,
                         memo: linkedTx.memo.replace(' (Transfer)', '')
                     };
-                    await SupabaseService.saveTransaction(unlinkedPartner);
-                    setTransactions(prev => prev.map(t => t.id === unlinkedPartner.id ? unlinkedPartner : t));
+                    await updateTransactions([newTx, unlinkedPartner]);
                     addToast("Linked transfer partner unlinked and converted", 'info');
+                    return;
                 }
             }
 
-            await SupabaseService.saveTransaction(newTx);
-            setTransactions(prev => prev.map(t => t.id === newTx.id ? newTx : t));
-            if (onTransactionChange) await onTransactionChange();
+            await updateTransactions([newTx]);
         } catch (error) {
             console.error('Failed to update transaction', error);
             addToast('Failed to update transaction', 'error');
         }
-    }, [setTransactions, transactions, addToast, onTransactionChange]);
+    }, [updateTransactions, transactions, addToast]);
 
     const deleteTransaction = useCallback(async (tx: Transaction) => {
         try {
@@ -111,6 +123,7 @@ export const useTransactionManager = (
         addTransaction,
         addTransactions,
         updateTransaction,
+        updateTransactions,
         deleteTransaction,
         deleteTransactions
     };

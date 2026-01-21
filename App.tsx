@@ -136,6 +136,7 @@ const App: React.FC = () => {
     addTransaction: handleAddTransaction,
     addTransactions: handleAddTransactions,
     updateTransaction: handleUpdateTransaction,
+    updateTransactions: handleUpdateTransactions,
     deleteTransaction: handleDeleteTransaction,
     deleteTransactions: handleDeleteTransactions
   } = useTransactionManager(
@@ -257,8 +258,20 @@ const App: React.FC = () => {
 
   const handleUpdateParsed = (txs: Partial<Transaction>[]) => {
     if (editingTransaction && txs.length > 0) {
-      const updated = { ...editingTransaction, ...txs[0] } as Transaction;
-      handleUpdateTransaction(editingTransaction, updated);
+      const updates = txs.map(ptx => {
+        const original = ptx.id === editingTransaction.id
+          ? editingTransaction
+          : transactions.find(t => t.id === ptx.id);
+
+        if (!original) return null;
+        return { ...original, ...ptx } as Transaction;
+      }).filter(Boolean) as Transaction[];
+
+      if (updates.length > 1) {
+        handleUpdateTransactions(updates);
+      } else if (updates.length === 1) {
+        handleUpdateTransaction(editingTransaction, updates[0]);
+      }
     }
     setShowSmartInput(false);
     setEditingTransaction(null);

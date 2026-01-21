@@ -147,6 +147,12 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     }));
   };
 
+  const [syncConfirmData, setSyncConfirmData] = useState<{
+    newAmount: number;
+    linkedTxId: string;
+    linkedAssetName: string;
+  } | null>(null);
+
   const handleManualSubmit = () => {
     if (!manualForm.amount) { setError("Please enter an amount."); return; }
     if (!manualForm.assetId) { setError("Please select an account."); return; }
@@ -160,6 +166,20 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
 
     const totalAmount = parseFloat(manualForm.amount);
 
+    // 1. Check for Sync Opportunity (Only on EDIT)
+    if (initialData?.id && initialData.linkedTransactionId && totalAmount !== initialData.amount && !syncConfirmData) {
+      const linkedTx = transactions.find(t => t.id === initialData.linkedTransactionId);
+      if (linkedTx) {
+        const linkedAsset = assets.find(a => a.id === linkedTx.assetId);
+        setSyncConfirmData({
+          newAmount: totalAmount,
+          linkedTxId: linkedTx.id,
+          linkedAssetName: linkedAsset?.name || 'Linked Account'
+        });
+        return; // Wait for user choice
+      }
+    }
+
     // HYBRID TAGGING: Scan for new tags and update dictionary in background
     const tags = manualForm.memo?.match(/#\S+/g); // Find all #hashtags
     if (tags) {
@@ -170,7 +190,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     }
 
     // V3 DUAL CREATION LOGIC
-    if (isInternalTransfer && !initialData) { // Only for new creations, not edits (edits are complex)
+    if (isInternalTransfer && !initialData) { // Only for new creations, not edits (edits are handled via mapped Partial updates)
       // Generate IDs for both sides
       const sourceId = crypto.randomUUID();
       const targetId = crypto.randomUUID();
@@ -184,7 +204,6 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
       };
 
       // 1. Source Transaction (Withdrawal Side)
-      // Has toAssetId, Points to TargetID as linked
       const sourceTx: Partial<Transaction> = {
         ...commonData,
         id: sourceId,
@@ -195,55 +214,53 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
       };
 
       // 2. Target Transaction (Deposit Side)
-      // No toAssetId, Points to SourceID as linked
       const targetTx: Partial<Transaction> = {
         ...commonData,
         id: targetId,
         type: TransactionType.TRANSFER,
-        assetId: manualForm.toAssetId, // Belongs to target asset
-        toAssetId: undefined, // Explicitly undefined/null
+        assetId: manualForm.toAssetId,
+        toAssetId: undefined,
         linkedTransactionId: sourceId
       };
 
-      console.log("[SmartInput] Dual Creating Transfer:", sourceTx, targetTx);
       onTransactionsParsed([sourceTx, targetTx]);
       return;
     }
 
-    // Standard Single Transaction Logic (Expense, Income, External Transfer, or Edits)
+    // Standard Single/Dual Update Logic
     const transactionData: Partial<Transaction> = {
+      id: initialData?.id,
       date: manualForm.date,
       amount: totalAmount,
       type: manualForm.type,
       category: manualForm.category,
       memo: manualForm.memo,
-      // Merchant is now fully integrated into Memo via @ tags
       assetId: manualForm.assetId,
       toAssetId: (manualForm.type === TransactionType.TRANSFER && !isExternalTransfer) ? manualForm.toAssetId : undefined
     };
-
-    // Preserve ID if editing
-    if (initialData?.id) {
-      transactionData.id = initialData.id;
-    }
 
     if (isInstallment && manualForm.type === TransactionType.EXPENSE) {
       const existing = initialData?.installment;
       transactionData.installment = {
         totalMonths: installmentMonths,
         currentMonth: existing ? existing.currentMonth : 1,
-        // @ts-ignore
         isInterestFree: !!isInterestFree,
-        // @ts-ignore
-        is_interest_free: !!isInterestFree,
         remainingBalance: existing ? existing.remainingBalance : totalAmount
       };
-
     } else if (initialData?.installment && !isInstallment) {
       transactionData.installment = null as any;
     }
 
-    onTransactionsParsed([transactionData]);
+    // If user chose to sync
+    if (syncConfirmData) {
+      const syncTx: Partial<Transaction> = {
+        id: syncConfirmData.linkedTxId,
+        amount: totalAmount
+      };
+      onTransactionsParsed([transactionData, syncTx]);
+    } else {
+      onTransactionsParsed([transactionData]);
+    }
   };
 
   const getTitle = () => {
@@ -262,7 +279,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
       onClose={onCancel}
       title={getTitle()}
       maxWidth="lg"
-      footer={mode === 'manual' ? (
+      footer={mode === 'manual' && !syncConfirmData ? (
         <div className="flex w-full gap-2 items-center justify-end">
           <Button
             onClick={initialData ? onCancel : () => setMode('select')}
@@ -474,6 +491,57 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {syncConfirmData && (
+            <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl animate-in fade-in zoom-in-95">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center text-xl shadow-lg shadow-blue-200">
+                  🔄
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-blue-900 leading-tight">연동 거래 금액 동기화</h4>
+                  <p className="text-[10px] font-bold text-blue-600 uppercase tracking-tighter">Sync Linked Transaction</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-blue-800 mb-4 leading-relaxed">
+                이 거래는 <span className="font-black underline mx-0.5">{syncConfirmData.linkedAssetName}</span>의 내역과 연결되어 있습니다.<br />
+                상대 거래의 금액도 <span className="font-black text-blue-600 bg-white px-1 rounded mx-0.5">₩{syncConfirmData.newAmount.toLocaleString()}</span>으로 함께 변경하시겠습니까?
+              </p>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => handleManualSubmit()} // Keep state as is, triggers dual update
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white border-none h-10 text-xs font-black shadow-lg shadow-blue-200"
+                >
+                  함께 수정
+                </Button>
+                <Button
+                  onClick={() => {
+                    setSyncConfirmData(null);
+                    // We need a way to tell handleManualSubmit NOT to re-prompt
+                    // A quick hack is to use a ref or just call it after clearing state but with a flag
+                    // but for now, let's just make it call onTransactionsParsed directly for single
+                    const totalAmount = parseFloat(manualForm.amount);
+                    onTransactionsParsed([{
+                      id: initialData?.id,
+                      date: manualForm.date,
+                      amount: totalAmount,
+                      type: manualForm.type,
+                      category: manualForm.category,
+                      memo: manualForm.memo,
+                      assetId: manualForm.assetId,
+                      toAssetId: (manualForm.type === TransactionType.TRANSFER && !isExternalTransfer) ? manualForm.toAssetId : undefined
+                    }]);
+                  }}
+                  variant="ghost"
+                  className="flex-1 text-slate-500 h-10 text-xs font-bold"
+                >
+                  현재만 수정
+                </Button>
               </div>
             </div>
           )}

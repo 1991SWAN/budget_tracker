@@ -170,38 +170,40 @@ export const DataService = {
 
     createTransferPair: async (sourceTx: Transaction, targetAssetId: string, categoryId: string) => {
         if (!sourceTx.id || !targetAssetId) throw new Error("Source Transaction and Target Asset ID required.");
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Authentication required.");
+
         const targetTxId = crypto.randomUUID();
 
-        const targetTx: Partial<Transaction> = {
+        // 1. Create Counterpart (Deposit side)
+        const targetTx = {
             id: targetTxId,
+            user_id: user.id,
             date: sourceTx.date,
             timestamp: sourceTx.timestamp,
-            amount: sourceTx.amount,
+            amount: sourceTx.amount, // Positive amount for the receiver
             type: TransactionType.TRANSFER,
-            assetId: targetAssetId,
-            linkedTransactionId: sourceTx.id,
+            asset_id: targetAssetId,
+            linked_transaction_id: sourceTx.id,
             category: categoryId,
             memo: sourceTx.memo
         };
 
-        const { data: { user } } = await supabase.auth.getUser();
-        await supabase.from('transactions').upsert({
-            ...targetTx,
-            user_id: user?.id,
-            asset_id: targetTx.assetId
-        });
+        const { error: insertError } = await supabase.from('transactions').insert(targetTx);
+        if (insertError) throw insertError;
 
-        await supabase.from('transactions').update({
+        // 2. Update Source (Withdrawal side)
+        const { error: updateError } = await supabase.from('transactions').update({
             type: TransactionType.TRANSFER,
             to_asset_id: targetAssetId,
             linked_transaction_id: targetTxId,
             category: categoryId
         }).eq('id', sourceTx.id);
 
-        const { data: assetData } = await supabase.from('assets').select('*').eq('id', targetAssetId).single();
-        if (assetData) {
-            const newBalance = Number(assetData.balance) + Number(sourceTx.amount);
-            await supabase.from('assets').update({ balance: newBalance }).eq('id', targetAssetId);
-        }
+        if (updateError) throw updateError;
+
+        // NOTE: Manual balance updates removed. 
+        // Database triggers will handle balance adjustments automatically based on the new transactions.
     }
 };
