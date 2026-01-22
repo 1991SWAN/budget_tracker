@@ -63,6 +63,7 @@ const App: React.FC = () => {
 
 
   const [filterType, setFilterType] = useState<TransactionType | 'ALL'>('ALL');
+  const [filterSubExpense, setFilterSubExpense] = useState<'ALL' | 'REGULAR' | 'INSTALLMENT'>('ALL');
   const [filterCategories, setFilterCategories] = useState<string[]>([]);
   const [filterAssets, setFilterAssets] = useState<string[]>([]);
 
@@ -155,49 +156,24 @@ const App: React.FC = () => {
     setShowSmartInput(true);
   }, []);
 
-  // --- Main Filtering Logic ---
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter(t => {
-      // 1. Search (Name, Memo, Amount)
-      if (searchTerm) {
-        const lowerTerm = searchTerm.toLowerCase();
-        const assetName = assets.find(a => a.id === t.assetId)?.name.toLowerCase() || '';
-        const categoryName = categories.find(c => c.id === t.category)?.name.toLowerCase() || t.category.toLowerCase();
+  // --- Server-Side Filtering (SSF) Logic ---
+  useEffect(() => {
+    // 300ms Debounce for filters
+    const handler = setTimeout(() => {
+      loadData({
+        searchTerm,
+        type: filterType,
+        expenseType: filterSubExpense,
+        categories: filterCategories,
+        assets: filterAssets,
+        dateRange
+      });
+    }, 300);
 
-        const matchesSearch =
-          (t.merchant && t.merchant.toLowerCase().includes(lowerTerm)) ||
-          (t.memo && t.memo.toLowerCase().includes(lowerTerm)) ||
-          t.amount.toString().includes(lowerTerm) ||
-          assetName.includes(lowerTerm) ||
-          categoryName.includes(lowerTerm);
+    return () => clearTimeout(handler);
+  }, [searchTerm, filterType, filterSubExpense, filterCategories, filterAssets, dateRange]);
 
-        if (!matchesSearch) return false;
-      }
-
-      // 2. Date Range
-      if (dateRange) {
-        if (t.date < dateRange.start || t.date > dateRange.end) return false;
-      }
-
-      // 3. Type Filter
-      if (filterType !== 'ALL' && t.type !== filterType) return false;
-
-      // 4. Category Filter (Multi-select OR)
-      if (filterCategories.length > 0) {
-        // Check both ID and Name (for legacy compatibility)
-        const matchesCat = filterCategories.includes(t.category) ||
-          categories.some(c => c.id === t.category && filterCategories.includes(c.name));
-        if (!matchesCat) return false;
-      }
-
-      // 5. Asset Filter (Multi-select OR)
-      if (filterAssets.length > 0) {
-        if (!filterAssets.includes(t.assetId)) return false;
-      }
-
-      return true;
-    });
-  }, [transactions, searchTerm, dateRange, filterType, filterCategories, filterAssets, assets, categories]);
+  const filteredTransactions = transactions; // Use results directly from server
 
 
 
@@ -655,6 +631,8 @@ const App: React.FC = () => {
             onDateRangeChange={setDateRange}
             filterType={filterType}
             onTypeChange={setFilterType}
+            filterSubExpense={filterSubExpense}
+            onSubExpenseChange={setFilterSubExpense}
             filterCategories={filterCategories}
             onCategoriesChange={setFilterCategories}
             filterAssets={filterAssets}

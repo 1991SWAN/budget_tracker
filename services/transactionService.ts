@@ -1,11 +1,46 @@
 import { supabase } from './dbClient';
-import { Transaction, TransactionType } from '../types';
+import { Transaction, TransactionType, TransactionFilters } from '../types';
 
 export const TransactionService = {
-    getTransactions: async (limit: number = 50, offset: number = 0): Promise<Transaction[]> => {
-        const { data, error } = await supabase
+    getTransactions: async (limit: number = 50, offset: number = 0, filters?: TransactionFilters): Promise<Transaction[]> => {
+        let query = supabase
             .from('transactions')
-            .select('*')
+            .select('*');
+
+        // Apply Filters
+        if (filters) {
+            if (filters.searchTerm) {
+                // Quick Search on Memo/Merchant
+                // Note: For multi-field search, better use specialized SQL/RPC or multiple filter calls
+                query = query.ilike('memo', `%${filters.searchTerm}%`);
+            }
+            if (filters.categories && filters.categories.length > 0) {
+                query = query.in('category', filters.categories);
+            }
+            if (filters.assets && filters.assets.length > 0) {
+                const assetIds = filters.assets.join(',');
+                query = query.or(`asset_id.in.(${assetIds}),to_asset_id.in.(${assetIds})`);
+            }
+            if (filters.dateRange) {
+                if (filters.dateRange.start) query = query.gte('date', filters.dateRange.start);
+                if (filters.dateRange.end) query = query.lte('date', filters.dateRange.end);
+            }
+            if (filters.type && filters.type !== 'ALL') {
+                query = query.eq('type', filters.type);
+
+                // Sub-filter for Expenses (Regular vs Installment)
+                if (filters.type === TransactionType.EXPENSE && filters.expenseType && filters.expenseType !== 'ALL') {
+                    if (filters.expenseType === 'INSTALLMENT') {
+                        query = query.gt('installment_total_months', 1);
+                    } else if (filters.expenseType === 'REGULAR') {
+                        // Regular means either installment is 1 or null
+                        query = query.or('installment_total_months.is.null,installment_total_months.eq.1');
+                    }
+                }
+            }
+        }
+
+        const { data, error } = await query
             .order('date', { ascending: false })
             .order('timestamp', { ascending: false })
             .range(offset, offset + limit - 1);
@@ -37,6 +72,36 @@ export const TransactionService = {
                 isInterestFree: row.is_interest_free ?? row.installment?.isInterestFree ?? row.installment?.is_interest_free ?? true,
                 remainingBalance: row.installment?.remainingBalance || row.installment?.remaining_balance || row.amount
             } : undefined
+        })) as Transaction[];
+    },
+
+    getInstallmentsByAsset: async (assetId: string): Promise<Transaction[]> => {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('asset_id', assetId)
+            .gt('installment_total_months', 1)
+            .order('date', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching installments:', error);
+            return [];
+        }
+
+        return data.map((row: any) => ({
+            ...row,
+            amount: Number(row.amount),
+            assetId: row.asset_id,
+            toAssetId: row.to_asset_id,
+            linkedTransactionId: row.linked_transaction_id,
+            hashKey: row.hash_key,
+            isReconciliationIgnored: !!row.is_reconciliation_ignored,
+            installment: {
+                totalMonths: row.installment_total_months,
+                currentMonth: row.installment_current_month || 1,
+                isInterestFree: row.is_interest_free ?? true,
+                remainingBalance: row.installment?.remainingBalance || row.installment?.remaining_balance || row.amount
+            }
         })) as Transaction[];
     },
 

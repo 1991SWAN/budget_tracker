@@ -169,6 +169,15 @@ export interface Transaction {
   isReconciliationIgnored?: boolean;
 }
 
+export interface TransactionFilters {
+  searchTerm?: string;
+  categories?: string[];
+  assets?: string[];
+  dateRange?: { start: string; end: string } | null;
+  type?: TransactionType | 'ALL';
+  expenseType?: 'ALL' | 'REGULAR' | 'INSTALLMENT';
+}
+
 export interface RecurringTransaction {
   id: string;
   name: string;

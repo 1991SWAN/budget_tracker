@@ -249,16 +249,14 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
     // Phase 2: Inline Editing & Deletion
     const handleUpdateRowData = (rowIndex: number, colIndex: number, newValue: any) => {
         setImportRows(prev => {
-            const next = [...prev];
-            const rowIdx = next.findIndex(r => r.index === rowIndex);
-            if (rowIdx === -1) return prev;
+            const existingRows = prev.filter(r => r.index === rowIndex);
+            if (existingRows.length === 0) return prev;
 
-            // 1. Update Raw Data
-            const updatedData = [...next[rowIdx].data];
+            const updatedData = [...existingRows[0].data];
             updatedData[colIndex] = newValue;
 
-            // 2. Re-validate atomic row
-            const { transaction, reason } = ImportService.validateRow(
+            // 2. Re-validate atomic row (now returns multiple)
+            const { transactions, reason } = ImportService.validateRow(
                 updatedData,
                 rowIndex,
                 mapping,
@@ -267,15 +265,38 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                 categories
             );
 
-            // 3. Update Row State
-            next[rowIdx] = {
-                ...next[rowIdx],
-                data: updatedData,
-                status: transaction ? 'valid' : 'invalid',
-                transaction: transaction || undefined,
-                reason: reason || undefined
-            };
+            // 3. Create new rows for this index
+            const newSubRows: ImportRow[] = [];
+            if (transactions && transactions.length > 0) {
+                transactions.forEach((tx, subIdx) => {
+                    // Note: We don't have baseHashCounts here, so we generate a unique enough key
+                    const baseHash = ImportService.generateHashKey(
+                        tx.assetId!,
+                        tx.timestamp!,
+                        tx.amount!,
+                        tx.memo!
+                    );
+                    tx.hashKey = `${baseHash}#mod#${subIdx}`;
 
+                    newSubRows.push({
+                        index: rowIndex,
+                        data: updatedData,
+                        status: 'valid',
+                        transaction: tx
+                    });
+                });
+            } else {
+                newSubRows.push({
+                    index: rowIndex,
+                    data: updatedData,
+                    status: 'invalid',
+                    reason: reason || 'Unknown Error'
+                });
+            }
+
+            const next = [...prev];
+            const insertPos = prev.findIndex(r => r.index === rowIndex);
+            next.splice(insertPos, existingRows.length, ...newSubRows);
             return next;
         });
     };
@@ -740,7 +761,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                 <div className="flex-1 overflow-x-auto">
                     <Virtuoso
                         style={{ height: '500px', minWidth: activeColumns.reduce((acc, c) => acc + parseInt(c.width), 340) + 'px' }}
-                        computeItemKey={(index, row) => `row-${row.index}`}
+                        computeItemKey={(index, row) => `row-${row.index}-${row.transaction?.hashKey || 'err'}`}
                         data={previewTab === 'VALID' ? validRows : invalidRows}
                         components={{
                             Header: () => (

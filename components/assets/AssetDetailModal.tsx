@@ -5,6 +5,8 @@ import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { ASSET_THEMES } from './constants';
 import { SafeChart } from './SafeChart';
+import { SupabaseService } from '../../services/supabaseService';
+import { useEffect } from 'react';
 
 export const AssetDetailModal: React.FC<{
     asset: Asset,
@@ -46,6 +48,19 @@ export const AssetDetailModal: React.FC<{
 
     const [isDeleting, setIsDeleting] = useState(false);
     const [isClearing, setIsClearing] = useState(false); // New State: History Clear Confirmation
+
+    const [allInstallments, setAllInstallments] = useState<Transaction[]>([]);
+    const [isLoadingInstallments, setIsLoadingInstallments] = useState(false);
+
+    useEffect(() => {
+        if (activeTab === 'installments' && asset.type === AssetType.CREDIT_CARD) {
+            setIsLoadingInstallments(true);
+            SupabaseService.getInstallmentsByAsset(asset.id).then(data => {
+                setAllInstallments(data);
+                setIsLoadingInstallments(false);
+            });
+        }
+    }, [activeTab, asset.id, asset.type]);
 
     const footerContent = isDeleting ? (
         <>
@@ -183,10 +198,15 @@ export const AssetDetailModal: React.FC<{
                     {activeTab === 'installments' && asset.type === AssetType.CREDIT_CARD && (
                         <div className="space-y-4">
                             <h3 className="font-bold text-lg text-slate-800 mb-4">Active Installments</h3>
-                            {transactions.filter(t => t.assetId === asset.id && t.installment).length === 0 ? (
+                            {isLoadingInstallments ? (
+                                <div className="flex flex-col items-center justify-center py-20 gap-3">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+                                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Loading Installments...</p>
+                                </div>
+                            ) : allInstallments.length === 0 ? (
                                 <p className="text-center text-slate-400 py-10 italic">No active installments found.</p>
                             ) : (
-                                transactions.filter(t => t.assetId === asset.id && t.installment).map(tx => {
+                                allInstallments.map(tx => {
                                     if (!tx.installment) return null;
                                     return (
                                         <div key={tx.id} className="bg-white border border-slate-100 p-4 rounded-2xl shadow-sm">

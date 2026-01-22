@@ -243,7 +243,7 @@ export const ImportService = {
     defaultAssetId: string,
     assets: any[] = [],
     categories: CategoryItem[] = []
-  ): { transaction?: Partial<Transaction>, reason?: string } => {
+  ): { transactions?: Partial<Transaction>[], reason?: string } => {
     try {
       const dateVal = row[mapping.dateIndex];
       const memoVal = row[mapping.memoIndex];
@@ -266,15 +266,25 @@ export const ImportService = {
         const inAmount = parseAmt(inVal);
         const outAmount = parseAmt(outVal);
 
-        if (inAmount > 0) {
-          amount = inAmount;
-          determinedType = TransactionType.INCOME;
-        } else if (outAmount > 0) {
-          amount = outAmount;
-          determinedType = TransactionType.EXPENSE;
-        }
+        const buildTx = (amt: number, t: TransactionType) => ({
+          amount: Math.abs(amt),
+          type: t
+        });
+
+        const pendingTxs = [];
+        if (inAmount > 0) pendingTxs.push(buildTx(inAmount, TransactionType.INCOME));
+        if (outAmount > 0) pendingTxs.push(buildTx(outAmount, TransactionType.EXPENSE));
+
+        if (pendingTxs.length === 0) throw new Error("No Amount detected");
+
+        // We will process these in a loop later, but for now we set a temporary structure
+        // to pass the info down.
+        // Actually, we need to return full transaction objects for each.
+        // Let's refactor to collect all "proto-transactions"
+        return ImportService._internalFinalizeRows(row, index, mapping, defaultAssetId, assets, categories, pendingTxs);
       } else {
         const amountVal = row[mapping.amountIndex];
+        let amount = 0;
         if (typeof amountVal === 'number') {
           amount = amountVal;
         } else {
@@ -285,7 +295,31 @@ export const ImportService = {
           if (isNaN(parsedFloat)) throw new Error("Invalid Amount");
           amount = parsedFloat;
         }
+
+        const type = amount < 0 ? TransactionType.EXPENSE : TransactionType.INCOME;
+        const pendingTxs = [{ amount: Math.abs(amount), type }];
+        return ImportService._internalFinalizeRows(row, index, mapping, defaultAssetId, assets, categories, pendingTxs);
       }
+    } catch (err) {
+      return { reason: (err as Error).message };
+    }
+  },
+
+  /**
+   * Internal helper to avoid repeating normalization logic for split rows
+   */
+  _internalFinalizeRows: (
+    row: any[],
+    index: number,
+    mapping: ColumnMapping,
+    defaultAssetId: string,
+    assets: any[],
+    categories: CategoryItem[],
+    pendingAmounts: { amount: number, type: TransactionType }[]
+  ): { transactions?: Partial<Transaction>[], reason?: string } => {
+    try {
+      const dateVal = row[mapping.dateIndex];
+      const memoVal = row[mapping.memoIndex];
 
       // Asset Resolution
       let currentAssetId = defaultAssetId;
@@ -429,24 +463,6 @@ export const ImportService = {
 
       if (!finalMemo) throw new Error("Empty Description");
 
-      // Installment
-      let installmentObj = undefined;
-      if (mapping.installmentIndex !== undefined && mapping.installmentIndex >= 0) {
-        const rawInst = String(row[mapping.installmentIndex] || '').trim();
-        const monthsMatch = rawInst.match(/(\d+)/);
-        if (monthsMatch) {
-          const totalMonths = parseInt(monthsMatch[1], 10);
-          if (totalMonths > 1) {
-            installmentObj = {
-              totalMonths,
-              currentMonth: 1,
-              isInterestFree: true,
-              remainingBalance: Math.abs(amount)
-            };
-          }
-        }
-      }
-
       // Category
       let categoryVal = Category.OTHER;
       if (mapping.categoryIndex !== undefined && mapping.categoryIndex >= 0) {
@@ -467,25 +483,42 @@ export const ImportService = {
         }
       }
 
-      // Build Transaction
-      let type = determinedType || (amount < 0 ? TransactionType.EXPENSE : TransactionType.INCOME);
-      const finalAmount = Math.abs(amount);
+      // Build Transactions
+      const finalTransactions: Partial<Transaction>[] = pendingAmounts.map((p, subIdx) => {
+        // Handle Installment per transaction (usually only for expenses)
+        let txInstallment = undefined;
+        if (p.type === TransactionType.EXPENSE && mapping.installmentIndex !== undefined && mapping.installmentIndex >= 0) {
+          const rawInst = String(row[mapping.installmentIndex] || '').trim();
+          const monthsMatch = rawInst.match(/(\d+)/);
+          if (monthsMatch) {
+            const totalMonths = parseInt(monthsMatch[1], 10);
+            if (totalMonths > 1) {
+              txInstallment = {
+                totalMonths,
+                currentMonth: 1,
+                isInterestFree: true,
+                remainingBalance: p.amount
+              };
+            }
+          }
+        }
 
-      return {
-        transaction: {
-          id: `imported-${Date.now()}-${index}`,
+        return {
+          id: `imported-${Date.now()}-${index}-${subIdx}`,
           date: dateStr,
           timestamp,
-          amount: finalAmount,
-          type,
+          amount: p.amount,
+          type: p.type,
           category: categoryVal,
           memo: finalMemo,
           merchant: merchantVal,
-          installment: installmentObj,
+          installment: txInstallment,
           assetId: currentAssetId,
           originalText: finalMemo
-        }
-      };
+        };
+      });
+
+      return { transactions: finalTransactions };
     } catch (err) {
       return { reason: (err as Error).message };
     }
@@ -509,25 +542,27 @@ export const ImportService = {
       const rawRowData = grid[i];
       if (!rawRowData || rawRowData.some(cell => cell !== '') === false) continue;
 
-      const { transaction, reason } = ImportService.validateRow(rawRowData, i, mapping, defaultAssetId, assets, categories);
+      const { transactions, reason } = ImportService.validateRow(rawRowData, i, mapping, defaultAssetId, assets, categories);
 
-      if (transaction) {
-        // Generate Unique HashKey for duplicate prevention
-        const baseHash = ImportService.generateHashKey(
-          transaction.assetId!,
-          transaction.timestamp!,
-          transaction.amount!,
-          transaction.memo!
-        );
-        const currentCount = baseHashCounts.get(baseHash) || 0;
-        baseHashCounts.set(baseHash, currentCount + 1);
-        transaction.hashKey = `${baseHash}#${currentCount}`;
+      if (transactions && transactions.length > 0) {
+        transactions.forEach((tx, subIdx) => {
+          // Generate Unique HashKey for duplicate prevention
+          const baseHash = ImportService.generateHashKey(
+            tx.assetId!,
+            tx.timestamp!,
+            tx.amount!,
+            tx.memo!
+          );
+          const currentCount = baseHashCounts.get(baseHash) || 0;
+          baseHashCounts.set(baseHash, currentCount + 1);
+          tx.hashKey = `${baseHash}#${currentCount}#${subIdx}`;
 
-        rows.push({
-          index: i,
-          data: rawRowData,
-          status: 'valid',
-          transaction
+          rows.push({
+            index: i,
+            data: rawRowData,
+            status: 'valid',
+            transaction: tx
+          });
         });
       } else {
         rows.push({

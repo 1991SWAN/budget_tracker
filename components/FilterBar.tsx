@@ -9,6 +9,8 @@ interface FilterBarProps {
     onDateRangeChange: (range: { start: string, end: string } | null) => void;
     filterType: TransactionType | 'ALL';
     onTypeChange: (type: TransactionType | 'ALL') => void;
+    filterSubExpense: 'ALL' | 'REGULAR' | 'INSTALLMENT';
+    onSubExpenseChange: (type: 'ALL' | 'REGULAR' | 'INSTALLMENT') => void;
     filterCategories: string[];
     onCategoriesChange: (ids: string[]) => void;
     filterAssets: string[];
@@ -21,6 +23,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
     searchTerm, onSearchChange,
     dateRange, onDateRangeChange,
     filterType, onTypeChange,
+    filterSubExpense, onSubExpenseChange,
     filterCategories, onCategoriesChange,
     filterAssets, onAssetsChange,
     assets, categories
@@ -255,19 +258,42 @@ const FilterBar: React.FC<FilterBarProps> = ({
                     }
 
                     return (
-                        <button
-                            key={f.id}
-                            onClick={() => onTypeChange(f.id as any)}
-                            className={`
-                                flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border shadow-sm
-                                ${isActive
-                                    ? activeClass
-                                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}
-                            `}
-                        >
-                            <span>{f.emoji}</span>
-                            <span>{f.label}</span>
-                        </button>
+                        <div key={f.id} className="flex">
+                            <button
+                                onClick={() => onTypeChange(f.id as any)}
+                                className={`
+                                    flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border shadow-sm
+                                    ${isActive
+                                        ? activeClass
+                                        : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}
+                                    ${isActive && f.id === TransactionType.EXPENSE ? 'rounded-r-none border-r-0' : ''}
+                                `}
+                            >
+                                <span>{f.emoji}</span>
+                                <span>{f.label}</span>
+                            </button>
+
+                            {isActive && f.id === TransactionType.EXPENSE && (
+                                <div className="flex bg-rose-500 border border-rose-500 border-l-0 rounded-r-full pr-1 overflow-hidden items-center">
+                                    <div className="w-[1px] h-3 bg-white/30" />
+                                    {[
+                                        { id: 'ALL', label: 'All' },
+                                        { id: 'REGULAR', label: 'Regular' },
+                                        { id: 'INSTALLMENT', label: 'Inst.' }
+                                    ].map(sub => (
+                                        <button
+                                            key={sub.id}
+                                            onClick={() => onSubExpenseChange(sub.id as any)}
+                                            className={`px-2.5 py-1 text-[10px] font-bold rounded-full transition-colors whitespace-nowrap
+                                                ${filterSubExpense === sub.id ? 'bg-white text-rose-600 shadow-sm' : 'text-white/80 hover:text-white'}
+                                            `}
+                                        >
+                                            {sub.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     );
                 })}
 

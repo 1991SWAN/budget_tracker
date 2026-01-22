@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { SupabaseService } from '../services/supabaseService';
-import { Asset, Transaction, RecurringTransaction, SavingsGoal } from '../types';
+import { Asset, Transaction, RecurringTransaction, SavingsGoal, TransactionFilters } from '../types';
 import { useToast } from '../contexts/ToastContext';
 
 export const useAppData = (user: any) => {
@@ -14,14 +14,16 @@ export const useAppData = (user: any) => {
     const [isDataLoaded, setIsDataLoaded] = useState(false);
     const [hasMoreTransactions, setHasMoreTransactions] = useState(true);
     const [isFetchingMore, setIsFetchingMore] = useState(false);
+    const [activeFilters, setActiveFilters] = useState<TransactionFilters | undefined>();
     const PAGE_SIZE = 50;
 
-    const loadData = async () => {
+    const loadData = async (filters?: TransactionFilters) => {
         try {
             if (!user) return;
+            setActiveFilters(filters);
 
             const [txs, assts, recs, gls] = await Promise.all([
-                SupabaseService.getTransactions(PAGE_SIZE, 0),
+                SupabaseService.getTransactions(PAGE_SIZE, 0, filters),
                 SupabaseService.getAssets(),
                 SupabaseService.getRecurring(),
                 SupabaseService.getGoals()
@@ -46,7 +48,7 @@ export const useAppData = (user: any) => {
         if (isFetchingMore || !hasMoreTransactions || !user) return;
         setIsFetchingMore(true);
         try {
-            const nextTxs = await SupabaseService.getTransactions(PAGE_SIZE, transactions.length);
+            const nextTxs = await SupabaseService.getTransactions(PAGE_SIZE, transactions.length, activeFilters);
             if (nextTxs.length < PAGE_SIZE) setHasMoreTransactions(false);
             setTransactions(prev => [...prev, ...nextTxs]);
         } catch (e) {
