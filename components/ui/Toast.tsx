@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ToastMessage, ToastType } from '../../contexts/ToastContext';
-import { X } from 'lucide-react';
+import { X, CheckCircle, AlertTriangle, Info } from 'lucide-react';
 
 interface ToastProps {
     toast: ToastMessage;
@@ -26,9 +26,9 @@ const ToastItem: React.FC<ToastProps> = ({ toast, onRemove }) => {
     };
 
     const icons = {
-        success: '✅',
-        error: '⚠️',
-        info: 'ℹ️',
+        success: <CheckCircle size={20} />,
+        error: <AlertTriangle size={20} />,
+        info: <Info size={20} />,
     };
 
     return (
@@ -37,7 +37,7 @@ const ToastItem: React.FC<ToastProps> = ({ toast, onRemove }) => {
       ${bgColors[toast.type]}
       ${visible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
     `}>
-            <span className="text-xl">{icons[toast.type]}</span>
+            <div className="shrink-0">{icons[toast.type]}</div>
             <p className="flex-1 text-sm font-semibold">{toast.message}</p>
             <button onClick={handleRemove} className="opacity-50 hover:opacity-100 p-1">
                 <X size={16} />

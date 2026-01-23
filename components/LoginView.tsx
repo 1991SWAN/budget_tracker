@@ -3,6 +3,7 @@ import { supabase } from '../services/supabaseService';
 import { Card } from './ui/Card';
 import { Input } from './ui/Input';
 import { useToast } from '../contexts/ToastContext';
+import { Coins } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -49,7 +50,10 @@ export const LoginView: React.FC = () => {
         <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
             <Card className="w-full max-w-md p-8">
                 <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-slate-900 mb-2">Smart Penny 🪙</h1>
+                    <h1 className="text-3xl font-bold text-slate-900 mb-2 flex items-center justify-center gap-2">
+                        Smart Penny
+                        <Coins size={28} className="text-indigo-600" />
+                    </h1>
                     <p className="text-slate-500">
                         {mode === 'LOGIN' ? 'Welcome back!' : 'Create an account'}
                     </p>

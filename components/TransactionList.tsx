@@ -5,6 +5,7 @@ import TransactionItem from './TransactionItem';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
 import { Button } from './ui/Button';
+import { Inbox } from 'lucide-react';
 
 interface TransactionListProps {
     transactions: Transaction[];
@@ -194,7 +195,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
     if (sortedData.length === 0) {
         return (
             <EmptyState
-                icon="🍃"
+                icon={<Inbox className="w-12 h-12 opacity-20" />}
                 title="No transactions found"
                 description="Try changing filters or add a new transaction."
                 className="py-20"

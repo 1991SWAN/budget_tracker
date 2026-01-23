@@ -7,6 +7,7 @@ import { Dialog } from '../ui/Dialog';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
+import { Trash2 } from 'lucide-react';
 
 interface PlanningTabProps {
     recurring: RecurringTransaction[];
@@ -160,7 +161,9 @@ const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, onR
                 footer={
                     <>
                         {selectedBill && (
-                            <Button onClick={handleDelete} variant="destructive" size="icon" className="mr-auto w-10">🗑️</Button>
+                            <Button onClick={handleDelete} variant="destructive" size="icon" className="mr-auto w-10">
+                                <Trash2 size={18} />
+                            </Button>
                         )}
                         <Button onClick={closeModal} variant="ghost">Cancel</Button>
                         <Button onClick={handleSave} variant="primary">Save</Button>

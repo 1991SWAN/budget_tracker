@@ -1,7 +1,18 @@
-import React, { useRef } from 'react';
+import React, { useRef, ReactNode } from 'react';
 import { View } from '../../types';
 import { Button } from '../ui/Button';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+    LayoutDashboard,
+    ReceiptText,
+    Wallet,
+    Bot,
+    Plus,
+    FileUp,
+    Settings,
+    LogOut,
+    Coins
+} from 'lucide-react';
 
 interface SidebarProps {
     view: View;
@@ -24,7 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = React.useState(false);
 
-    const NavItem = ({ v, emoji, label }: { v: View, emoji: string, label: string }) => {
+    const NavItem = ({ v, icon, label }: { v: View, icon: ReactNode, label: string }) => {
         const isActive = view === v;
         return (
             <Button
@@ -35,7 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                     }`}
             >
-                <span className="text-xl w-8 flex justify-center shrink-0">{emoji}</span>
+                <span className="w-8 flex justify-center shrink-0">{icon}</span>
                 <span className="font-medium">{label}</span>
             </Button>
         );
@@ -80,8 +91,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             `}
         >
             {/* Logo */}
-            <div className="flex items-center space-x-2 mb-8 text-primary px-2">
-                <span className="text-3xl">🪙</span>
+            <div className="flex items-center space-x-2 mb-8 text-indigo-600 px-2">
+                <Coins size={32} strokeWidth={2.5} />
                 <span className="text-xl font-bold tracking-tight text-slate-900">SmartPenny</span>
             </div>
 
@@ -90,10 +101,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div>
                     <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Menu</p>
                     <nav className="space-y-1">
-                        <NavItem v="dashboard" emoji="📊" label="Dashboard" />
-                        <NavItem v="transactions" emoji="🧾" label="Transactions" />
-                        <NavItem v="assets" emoji="💰" label="Assets" />
-                        <NavItem v="analysis" emoji="🤖" label="AI Analysis" />
+                        <NavItem v="dashboard" icon={<LayoutDashboard size={20} />} label="Dashboard" />
+                        <NavItem v="transactions" icon={<ReceiptText size={20} />} label="Transactions" />
+                        <NavItem v="assets" icon={<Wallet size={20} />} label="Assets" />
+                        <NavItem v="analysis" icon={<Bot size={20} />} label="AI Analysis" />
                     </nav>
                 </div>
 
@@ -104,9 +115,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <Button
                             onClick={onQuickAddClick}
                             variant="primary"
-                            className="w-full p-3 rounded-full shadow-lg h-auto justify-center hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all"
+                            className="w-full p-3 rounded-full shadow-lg h-auto justify-center hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all gap-2"
                         >
-                            <span>➕</span><span className="font-semibold">Quick Add</span>
+                            <Plus size={18} strokeWidth={3} />
+                            <span className="font-semibold">Quick Add</span>
                         </Button>
 
                         <div
@@ -117,11 +129,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             <Button
                                 onClick={() => fileInputRef.current?.click()}
                                 variant="secondary"
-                                className={`w-full bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 p-3 rounded-2xl font-semibold text-sm shadow-sm h-auto justify-center active:scale-95 transition-all
+                                className={`w-full bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 p-3 rounded-2xl font-semibold text-sm shadow-sm h-auto justify-center active:scale-95 transition-all gap-2
                                     ${isDragging ? 'border-2 border-slate-900 bg-slate-100 ring-2 ring-slate-200' : ''}
                                 `}
                             >
-                                <span>📂</span><span>{isDragging ? 'Drop CSV Here' : 'Import CSV'}</span>
+                                <FileUp size={18} />
+                                <span>{isDragging ? 'Drop CSV Here' : 'Import CSV'}</span>
                             </Button>
                             <input
                                 type="file"
@@ -139,7 +152,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="pt-4 mt-4 border-t border-slate-100">
                 <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">System</p>
                 <div className="space-y-1">
-                    <NavItem v="settings" emoji="⚙️" label="Settings" />
+                    <NavItem v="settings" icon={<Settings size={20} />} label="Settings" />
 
                     <Button
                         variant="ghost"
@@ -149,7 +162,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         }}
                         className="w-full !justify-start pl-4 py-3 rounded-xl text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors h-auto active:scale-95"
                     >
-                        <span className="text-xl w-8 flex justify-center shrink-0">👋</span>
+                        <span className="w-8 flex justify-center shrink-0">
+                            <LogOut size={20} />
+                        </span>
                         <span className="font-medium">Sign Out</span>
                     </Button>
                 </div>

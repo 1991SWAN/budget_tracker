@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { useCategoryManager } from '../../hooks/useCategoryManager';
 import { useBudgetManager } from '../../hooks/useBudgetManager';
+import { ChevronLeft, Pencil, Trash2, Plus, AlertTriangle } from 'lucide-react';
 
 // Simple Emoji & Color Picker or Input for Phase 1
 // We can enhance this later with a full picker
@@ -151,7 +152,7 @@ export const CategorySettings = ({ onNavigate }: { onNavigate: (view: View) => v
                     onClick={() => onNavigate('settings')}
                     className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500"
                 >
-                    ⬅️
+                    <ChevronLeft size={24} />
                 </button>
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">Categories</h1>
@@ -203,14 +204,14 @@ export const CategorySettings = ({ onNavigate }: { onNavigate: (view: View) => v
                                     onClick={() => setEditingItem(category)}
                                     className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg"
                                 >
-                                    ✏️
+                                    <Pencil size={16} />
                                 </button>
                                 {!category.is_default && (
                                     <button
                                         onClick={() => deleteCategory(category.id)}
                                         className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
                                     >
-                                        🗑️
+                                        <Trash2 size={16} />
                                     </button>
                                 )}
                             </div>
@@ -222,7 +223,7 @@ export const CategorySettings = ({ onNavigate }: { onNavigate: (view: View) => v
                             onClick={() => setIsAdding(true)}
                             className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-bold hover:border-primary hover:text-primary hover:bg-blue-50 transition-all flex items-center justify-center gap-2"
                         >
-                            <span>➕</span> Add New Category
+                            <Plus size={20} /> Add New Category
                         </button>
 
                         <div className="mt-8 pt-8 border-t border-slate-100">
@@ -243,7 +244,11 @@ export const CategorySettings = ({ onNavigate }: { onNavigate: (view: View) => v
                                 variant="ghost"
                                 className={`w-full border transition-all ${showResetConfirm ? 'bg-red-500 text-white hover:bg-red-600 border-red-500' : 'text-red-500 hover:bg-red-50 hover:text-red-600 border-red-100'}`}
                             >
-                                {showResetConfirm ? '⚠️ Are you sure? Click again to confirm' : '⚠️ Reset All Categories to Defaults'}
+                                {showResetConfirm ? (
+                                    <span className="flex items-center gap-2 justify-center w-full"><AlertTriangle size={16} /> Are you sure? Click again to confirm</span>
+                                ) : (
+                                    <span className="flex items-center gap-2 justify-center w-full"><AlertTriangle size={16} /> Reset All Categories to Defaults</span>
+                                )}
                             </Button>
                         </div>
                     </div>

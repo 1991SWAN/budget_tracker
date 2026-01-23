@@ -3,6 +3,7 @@ import { RecurringTransaction, Category, BillType, Asset, AssetType } from '../.
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
+import { Mail, Plus, X } from 'lucide-react';
 
 interface BillManagerProps {
     recurring: RecurringTransaction[];
@@ -69,9 +70,13 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 text-primary">
-                    <span>📫</span><h3 className="font-bold text-lg">Upcoming Bills</h3>
+                    <Mail size={20} />
+                    <h3 className="font-bold text-lg">Upcoming Bills</h3>
                 </div>
-                <Button onClick={onAddBill} size="sm" variant="secondary" className="rounded-2xl">➕ Add Bill</Button>
+                <Button onClick={onAddBill} size="sm" variant="secondary" className="rounded-2xl gap-2">
+                    <Plus size={16} />
+                    Add Bill
+                </Button>
             </div>
 
             {/* Group Tabs */}
@@ -89,9 +94,9 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
                         {group !== 'All' && billGroup === group && (
                             <span
                                 onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group); }}
-                                className="ml-1 hover:bg-primary/80 rounded-full w-4 h-4 flex items-center justify-center text-[10px]"
+                                className="ml-1 hover:bg-white/20 rounded-full w-4 h-4 flex items-center justify-center transition-colors"
                             >
-                                ✕
+                                <X size={10} />
                             </span>
                         )}
                     </button>
@@ -100,9 +105,9 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
                 <div className="relative">
                     <button
                         onClick={() => setIsAddingGroup(!isAddingGroup)}
-                        className="px-2 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center w-8 h-8"
+                        className="px-2 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center w-8 h-8 transition-all"
                     >
-                        ➕
+                        <Plus size={16} />
                     </button>
                     {isAddingGroup && (
                         <div className="absolute top-0 left-full ml-2 bg-white p-2 rounded-xl shadow-xl border border-slate-100 flex items-center gap-2 z-10 w-48 animate-in fade-in zoom-in duration-200 origin-left">
@@ -125,7 +130,7 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
             <div className="space-y-3 overflow-y-auto pr-2 scrollbar-thin flex-1 min-h-0">
                 {sortedBills.length === 0 ? (
                     <EmptyState
-                        icon="📫"
+                        icon={<Mail className="w-8 h-8 opacity-20" />}
                         title="No bills found"
                         description="Add your first bill subscription."
                         className="py-10"

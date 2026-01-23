@@ -1,6 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Asset, TransactionType, CategoryItem } from '../types';
 import { Button } from './ui/Button';
+import {
+    Search,
+    Calendar,
+    Tag,
+    CreditCard,
+    LayoutGrid,
+    TrendingDown,
+    TrendingUp,
+    ArrowLeftRight,
+    X
+} from 'lucide-react';
 
 interface FilterBarProps {
     searchTerm: string;
@@ -98,8 +109,8 @@ const FilterBar: React.FC<FilterBarProps> = ({
             {/* Row 1: Search & Dropdown Triggers */}
             <div className="flex gap-2 items-center" ref={dropdownRef}>
                 {/* Search */}
-                <div className="flex-1 flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2">
-                    <span className="text-slate-400 mr-2">🔍</span>
+                <div className="flex-1 flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
+                    <Search size={16} className="text-slate-400 mr-2" />
                     <input
                         type="text"
                         placeholder="Search..."
@@ -119,13 +130,20 @@ const FilterBar: React.FC<FilterBarProps> = ({
                         onClick={() => setActiveDropdown(activeDropdown === 'date' ? null : 'date')}
                         className={`rounded-full px-4 h-10 border-slate-200 transition-colors ${dateRange ? 'bg-slate-900 text-white border-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
-                        <span>📅</span>
+                        <Calendar size={16} />
                         <span className="ml-1 hidden md:inline">
                             {dateRange
                                 ? `${dateRange.start.slice(5)} ~ ${dateRange.end.slice(5)}`
                                 : 'Date'}
                         </span>
-                        {dateRange && <span className="ml-2 text-xs opacity-60 hover:opacity-100" onClick={clearDate}>✕</span>}
+                        {dateRange && (
+                            <span
+                                className="ml-2 text-slate-400 hover:text-white cursor-pointer"
+                                onClick={clearDate}
+                            >
+                                <X size={14} />
+                            </span>
+                        )}
                     </Button>
 
                     {activeDropdown === 'date' && (
@@ -181,7 +199,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                         onClick={() => setActiveDropdown(activeDropdown === 'category' ? null : 'category')}
                         className={`rounded-full px-4 h-10 border-slate-200 transition-colors ${filterCategories.length > 0 ? 'bg-slate-900 text-white border-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
-                        <span>📂</span>
+                        <Tag size={16} />
                         <span className="ml-1 hidden md:inline">Category</span>
                         {filterCategories.length > 0 && <span className="ml-1 bg-white/20 px-1.5 rounded-full text-[10px]">{filterCategories.length}</span>}
                     </Button>
@@ -214,7 +232,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                         onClick={() => setActiveDropdown(activeDropdown === 'asset' ? null : 'asset')}
                         className={`rounded-full px-4 h-10 border-slate-200 transition-colors ${filterAssets.length > 0 ? 'bg-slate-900 text-white border-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
-                        <span>💳</span>
+                        <CreditCard size={16} />
                         <span className="ml-1 hidden md:inline">Asset</span>
                         {filterAssets.length > 0 && <span className="ml-1 bg-white/20 px-1.5 rounded-full text-[10px]">{filterAssets.length}</span>}
                     </Button>
@@ -243,10 +261,10 @@ const FilterBar: React.FC<FilterBarProps> = ({
             {/* Row 2: Quick Access Chips */}
             <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
                 {[
-                    { id: 'ALL', label: 'All', emoji: '♾️' },
-                    { id: TransactionType.EXPENSE, label: 'Expenses', emoji: '💸' },
-                    { id: TransactionType.INCOME, label: 'Income', emoji: '💰' },
-                    { id: TransactionType.TRANSFER, label: 'Transfers', emoji: '↔️' },
+                    { id: 'ALL', label: 'All', icon: <LayoutGrid size={14} /> },
+                    { id: TransactionType.EXPENSE, label: 'Expenses', icon: <TrendingDown size={14} /> },
+                    { id: TransactionType.INCOME, label: 'Income', icon: <TrendingUp size={14} /> },
+                    { id: TransactionType.TRANSFER, label: 'Transfers', icon: <ArrowLeftRight size={14} /> },
                 ].map((f) => {
                     const isActive = filterType === f.id;
                     let activeClass = 'bg-slate-900 text-white border-slate-900';
@@ -266,10 +284,10 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                     ${isActive
                                         ? activeClass
                                         : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}
-                                    ${isActive && f.id === TransactionType.EXPENSE ? 'rounded-r-none border-r-0' : ''}
+                                    ${isActive && f.id === TransactionType.EXPENSE ? 'rounded-r-none border-r-0 shadow-none' : ''}
                                 `}
                             >
-                                <span>{f.emoji}</span>
+                                <span className="shrink-0">{f.icon}</span>
                                 <span>{f.label}</span>
                             </button>
 
@@ -308,11 +326,11 @@ const FilterBar: React.FC<FilterBarProps> = ({
                         <button
                             key={catId}
                             onClick={() => toggleFilter(catId, filterCategories, onCategoriesChange)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition-colors group"
                         >
                             <span>{cat.emoji}</span>
                             <span>{cat.name}</span>
-                            <span className="opacity-50">✕</span>
+                            <X size={10} className="text-slate-400 group-hover:text-slate-600" />
                         </button>
                     );
                 })}
@@ -324,11 +342,11 @@ const FilterBar: React.FC<FilterBarProps> = ({
                         <button
                             key={assetId}
                             onClick={() => toggleFilter(assetId, filterAssets, onAssetsChange)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition-colors group"
                         >
-                            <span>💳</span>
+                            <CreditCard size={12} className="text-slate-400" />
                             <span>{asset.name}</span>
-                            <span className="opacity-50">✕</span>
+                            <X size={10} className="text-slate-400 group-hover:text-slate-600" />
                         </button>
                     );
                 })}

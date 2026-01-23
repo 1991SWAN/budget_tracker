@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SavingsGoal, Asset, AssetType, Category, TransactionType } from '../../types';
 import { Button } from '../ui/Button';
+import { Target, Plus, X, Trash2 } from 'lucide-react';
 
 interface GoalManagerProps {
     goals: SavingsGoal[];
@@ -96,8 +97,14 @@ const GoalManager: React.FC<GoalManagerProps> = ({ goals, assets, onGoalChange }
     return (
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-96 flex flex-col">
             <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2 text-slate-800"><span>🎯</span><h3 className="font-bold text-lg">Goals Tracker</h3></div>
-                <Button onClick={openAddGoal} size="sm" variant="secondary" className="rounded-2xl">➕ Add Goal</Button>
+                <div className="flex items-center gap-2 text-slate-800">
+                    <Target size={20} className="text-secondary" />
+                    <h3 className="font-bold text-lg">Goals Tracker</h3>
+                </div>
+                <Button onClick={openAddGoal} size="sm" variant="secondary" className="rounded-2xl gap-2">
+                    <Plus size={16} />
+                    Add Goal
+                </Button>
             </div>
 
             <div className="space-y-6 overflow-y-auto pr-2 scrollbar-thin">
@@ -111,7 +118,10 @@ const GoalManager: React.FC<GoalManagerProps> = ({ goals, assets, onGoalChange }
                                     <p className="text-[10px] text-slate-400 font-medium">Target: {goal.targetAmount.toLocaleString()} KRW</p>
                                 </div>
                             </div>
-                            <button onClick={() => openFundGoal(goal)} className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-2xl hover:bg-emerald-100 transition-colors">+ Add Funds</button>
+                            <button onClick={() => openFundGoal(goal)} className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-2xl hover:bg-emerald-100 transition-colors flex items-center gap-1">
+                                <Plus size={10} strokeWidth={3} />
+                                Add Funds
+                            </button>
                         </div>
                         <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden flex items-center px-0.5">
                             <div className="h-2 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-1000 shadow-sm" style={{ width: `${Math.min((goal.currentAmount / goal.targetAmount) * 100, 100)}%` }}></div>
@@ -133,7 +143,9 @@ const GoalManager: React.FC<GoalManagerProps> = ({ goals, assets, onGoalChange }
                             <h3 className="text-xl font-bold text-slate-800">
                                 {modalType === 'edit' ? (selectedGoal ? 'Edit Goal' : 'Add New Goal') : `Add Funds: ${selectedGoal?.name}`}
                             </h3>
-                            <button onClick={closeModal} className="text-xl">✖️</button>
+                            <button onClick={closeModal} className="p-1 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                                <X size={20} />
+                            </button>
                         </div>
 
                         <div className="space-y-4">
@@ -166,7 +178,9 @@ const GoalManager: React.FC<GoalManagerProps> = ({ goals, assets, onGoalChange }
 
                             <div className="flex gap-2 pt-4">
                                 {modalType === 'edit' && selectedGoal && (
-                                    <button onClick={handleDelete} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg mr-auto text-xl">🗑️</button>
+                                    <button onClick={handleDelete} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg mr-auto transition-colors">
+                                        <Trash2 size={24} />
+                                    </button>
                                 )}
                                 <button onClick={closeModal} className="flex-1 py-2 text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>
                                 <button onClick={handleSave} className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">

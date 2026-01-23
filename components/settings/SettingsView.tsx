@@ -3,7 +3,8 @@ import { View } from '../../types';
 import { Card } from '../ui/Card';
 import { SupabaseService } from '../../services/supabaseService';
 import { ExportService } from '../../services/exportService';
-import { ResetDataModal } from './ResetDataModal'; // Import new modal
+import { ResetDataModal } from './ResetDataModal';
+import { Tag, Palette, Settings2, Database } from 'lucide-react';
 
 interface SettingsViewProps {
     onNavigate: (view: View) => void;
@@ -52,7 +53,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                         onClick={() => onNavigate('settings-categories')}
                     >
                         <div className="flex items-start justify-between mb-4">
-                            <span className="text-4xl group-hover:scale-110 transition-transform duration-200">🏷️</span>
+                            <Tag size={32} className="text-slate-400 group-hover:text-indigo-500 transition-colors duration-200" />
                         </div>
                         <h3 className="text-xl font-bold text-slate-900 mb-2">Categories</h3>
                         <p className="text-slate-500 text-sm">
@@ -70,7 +71,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                     {/* Appearance (Coming Soon) */}
                     <Card className="p-6 opacity-60 cursor-not-allowed">
                         <div className="flex items-start justify-between mb-4">
-                            <span className="text-4xl grayscale">🎨</span>
+                            <Palette size={32} className="text-slate-300" />
                             <span className="text-[10px] items-center px-2 py-1 rounded-full bg-slate-100 text-slate-500">Coming Soon</span>
                         </div>
                         <h3 className="text-xl font-bold text-slate-900 mb-2">Appearance</h3>
@@ -85,7 +86,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                         onClick={() => onNavigate('settings-import')}
                     >
                         <div className="flex items-start justify-between mb-4">
-                            <span className="text-4xl group-hover:scale-110 transition-transform duration-200">📥</span>
+                            <Settings2 size={32} className="text-slate-400 group-hover:text-amber-500 transition-colors duration-200" />
                         </div>
                         <h3 className="text-xl font-bold text-slate-900 mb-2">Import Config</h3>
                         <p className="text-slate-500 text-sm">
@@ -96,7 +97,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                     {/* Data & Backup */}
                     <Card className="p-6 cursor-pointer hover:shadow-md transition-all duration-200 group">
                         <div className="flex items-start justify-between mb-4">
-                            <span className="text-4xl group-hover:scale-110 transition-transform duration-200">💾</span>
+                            <Database size={32} className="text-slate-400 group-hover:text-emerald-500 transition-colors duration-200" />
                         </div>
                         <h3 className="text-xl font-bold text-slate-900 mb-2">Data & Backup</h3>
                         <p className="text-slate-500 text-sm mb-4">

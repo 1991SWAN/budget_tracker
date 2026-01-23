@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { RecurringTransaction, Transaction } from '../../types';
 import { SubscriptionCalculator } from '../../utils/SubscriptionCalculator';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface SubscriptionViewProps {
     recurring: RecurringTransaction[];
@@ -50,8 +51,8 @@ const SubscriptionView: React.FC<SubscriptionViewProps> = ({ recurring, transact
                             <div
                                 key={bill.id}
                                 className={`text-[10px] truncate px-1.5 py-0.5 rounded cursor-pointer transition-colors ${bill.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' :
-                                        bill.status === 'OVERDUE' ? 'bg-rose-100 text-rose-700' :
-                                            'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    bill.status === 'OVERDUE' ? 'bg-rose-100 text-rose-700' :
+                                        'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                     }`}
                                 onClick={() => onEdit(bill)}
                             >
@@ -75,9 +76,15 @@ const SubscriptionView: React.FC<SubscriptionViewProps> = ({ recurring, transact
             {/* Header & Stats */}
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                 <div className="flex items-center gap-4 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
-                    <button onClick={prevMonth} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">◀</button>
-                    <h2 className="text-xl font-bold w-40 text-center">{currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</h2>
-                    <button onClick={nextMonth} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">▶</button>
+                    <button onClick={prevMonth} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">
+                        <ChevronLeft size={20} />
+                    </button>
+                    <h2 className="text-xl font-bold w-48 text-center tabular-nums">
+                        {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                    </h2>
+                    <button onClick={nextMonth} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">
+                        <ChevronRight size={20} />
+                    </button>
                 </div>
 
                 <div className="flex gap-4">

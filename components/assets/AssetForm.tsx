@@ -3,6 +3,7 @@ import { Asset, AssetType, CreditCardDetails, LoanDetails, BankDetails, Investme
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
+import { AlertTriangle } from 'lucide-react';
 
 interface AssetFormProps {
     initialData?: Partial<Asset>;
@@ -268,7 +269,11 @@ export const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCan
                     {isEditing ? 'Save' : 'Create'}
                 </Button>
             </div>
-            {error && <p className="text-[10px] text-rose-500 font-bold px-1 mt-1 text-center">⚠️ {error}</p>}
+            {error && (
+                <p className="text-[10px] text-rose-500 font-bold px-1 mt-1 text-center flex items-center justify-center gap-1.5">
+                    <AlertTriangle size={12} /> {error}
+                </p>
+            )}
         </div>
     );
 };

@@ -6,6 +6,12 @@ import {
 import { Transaction, TransactionType } from '../../types';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import {
+    CircleDollarSign,
+    Sparkles,
+    TrendingDown,
+    TrendingUp
+} from 'lucide-react';
 
 interface TrendsTabProps {
     transactions: Transaction[];
@@ -100,7 +106,10 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ transactions }) => {
             <Card className="border-slate-100">
                 <div className="flex justify-between items-start mb-4">
                     <div>
-                        <h3 className="font-bold text-lg text-primary flex items-center gap-2"><span>💸</span> Financial Flow</h3>
+                        <h3 className="font-bold text-lg text-primary flex items-center gap-2">
+                            <CircleDollarSign size={20} className="text-secondary" />
+                            Financial Flow
+                        </h3>
                         <p className="text-sm text-muted mt-1">
                             {financialFlow.isDeficit
                                 ? <span className="text-destructive font-bold">Deficit Warning: Spending exceeds Income!</span>
@@ -149,7 +158,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ transactions }) => {
                     </div>
                     <div>Total Income: <span className="text-secondary font-bold">{financialFlow.income.toLocaleString()}</span></div>
                 </div>
-            </Card>
+            </Card >
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* 2. Spending Trend Chart */}
@@ -212,7 +221,9 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ transactions }) => {
 
             {/* 4. Insights */}
             <div className="bg-gradient-to-r from-violet-500 to-purple-600 text-white p-6 rounded-3xl shadow-lg flex items-start gap-4">
-                <div className="bg-white/20 p-3 rounded-full text-2xl">✨</div>
+                <div className="bg-white/20 p-3 rounded-full">
+                    <Sparkles size={24} />
+                </div>
                 <div>
                     <h3 className="font-bold text-lg mb-1">Smart Insight</h3>
                     <p className="text-white/90 text-sm leading-relaxed">
@@ -223,7 +234,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ transactions }) => {
                     </p>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Asset, AssetType, Transaction } from '../types';
 import { Button } from './ui/Button';
 import { Dialog } from './ui/Dialog';
+import { Plus, ListFilter } from 'lucide-react';
 import { AssetForm } from './assets/AssetForm';
 import { AssetCard } from './assets/AssetCard';
 import { AssetDetailModal } from './assets/AssetDetailModal';
@@ -164,7 +165,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
             className="rounded-2xl px-5 shadow-md flex items-center gap-2"
             aria-label="Add Asset"
           >
-            <span>+</span>
+            <Plus size={18} />
             <span>Add Asset</span>
           </Button>
         </div>
@@ -201,12 +202,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
             onClick={() => setShowViewOptions(!showViewOptions)}
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${showViewOptions ? 'bg-slate-900 text-white shadow-md transform scale-105' : 'bg-slate-100 text-slate-900 hover:bg-slate-200'}`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="relative z-10">
-              <path d="m21 16-4 4-4-4" />
-              <path d="M17 20V4" />
-              <path d="m3 8 4-4 4 4" />
-              <path d="M7 4v16" />
-            </svg>
+            <ListFilter size={20} />
           </button>
 
           {/* Dropdown Menu */}

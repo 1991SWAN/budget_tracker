@@ -54,6 +54,15 @@ export const AppShell: React.FC<AppShellProps> = ({
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
+                {/* Header - Hidden on mobile, only desktop title or empty on mobile */}
+                <div className="lg:hidden">
+                    {/* Tiny Page Title for Mobile (Optional, let's keep it very clean) */}
+                    <div className="p-4 text-center">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            {view}
+                        </span>
+                    </div>
+                </div>
 
                 <div className="hidden lg:block">
                     <Header onMenuClick={() => setIsSidebarOpen(true)} />

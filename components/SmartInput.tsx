@@ -1,10 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Transaction, TransactionType, Category, Asset, CategoryItem, Tag } from '../types';
+import { Transaction, TransactionType, Category, Asset, CategoryItem, Tag as TagType } from '../types';
 import { SupabaseService } from '../services/supabaseService';
 import { Dialog } from './ui/Dialog';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
 import { Button } from './ui/Button';
+import {
+  FileText,
+  Camera,
+  AlignLeft,
+  RefreshCw,
+  AlertCircle,
+  Check
+} from 'lucide-react';
 
 interface SmartInputProps {
   onTransactionsParsed: (transactions: Partial<Transaction>[]) => void;
@@ -31,8 +39,8 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
   const [isInterestFree, setIsInterestFree] = useState(() => initialData?.installment?.isInterestFree ?? true);
 
   // TAGGING SYSTEM STATE
-  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
-  const [tagSuggestions, setTagSuggestions] = useState<Tag[]>([]);
+  const [availableTags, setAvailableTags] = useState<TagType[]>([]);
+  const [tagSuggestions, setTagSuggestions] = useState<TagType[]>([]);
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
 
   // Load Tags on Mount
@@ -303,20 +311,21 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
         </div>
       ) : (
         <div className="space-y-4">
-          {mode === 'select' && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {['manual', 'ocr', 'text'].map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setMode(m as any)}
-                  className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-200 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
-                >
-                  <span className="text-3xl mb-2 grayscale group-hover:grayscale-0">{m === 'manual' ? '📝' : m === 'ocr' ? '📷' : '📄'}</span>
-                  <span className="font-bold text-slate-700 text-sm">{m === 'manual' ? 'Manual' : m === 'ocr' ? 'Scan' : 'Paste'}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {['manual', 'ocr', 'text'].map((m) => {
+            const Icon = m === 'manual' ? FileText : m === 'ocr' ? Camera : AlignLeft;
+            return (
+              <button
+                key={m}
+                onClick={() => setMode(m as any)}
+                className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-200 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
+              >
+                <div className="mb-2 text-slate-400 group-hover:text-blue-600 transition-colors">
+                  <Icon size={32} />
+                </div>
+                <span className="font-bold text-slate-700 text-sm">{m === 'manual' ? 'Manual' : m === 'ocr' ? 'Scan' : 'Paste'}</span>
+              </button>
+            );
+          })}
 
           {mode === 'manual' && (
             <div className="flex flex-col gap-2">
@@ -498,8 +507,8 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
           {syncConfirmData && (
             <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl animate-in fade-in zoom-in-95">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center text-xl shadow-lg shadow-blue-200">
-                  🔄
+                <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-200">
+                  <RefreshCw size={20} />
                 </div>
                 <div>
                   <h4 className="text-sm font-black text-blue-900 leading-tight">연동 거래 금액 동기화</h4>
@@ -547,8 +556,9 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
           )}
 
           {error && (
-            <div className="p-3 bg-destructive/10 text-destructive rounded-xl text-xs font-bold text-center border border-destructive/20">
-              ⚠️ {error}
+            <div className="p-3 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-rose-100">
+              <AlertCircle size={14} />
+              {error}
             </div>
           )}
         </div>
