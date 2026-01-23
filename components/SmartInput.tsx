@@ -272,11 +272,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
   };
 
   const getTitle = () => {
-    if (loading) return "Processing...";
-    // Option A: Invisible Header for Manual Mode (Edit/New)
-    // We return undefined to hide the header bar entirely
-    if (mode === 'manual') return undefined;
-    return 'Smart Input';
+    return undefined;
   };
 
 
@@ -293,7 +289,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
             onClick={initialData ? onCancel : () => setMode('select')}
             variant="ghost"
           >
-            Cancel
+            {initialData ? 'Cancel' : 'Back'}
           </Button>
           <Button
             onClick={handleManualSubmit}
@@ -311,21 +307,27 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
         </div>
       ) : (
         <div className="space-y-4">
-          {['manual', 'ocr', 'text'].map((m) => {
-            const Icon = m === 'manual' ? FileText : m === 'ocr' ? Camera : AlignLeft;
-            return (
-              <button
-                key={m}
-                onClick={() => setMode(m as any)}
-                className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-200 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
-              >
-                <div className="mb-2 text-slate-400 group-hover:text-blue-600 transition-colors">
-                  <Icon size={32} />
-                </div>
-                <span className="font-bold text-slate-700 text-sm">{m === 'manual' ? 'Manual' : m === 'ocr' ? 'Scan' : 'Paste'}</span>
-              </button>
-            );
-          })}
+          {mode === 'select' && (
+            <div className="grid grid-cols-3 gap-3">
+              {(['manual', 'ocr', 'text'] as const).map((m) => {
+                const Icon = m === 'manual' ? FileText : m === 'ocr' ? Camera : AlignLeft;
+                const labels = { manual: 'Manual', ocr: 'Scan', text: 'Paste' };
+
+                return (
+                  <button
+                    key={m}
+                    onClick={() => setMode(m)}
+                    className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-100 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
+                  >
+                    <div className="mb-2 text-slate-400 group-hover:text-blue-600 transition-colors">
+                      <Icon size={32} />
+                    </div>
+                    <span className="font-bold text-slate-700 text-xs">{labels[m]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {mode === 'manual' && (
             <div className="flex flex-col gap-2">

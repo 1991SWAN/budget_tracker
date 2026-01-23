@@ -50,8 +50,16 @@ const Dashboard: React.FC<DashboardProps> = ({
       {/* Header & Tabs */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
         <div>
-          <h1 className="text-3xl font-bold text-primary">Dashboard</h1>
-          <p className="text-muted">Welcome back! Here's your financial overview.</p>
+          <h1 className="text-3xl font-bold text-primary transition-all duration-300">
+            {activeTab === 'overview' && 'Dashboard'}
+            {activeTab === 'trends' && 'Financial Trends'}
+            {activeTab === 'planning' && 'Financial Planning'}
+          </h1>
+          <p className="text-muted transition-all duration-300">
+            {activeTab === 'overview' && "Welcome back! Here's your financial overview."}
+            {activeTab === 'trends' && "Deep analysis of your spending and wealth."}
+            {activeTab === 'planning' && "Plan your goals and manage recurring bills."}
+          </p>
         </div>
         <div className="flex bg-slate-100 p-1 rounded-full self-start sm:self-auto">
           {(['overview', 'trends', 'planning'] as TabUser[]).map((tab) => (
@@ -89,7 +97,12 @@ const Dashboard: React.FC<DashboardProps> = ({
         )}
 
         {activeTab === 'trends' && (
-          <TrendsTab transactions={transactions} />
+          <TrendsTab
+            transactions={transactions}
+            assets={assets}
+            recurring={recurring}
+            monthlyBudget={monthlyBudget}
+          />
         )}
 
         {activeTab === 'planning' && (
