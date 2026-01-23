@@ -43,6 +43,17 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
     }
   }, [assets, selectedAsset]);
 
+  // Global trigger for mobile FAB
+  useEffect(() => {
+    const handleOpenForm = () => {
+      setSelectedAsset(null);
+      setIsEditing(false);
+      setShowForm(true);
+    };
+    window.addEventListener('open-asset-form', handleOpenForm);
+    return () => window.removeEventListener('open-asset-form', handleOpenForm);
+  }, []);
+
   // View Options State
   const [sortBy, setSortBy] = useState<SortOption>('default');
   const [groupBy, setGroupBy] = useState<GroupOption>('none');
@@ -245,17 +256,6 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
         </div>
       </div>
 
-      {/* Floating Action Button (FAB) for Add Asset - Mobile Only */}
-      <Button
-        onClick={() => { setSelectedAsset(null); setIsEditing(false); setShowForm(true); }}
-        className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-slate-900 text-white rounded-full shadow-xl flex items-center justify-center z-50 transition-transform active:scale-95 hover:bg-slate-800 hover:shadow-2xl hover:-translate-y-1"
-        aria-label="Add Asset"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M5 12h14" />
-          <path d="M12 5v14" />
-        </svg>
-      </Button>
 
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto pb-24 custom-scrollbar p-4">

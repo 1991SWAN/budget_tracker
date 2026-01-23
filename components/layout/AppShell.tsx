@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { View } from '../../types';
+import { ExpandableFAB } from '../ui/ExpandableFAB';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface AppShellProps {
     children: React.ReactNode;
@@ -10,6 +12,7 @@ interface AppShellProps {
     onImportClick: () => void;
     onImportFile: (file: File) => void;
     onQuickAddClick: () => void;
+    onAddAsset?: () => void;
 }
 
 export const AppShell: React.FC<AppShellProps> = ({
@@ -18,18 +21,20 @@ export const AppShell: React.FC<AppShellProps> = ({
     onNavigate,
     onImportClick,
     onImportFile,
-    onQuickAddClick
+    onQuickAddClick,
+    onAddAsset
 }) => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const { signOut } = useAuth();
 
     const handleNavigate = (v: View) => {
         onNavigate(v);
-        setIsSidebarOpen(false); // Close sidebar on mobile navigation
+        setIsSidebarOpen(false); // Still keep for LG transition just in case
     };
 
     return (
         <div className="flex min-h-screen bg-surface">
-            {/* Mobile Overlay */}
+            {/* Mobile Overlay - Only used if sidebar is somehow opened on mobile */}
             {isSidebarOpen && (
                 <div
                     className="fixed inset-0 bg-black/20 z-40 lg:hidden animate-in fade-in"
@@ -37,7 +42,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 />
             )}
 
-            {/* Sidebar */}
+            {/* Sidebar - Visible only on LG+ screens by default */}
             <Sidebar
                 view={view}
                 onNavigate={handleNavigate}
@@ -48,13 +53,27 @@ export const AppShell: React.FC<AppShellProps> = ({
             />
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col h-screen overflow-hidden">
-                <Header onMenuClick={() => setIsSidebarOpen(true)} />
+            <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
+
+                <div className="hidden lg:block">
+                    <Header onMenuClick={() => setIsSidebarOpen(true)} />
+                </div>
+
                 <div className="flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth">
                     <div className="max-w-5xl mx-auto">
                         {children}
                     </div>
                 </div>
+
+                {/* Mobile All-in-One Navigation */}
+                <ExpandableFAB
+                    activeView={view}
+                    onNavigate={onNavigate}
+                    onQuickAdd={onQuickAddClick}
+                    onAddAsset={onAddAsset || (() => { })}
+                    onImportFile={onImportFile}
+                    onSignOut={signOut}
+                />
             </main>
         </div>
     );

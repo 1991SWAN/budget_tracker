@@ -451,11 +451,12 @@ const App: React.FC = () => {
 
   return (
     <AppShell
-      currentView={view}
+      view={view}
       onNavigate={navigateTo}
       onImportClick={triggerImport}
       onImportFile={handleImportFile}
       onQuickAddClick={() => setShowSmartInput(true)}
+      onAddAsset={() => window.dispatchEvent(new CustomEvent('open-asset-form'))}
     >
       <ModalContainer
         modalType={modalType}
