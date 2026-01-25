@@ -8,7 +8,6 @@ import { Button } from './ui/Button';
 import {
   FileText,
   Camera,
-  AlignLeft,
   RefreshCw,
   AlertCircle,
   Check
@@ -25,7 +24,7 @@ interface SmartInputProps {
 }
 
 const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel, assets, categories = [], initialData, transactions = [], onDelete }) => {
-  const [mode, setMode] = useState<'select' | 'ocr' | 'text' | 'manual'>(initialData ? 'manual' : 'select');
+  const [mode, setMode] = useState<'select' | 'manual'>(initialData ? 'manual' : 'select');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -277,6 +276,51 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
 
 
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onload = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          resolve(base64);
+        };
+      });
+      reader.readAsDataURL(file);
+      const base64 = await base64Promise;
+
+      const { GeminiService } = await import('../services/geminiService');
+      const result = await GeminiService.parseReceipt(base64, categories, assets);
+
+      if (result) {
+        if (result.type === TransactionType.TRANSFER && result.to_asset_id) {
+          setIsExternalTransfer(false);
+        }
+        setManualForm(prev => ({
+          ...prev,
+          amount: result.amount?.toString() || prev.amount,
+          date: result.date || prev.date,
+          memo: result.merchant || prev.memo,
+          category: result.category_id || prev.category,
+          assetId: result.asset_id || prev.assetId,
+          toAssetId: result.to_asset_id || prev.toAssetId,
+          type: result.type || prev.type
+        }));
+        setMode('manual');
+      } else {
+        setError("Could not parse receipt. Please try another photo.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Receipt analysis failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Dialog
       isOpen={true}
@@ -302,30 +346,38 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     >
       {loading ? (
         <div className="flex flex-col items-center justify-center p-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-          <p className="mt-4 text-muted animate-pulse font-medium">Gemini is analyzing...</p>
+          <div className="relative mb-6">
+            <div className="absolute inset-0 bg-primary/20 rounded-full blur-2xl animate-pulse"></div>
+            <div className="relative w-16 h-16 bg-white rounded-2xl shadow-xl flex items-center justify-center animate-bounce">
+              <RefreshCw className="text-primary animate-spin" size={32} />
+            </div>
+          </div>
+          <p className="text-slate-800 font-black text-lg animate-pulse">Gemini is analyzing...</p>
+          <p className="text-slate-400 text-xs mt-1 font-bold uppercase tracking-widest">Optimizing your finance</p>
         </div>
       ) : (
         <div className="space-y-4">
           {mode === 'select' && (
-            <div className="grid grid-cols-3 gap-3">
-              {(['manual', 'ocr', 'text'] as const).map((m) => {
-                const Icon = m === 'manual' ? FileText : m === 'ocr' ? Camera : AlignLeft;
-                const labels = { manual: 'Manual', ocr: 'Scan', text: 'Paste' };
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setMode('manual')}
+                  className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-100 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
+                >
+                  <div className="mb-2 text-slate-400 group-hover:text-blue-600 transition-colors">
+                    <FileText size={32} />
+                  </div>
+                  <span className="font-bold text-slate-700 text-xs">Manual Entry</span>
+                </button>
 
-                return (
-                  <button
-                    key={m}
-                    onClick={() => setMode(m)}
-                    className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-100 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
-                  >
-                    <div className="mb-2 text-slate-400 group-hover:text-blue-600 transition-colors">
-                      <Icon size={32} />
-                    </div>
-                    <span className="font-bold text-slate-700 text-xs">{labels[m]}</span>
-                  </button>
-                );
-              })}
+                <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-100 rounded-2xl hover:border-emerald-500 hover:bg-emerald-50 transition-all group cursor-pointer">
+                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                  <div className="mb-2 text-slate-400 group-hover:text-emerald-600 transition-colors">
+                    <Camera size={32} />
+                  </div>
+                  <span className="font-bold text-slate-700 text-xs">Scan & AI</span>
+                </label>
+              </div>
             </div>
           )}
 

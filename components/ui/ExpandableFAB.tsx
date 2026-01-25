@@ -38,7 +38,7 @@ export const ExpandableFAB: React.FC<ExpandableFABProps> = ({
 
     // Categorize items for hierarchy
     const navigationItems = [
-        { id: 'analysis', icon: <Bot size={18} />, label: 'AI Analysis', view: 'analysis' as View },
+        { id: 'analysis', icon: <Bot size={18} />, label: 'Penny AI', view: 'analysis' as View },
         { id: 'assets', icon: <Wallet size={18} />, label: 'Assets', view: 'assets' as View },
         { id: 'transactions', icon: <ReceiptText size={18} />, label: 'Transactions', view: 'transactions' as View },
         { id: 'dashboard', icon: <LayoutDashboard size={18} />, label: 'Dashboard', view: 'dashboard' as View },

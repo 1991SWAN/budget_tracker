@@ -104,7 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <NavItem v="dashboard" icon={<LayoutDashboard size={20} />} label="Dashboard" />
                         <NavItem v="transactions" icon={<ReceiptText size={20} />} label="Transactions" />
                         <NavItem v="assets" icon={<Wallet size={20} />} label="Assets" />
-                        <NavItem v="analysis" icon={<Bot size={20} />} label="AI Analysis" />
+                        <NavItem v="analysis" icon={<Bot size={20} />} label="Penny AI" />
                     </nav>
                 </div>
 

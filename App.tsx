@@ -36,6 +36,7 @@ import { ModalContainer } from './components/layout/ModalContainer';
 
 import { useAuth } from './contexts/AuthContext';
 import { LoginView } from './components/LoginView';
+import { PennyChat } from './components/ai/PennyChat';
 
 const App: React.FC = () => {
   const { user, isLoading } = useAuth();
@@ -60,6 +61,7 @@ const App: React.FC = () => {
   // Modal Visibility State for Reconciliation (Restored)
   const [showReconciliationModal, setShowReconciliationModal] = useState(false);
   const [showSmartInput, setShowSmartInput] = useState(false);
+  const [isPennyChatOpen, setIsPennyChatOpen] = useState(false);
 
 
   const [filterType, setFilterType] = useState<TransactionType | 'ALL'>('ALL');
@@ -108,6 +110,10 @@ const App: React.FC = () => {
 
   // --- History / Navigation Handling ---
   const navigateTo = useCallback((newView: View) => {
+    if (newView === 'analysis') {
+      setIsPennyChatOpen(true);
+      return;
+    }
     setView(newView);
     window.history.pushState({ view: newView }, '', '');
   }, []);
@@ -669,6 +675,14 @@ const App: React.FC = () => {
       <TransferNotificationToast
         count={transferCandidates.length + singleCandidates.length}
         onReview={() => setIsReconciliationModalOpen(true)}
+      />
+      <PennyChat
+        isOpen={isPennyChatOpen}
+        onClose={() => setIsPennyChatOpen(false)}
+        transactions={transactions}
+        assets={assets}
+        categories={categories}
+        onActionSuccess={() => loadData()}
       />
     </AppShell>
   );
