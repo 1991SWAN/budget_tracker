@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { View } from '../../types';
-import { ArrowLeft, Trash2, Link2, Link2Off } from 'lucide-react';
+import { ArrowLeft, Trash2, Link2, Link2Off, FileUp } from 'lucide-react';
 import { ImportService, ImportPreset } from '../../services/importService';
 import { SupabaseService } from '../../services/supabaseService';
 
 interface ImportSettingsProps {
     onNavigate: (view: View) => void;
+    onImportFile: (file: File) => void;
 }
 
-export const ImportSettings: React.FC<ImportSettingsProps> = ({ onNavigate }) => {
+export const ImportSettings: React.FC<ImportSettingsProps> = ({ onNavigate, onImportFile }) => {
     const [presets, setPresets] = useState<ImportPreset[]>([]);
     const [assets, setAssets] = useState<any[]>([]);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const [isDragging, setIsDragging] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -36,6 +39,36 @@ export const ImportSettings: React.FC<ImportSettingsProps> = ({ onNavigate }) =>
         }
     };
 
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            onImportFile(file);
+        }
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) {
+            onImportFile(file);
+        }
+    };
+
     return (
         <div className="space-y-6 p-6 max-w-3xl mx-auto">
             {/* Header */}
@@ -52,7 +85,39 @@ export const ImportSettings: React.FC<ImportSettingsProps> = ({ onNavigate }) =>
                 </div>
             </div>
 
-            <div className="space-y-4">
+            {/* Import Action Area */}
+            <div
+                className={`bg-white p-8 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center gap-4 transition-all duration-200
+                    ${isDragging ? 'border-indigo-500 bg-indigo-50/50 scale-[1.02]' : 'border-slate-200 hover:border-slate-300'}
+                `}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+            >
+                <div className={`p-4 rounded-full ${isDragging ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>
+                    <FileUp size={32} />
+                </div>
+                <div className="text-center">
+                    <h3 className="text-lg font-bold text-slate-900 mb-1">Upload CSV or Excel file</h3>
+                    <p className="text-sm text-slate-500 mb-4">Drag and drop your bank statement here</p>
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-6 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-full font-semibold shadow-md shadow-indigo-600/20 active:scale-95 transition-all"
+                    >
+                        Browse Files
+                    </button>
+                </div>
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    className="hidden"
+                    accept=".csv,.xls,.xlsx"
+                />
+            </div>
+
+            <div className="space-y-4 pt-4">
+                <h2 className="text-lg font-semibold text-slate-900 px-1">Saved Presets</h2>
                 {presets.length === 0 ? (
                     <div className="text-center py-12 bg-slate-50 rounded-2xl border border-slate-100 border-dashed">
                         <p className="text-slate-400 font-bold">No saved presets found.</p>

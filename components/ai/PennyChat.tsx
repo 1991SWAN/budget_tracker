@@ -97,7 +97,7 @@ export const PennyChat: React.FC<PennyChatProps> = ({
             setMessages(prev => [...prev, assistantMessage]);
         } catch (error) {
             console.error('Penny AI Error:', error);
-            addToast('AI 분석 중 오류가 발생했습니다.', 'error');
+            addToast('An error occurred during AI analysis.', 'error');
         } finally {
             setIsLoading(false);
         }
@@ -110,7 +110,7 @@ export const PennyChat: React.FC<PennyChatProps> = ({
 
             if (type === 'DELETE') {
                 await TransactionService.deleteTransaction(payload.id);
-                addToast('내역을 삭제했습니다.', 'success');
+                addToast('Transaction deleted.', 'success');
             } else if (type === 'UPDATE') {
                 // Fetch the original transaction to get all fields or just update partial
                 // For safety, assume payload has enough data for upsert if it's an update
@@ -125,7 +125,7 @@ export const PennyChat: React.FC<PennyChatProps> = ({
                         category: payload.category_id || payload.category || original.category
                     };
                     await TransactionService.saveTransaction(updated);
-                    addToast('내역을 수정했습니다.', 'success');
+                    addToast('Transaction updated.', 'success');
                 }
             } else if (type === 'CREATE') {
                 const newTx: any = {
@@ -135,11 +135,11 @@ export const PennyChat: React.FC<PennyChatProps> = ({
                     type: payload.type || TransactionType.EXPENSE,
                     category: payload.category_id || categories[0].id,
                     assetId: payload.asset_id || assets[0].id,
-                    memo: payload.memo || payload.merchant || 'AI로 생성된 내역',
+                    memo: payload.memo || payload.merchant || 'AI Generated',
                     timestamp: new Date().toISOString()
                 };
                 await TransactionService.saveTransaction(newTx);
-                addToast('새 내역을 추가했습니다.', 'success');
+                addToast('New transaction added.', 'success');
             }
 
             // Update message status
@@ -152,7 +152,7 @@ export const PennyChat: React.FC<PennyChatProps> = ({
             onActionSuccess(); // Refresh data
         } catch (error) {
             console.error('Action Error:', error);
-            addToast('요청을 처리하지 못했습니다.', 'error');
+            addToast('Failed to process request.', 'error');
         } finally {
             setIsLoading(false);
         }
@@ -208,8 +208,8 @@ export const PennyChat: React.FC<PennyChatProps> = ({
                             {messages.map((message) => (
                                 <div key={message.id} className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
                                     <div className={`max-w-[85%] rounded-2xl p-4 shadow-sm ${message.role === 'user'
-                                            ? 'bg-primary text-white rounded-tr-none'
-                                            : 'bg-white text-slate-700 rounded-tl-none border border-slate-100'
+                                        ? 'bg-primary text-white rounded-tr-none'
+                                        : 'bg-white text-slate-700 rounded-tl-none border border-slate-100'
                                         }`}>
                                         <div className="flex items-center gap-2 mb-1">
                                             {message.role === 'assistant' ? <BrainCircuit size={12} className="opacity-50" /> : <User size={12} className="opacity-50" />}

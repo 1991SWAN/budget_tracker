@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import { Button } from './ui/Button';
-import { Transaction, Asset, RecurringTransaction, SavingsGoal } from '../types';
+import { Transaction, Asset, RecurringTransaction, SavingsGoal, CategoryItem } from '../types';
+import { RegularCandidate } from '../hooks/useRegularExpenseDetector';
 import OverviewTab from './dashboard/OverviewTab';
 import TrendsTab from './dashboard/TrendsTab';
 import PlanningTab from './dashboard/PlanningTab';
+import LabTab from './lab/LabTab';
 
 interface DashboardProps {
   transactions: Transaction[];
   assets: Asset[];
   recurring: RecurringTransaction[];
   goals: SavingsGoal[];
+  categories: CategoryItem[];
   onRecurringChange: (action: 'add' | 'update' | 'delete' | 'pay', item: any) => void;
   onGoalChange: (action: 'add' | 'update' | 'delete' | 'contribute', item: any) => void;
   onAddTransaction: (transaction: Transaction) => void;
@@ -19,14 +22,20 @@ interface DashboardProps {
   onBudgetChange: (amount: number) => void;
   onNavigateToTransactions: (dateRange?: { start: string, end: string } | null) => void;
   onAddBillToGroup?: (group: string) => void; // Legacy usage from App
+
+  // Recurring Auto Detection Candidates
+  regularCandidates?: RegularCandidate[];
+  regularCandidateTxIds?: Set<string>;
+  onRegisterRegular?: (candidate: RegularCandidate) => void;
 }
 
-type TabUser = 'overview' | 'trends' | 'planning';
+type TabUser = 'overview' | 'trends' | 'planning' | 'lab';
 
 const Dashboard: React.FC<DashboardProps> = ({
-  transactions, assets, recurring, goals,
+  transactions, assets, categories, recurring, goals,
   onRecurringChange, onGoalChange, onEditTransaction, onDeleteTransaction,
-  monthlyBudget, onBudgetChange, onNavigateToTransactions
+  monthlyBudget, onBudgetChange, onNavigateToTransactions,
+  regularCandidates = [], regularCandidateTxIds = new Set(), onRegisterRegular
 }) => {
   const [activeTab, setActiveTab] = useState<TabUser>('overview');
   const [activityFilter, setActivityFilter] = useState<'today' | 'week' | 'month'>('month');
@@ -59,15 +68,16 @@ const Dashboard: React.FC<DashboardProps> = ({
             {activeTab === 'overview' && "Welcome back! Here's your financial overview."}
             {activeTab === 'trends' && "Deep analysis of your spending and wealth."}
             {activeTab === 'planning' && "Plan your goals and manage recurring bills."}
+            {activeTab === 'lab' && "Testing grounds for new auto-detection features."}
           </p>
         </div>
-        <div className="flex bg-slate-100 p-1 rounded-full self-start sm:self-auto">
-          {(['overview', 'trends', 'planning'] as TabUser[]).map((tab) => (
+        <div className="flex bg-slate-100 p-1 rounded-full self-start sm:self-auto overflow-x-auto hide-scrollbar">
+          {(['overview', 'trends', 'planning', 'lab'] as TabUser[]).map((tab) => (
             <Button
               key={tab}
               onClick={() => setActiveTab(tab)}
               variant="ghost"
-              className={`px-4 py-2 rounded-full text-sm font-bold capitalize transition-all ${activeTab === tab
+              className={`px-4 py-2 rounded-full text-sm font-bold capitalize transition-all whitespace-nowrap ${activeTab === tab
                 ? 'bg-white text-primary shadow-sm'
                 : 'text-muted hover:text-text hover:bg-transparent'
                 }`}
@@ -93,6 +103,9 @@ const Dashboard: React.FC<DashboardProps> = ({
             onDeleteTransaction={(tx) => onDeleteTransaction(tx.id)}
             activityFilter={activityFilter}
             onFilterChange={setActivityFilter}
+            candidates={regularCandidates}
+            candidateTxIds={regularCandidateTxIds}
+            onRegisterRegular={onRegisterRegular}
           />
         )}
 
@@ -112,6 +125,17 @@ const Dashboard: React.FC<DashboardProps> = ({
             assets={assets}
             onRecurringChange={onRecurringChange}
             onGoalChange={onGoalChange}
+          />
+        )}
+
+        {activeTab === 'lab' && (
+          <LabTab
+            transactions={transactions}
+            assets={assets}
+            categories={categories}
+            recurring={recurring}
+            onRecurringChange={onRecurringChange}
+            onEditTransaction={onEditTransaction}
           />
         )}
       </div>

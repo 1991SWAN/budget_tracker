@@ -10,6 +10,21 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+// Retry logic for transient errors
+const withRetry = async <T>(fn: () => Promise<T>, retries = 2, delay = 1000): Promise<T> => {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const isTransient = error.message?.includes('503') || error.message?.includes('UNAVAILABLE') || error.status === 503;
+    if (isTransient && retries > 0) {
+      console.warn(`[Gemini] Transient error detected. Retrying in ${delay}ms... (${retries} retries left)`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return withRetry(fn, retries - 1, delay * 2);
+    }
+    throw error;
+  }
+};
+
 export const GeminiService = {
   /**
    * Parses an image of a receipt to extract transaction details.
@@ -38,7 +53,7 @@ export const GeminiService = {
             Default type to EXPENSE unless it looks like a refund, income, or transfer.
             Return results in JSON format matching the schema.`;
 
-      const response = await ai.models.generateContent({
+      const config = {
         model: 'gemini-3-flash-preview',
         contents: {
           parts: [
@@ -72,7 +87,9 @@ export const GeminiService = {
             required: ["amount", "merchant"]
           }
         }
-      });
+      };
+
+      const response = await withRetry(() => ai.models.generateContent(config));
 
       return response.text ? JSON.parse(response.text) : null;
     } catch (error) {

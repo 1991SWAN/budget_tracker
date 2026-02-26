@@ -2,7 +2,6 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { GroupedVirtuoso } from 'react-virtuoso';
 import { Transaction, Asset, CategoryItem } from '../types';
 import TransactionItem from './TransactionItem';
-import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
 import { Button } from './ui/Button';
 import { Inbox } from 'lucide-react';
@@ -53,7 +52,10 @@ const TransactionList: React.FC<TransactionListProps> = ({
     onDeleteTransactions,
     onLoadMore,
     hasMore,
-    isFetchingMore
+    isFetchingMore,
+    candidates = [],
+    candidateTxIds = new Set(),
+    onRegisterRegular
 }) => {
     // Selection State
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -188,8 +190,11 @@ const TransactionList: React.FC<TransactionListProps> = ({
         isSelectionMode,
         handleToggleSelection,
         handleLongPress,
-        presentTxIds
-    }), [categories, assets, onEdit, onDelete, selectedIds, isSelectionMode, handleToggleSelection, handleLongPress, presentTxIds]);
+        presentTxIds,
+        candidates,
+        candidateTxIds,
+        onRegisterRegular
+    }), [categories, assets, onEdit, onDelete, selectedIds, isSelectionMode, handleToggleSelection, handleLongPress, presentTxIds, candidates, candidateTxIds, onRegisterRegular]);
 
     // Empty State
     if (sortedData.length === 0) {
@@ -205,8 +210,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
 
     return (
         <div className="h-[calc(100vh-280px)] w-full relative">
-            {/* Selection Header Overlay (Optional - currently using bottom bar heavily) */}
-
             {/* Minimal List Container */}
             <div className={`h-full bg-white md:rounded-3xl border-y md:border border-slate-200 shadow-sm overflow-hidden transition-all ${isSelectionMode ? 'pb-20' : ''}`}>
                 <GroupedVirtuoso
@@ -232,8 +235,8 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Total</span>
-                                    <span className={`text-xs font-bold tabular-nums tracking-tight ${dailyTotal > 0 ? 'text-emerald-600' : dailyTotal < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Total</span>
+                                    <span className="text-xs font-bold text-slate-700 tabular-nums tracking-tight">
                                         {dailyTotal !== 0 ? (dailyTotal > 0 ? '+' : '') + dailyTotal.toLocaleString() : '0'}
                                     </span>
                                 </div>
@@ -252,13 +255,18 @@ const TransactionList: React.FC<TransactionListProps> = ({
                             isSelectionMode,
                             handleToggleSelection,
                             handleLongPress,
-                            presentTxIds
+                            presentTxIds,
+                            candidates,
+                            candidateTxIds,
+                            onRegisterRegular
                         } = context;
 
                         const isSelected = selectedIds.has(tx.id);
+                        const isCandidate = candidateTxIds.has(tx.id);
+                        const candidateData = isCandidate ? candidates.find(c => c.transactionIds.includes(tx.id)) : undefined;
 
                         return (
-                            <div className={`border-b border-slate-50 last:border-0 transition-colors ${isSelected ? 'bg-blue-50/40' : 'hover:bg-slate-50/50'}`}>
+                            <div className="border-b border-slate-50 last:border-0">
                                 <TransactionItem
                                     transaction={tx}
                                     asset={assets.find(a => a.id === tx.assetId)}
@@ -274,6 +282,9 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                     onLongPress={() => handleLongPress(tx.id)}
                                     // Deduplication Prop
                                     presentTxIds={presentTxIds}
+                                    isCandidate={isCandidate}
+                                    candidateData={candidateData}
+                                    onRegisterRegular={onRegisterRegular}
                                 />
                             </div>
                         );

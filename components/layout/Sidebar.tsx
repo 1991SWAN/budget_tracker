@@ -11,7 +11,8 @@ import {
     FileUp,
     Settings,
     LogOut,
-    Coins
+    Coins,
+    FlaskConical
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -114,36 +115,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <div className="space-y-3 px-1">
                         <Button
                             onClick={onQuickAddClick}
-                            variant="primary"
-                            className="w-full p-3 rounded-full shadow-lg h-auto justify-center hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all gap-2"
+                            className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 shadow-xl shadow-indigo-600/30 p-3.5 rounded-2xl h-auto justify-center hover:shadow-2xl hover:scale-[1.03] active:scale-95 transition-all duration-300 gap-2 border border-white/10 ring-2 ring-indigo-600/10"
                         >
-                            <Plus size={18} strokeWidth={3} />
-                            <span className="font-semibold">Quick Add</span>
+                            <Plus size={20} strokeWidth={3} className="drop-shadow-sm" />
+                            <span className="font-bold tracking-wide drop-shadow-sm">Quick Add</span>
                         </Button>
-
-                        <div
-                            onDragOver={handleDragOver}
-                            onDragLeave={handleDragLeave}
-                            onDrop={handleDrop}
-                        >
-                            <Button
-                                onClick={() => fileInputRef.current?.click()}
-                                variant="secondary"
-                                className={`w-full bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 p-3 rounded-2xl font-semibold text-sm shadow-sm h-auto justify-center active:scale-95 transition-all gap-2
-                                    ${isDragging ? 'border-2 border-slate-900 bg-slate-100 ring-2 ring-slate-200' : ''}
-                                `}
-                            >
-                                <FileUp size={18} />
-                                <span>{isDragging ? 'Drop CSV Here' : 'Import CSV'}</span>
-                            </Button>
-                            <input
-                                type="file"
-                                ref={fileInputRef}
-                                onChange={handleFileChange}
-                                className="hidden"
-                                accept=".csv,.xls,.xlsx"
-                            />
-                        </div>
                     </div>
                 </div>
             </div>

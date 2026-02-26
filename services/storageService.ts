@@ -14,6 +14,7 @@ const DEFAULT_ASSETS: Asset[] = [
     name: 'Wallet Cash',
     type: AssetType.CASH,
     balance: 150000,
+    initialBalance: 150000,
     currency: 'KRW',
     description: 'Petty cash on hand'
   },
@@ -22,6 +23,7 @@ const DEFAULT_ASSETS: Asset[] = [
     name: 'Salary Account',
     type: AssetType.CHECKING,
     balance: 2500000,
+    initialBalance: 2500000,
     currency: 'KRW',
     description: 'KB Bank •••• 1234',
     interestRate: 0.1
@@ -31,6 +33,7 @@ const DEFAULT_ASSETS: Asset[] = [
     name: 'Main Credit Card',
     type: AssetType.CREDIT_CARD,
     balance: -450000,
+    initialBalance: -450000,
     currency: 'KRW',
     creditDetails: { limit: 3000000, apr: 18, billingCycle: { usageStartDay: 1, usageEndDay: 31, paymentDay: 25 } },
     description: 'Hyundai Card'
@@ -40,6 +43,7 @@ const DEFAULT_ASSETS: Asset[] = [
     name: 'Stock Portfolio',
     type: AssetType.INVESTMENT,
     balance: 5000000,
+    initialBalance: 5000000,
     currency: 'KRW',
     interestRate: 8.5,
     description: 'Toss Securities'

@@ -97,11 +97,13 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
           return currentMemo;
         })(),
         assetId: initialData.assetId,
-        toAssetId: initialData.toAssetId || ''
+        toAssetId: initialData.toAssetId || '',
+        time: initialData.timestamp ? new Date(initialData.timestamp).toTimeString().slice(0, 8) : new Date().toTimeString().slice(0, 8)
       };
     }
     return {
       date: new Date().toISOString().split('T')[0],
+      time: new Date().toTimeString().slice(0, 8),
       amount: '',
       type: TransactionType.EXPENSE,
       category: categories.length > 0 ? categories[0].id : Category.FOOD, // Default to first category or legacy
@@ -142,7 +144,8 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
           return currentMemo;
         })(),
         assetId: initialData.assetId,
-        toAssetId: initialData.toAssetId || ''
+        toAssetId: initialData.toAssetId || '',
+        time: initialData.timestamp ? new Date(initialData.timestamp).toTimeString().slice(0, 8) : new Date().toTimeString().slice(0, 8)
       });
     }
   }, [initialData]);
@@ -172,6 +175,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     }
 
     const totalAmount = parseFloat(manualForm.amount);
+    const timestamp = new Date(`${manualForm.date}T${manualForm.time}`).getTime();
 
     // 1. Check for Sync Opportunity (Only on EDIT)
     if (initialData?.id && initialData.linkedTransactionId && totalAmount !== initialData.amount && !syncConfirmData) {
@@ -204,6 +208,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
 
       const commonData = {
         date: manualForm.date,
+        timestamp: timestamp,
         amount: totalAmount, // Always positive
         category: manualForm.category,
         memo: manualForm.memo,
@@ -238,6 +243,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     const transactionData: Partial<Transaction> = {
       id: initialData?.id,
       date: manualForm.date,
+      timestamp: timestamp,
       amount: totalAmount,
       type: manualForm.type,
       category: manualForm.category,
@@ -315,7 +321,12 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
         setError("Could not parse receipt. Please try another photo.");
       }
     } catch (err: any) {
-      setError(err.message || "Receipt analysis failed");
+      const isAIUnavailable = err.message?.includes('503') || err.message?.includes('UNAVAILABLE');
+      if (isAIUnavailable) {
+        setError("현재 AI 사용량이 많아 처리가 지연되고 있습니다. 잠시 후 다시 시도해 주세요.");
+      } else {
+        setError(err.message || "영수증 분석에 실패했습니다.");
+      }
     } finally {
       setLoading(false);
     }
@@ -469,13 +480,85 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
               {/* 3. Compact Inputs Grid */}
               {/* 3. Compact Inputs Grid (Flex Column forced for persistent vertical stack) */}
               <div className="flex flex-col gap-3">
-                <Input
-                  label="Date"
-                  type="date"
-                  value={manualForm.date}
-                  onChange={e => setManualForm({ ...manualForm, date: e.target.value })}
-                  className="h-10 appearance-none py-0"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    label="Date"
+                    type="date"
+                    value={manualForm.date}
+                    onChange={e => setManualForm({ ...manualForm, date: e.target.value })}
+                    className="flex-[2] h-10 appearance-none py-0"
+                  />
+                  <div className="flex-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Time (24h)</label>
+                    <div className="flex items-center justify-center gap-2 bg-white border border-slate-200 rounded-xl px-2 h-10 shadow-sm overflow-hidden">
+                      {/* Segment Helper Component */}
+                      {[
+                        { key: 0, max: 23, label: 'H' },
+                        { key: 1, max: 59, label: 'M' },
+                        { key: 2, max: 59, label: 'S' }
+                      ].map((seg, idx) => (
+                        <React.Fragment key={seg.key}>
+                          <div className="flex items-center group/seg relative">
+                            <input
+                              type="number"
+                              min="0"
+                              max={seg.max}
+                              value={manualForm.time.split(':')[idx]}
+                              onChange={e => {
+                                const parts = manualForm.time.split(':');
+                                let val = parseInt(e.target.value || '0');
+                                val = Math.max(0, Math.min(seg.max, val));
+                                parts[idx] = val.toString().padStart(2, '0');
+                                setManualForm({ ...manualForm, time: parts.join(':') });
+                              }}
+                              className="w-10 text-center bg-transparent outline-none font-mono text-sm p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none font-bold text-slate-700"
+                            />
+                            {/* Subtle Overlays for Mouse Interaction */}
+                            <div className="absolute -right-1 flex flex-col opacity-0 group-hover/seg:opacity-100 transition-opacity">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const parts = manualForm.time.split(':');
+                                  let val = (parseInt(parts[idx]) + 1) % (seg.max + 1);
+                                  parts[idx] = val.toString().padStart(2, '0');
+                                  setManualForm({ ...manualForm, time: parts.join(':') });
+                                }}
+                                className="text-[8px] hover:text-blue-500"
+                              >
+                                ▲
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const parts = manualForm.time.split(':');
+                                  let val = (parseInt(parts[idx]) - 1 + (seg.max + 1)) % (seg.max + 1);
+                                  parts[idx] = val.toString().padStart(2, '0');
+                                  setManualForm({ ...manualForm, time: parts.join(':') });
+                                }}
+                                className="text-[8px] hover:text-blue-500"
+                              >
+                                ▼
+                              </button>
+                            </div>
+                          </div>
+                          {idx < 2 && <span className="text-slate-300 font-bold">:</span>}
+                        </React.Fragment>
+                      ))}
+
+                      {/* Set current time button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          setManualForm(prev => ({ ...prev, time: now.toTimeString().slice(0, 8) }));
+                        }}
+                        className="ml-1 text-[9px] font-black bg-blue-50 text-blue-600 px-1.5 py-1 rounded-md hover:bg-blue-100 transition-colors"
+                      >
+                        NOW
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <Select
                   label={manualForm.type === TransactionType.TRANSFER ? 'From' : 'Account'}
                   value={manualForm.assetId}
@@ -589,9 +672,11 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                     // A quick hack is to use a ref or just call it after clearing state but with a flag
                     // but for now, let's just make it call onTransactionsParsed directly for single
                     const totalAmount = parseFloat(manualForm.amount);
+                    const timestamp = new Date(`${manualForm.date}T${manualForm.time}`).getTime();
                     onTransactionsParsed([{
                       id: initialData?.id,
                       date: manualForm.date,
+                      timestamp: timestamp,
                       amount: totalAmount,
                       type: manualForm.type,
                       category: manualForm.category,

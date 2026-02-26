@@ -11,7 +11,9 @@ const ToastItem: React.FC<ToastProps> = ({ toast, onRemove }) => {
     const [visible, setVisible] = useState(false);
 
     useEffect(() => {
-        requestAnimationFrame(() => setVisible(true));
+        // Small delay to ensure the initial render happens before the animation starts
+        const timer = setTimeout(() => setVisible(true), 10);
+        return () => clearTimeout(timer);
     }, []);
 
     const handleRemove = () => {
@@ -19,27 +21,26 @@ const ToastItem: React.FC<ToastProps> = ({ toast, onRemove }) => {
         setTimeout(() => onRemove(toast.id), 300); // Wait for exit animation
     };
 
-    const bgColors = {
-        success: 'bg-emerald-50 border-emerald-200 text-emerald-800',
-        error: 'bg-rose-50 border-rose-200 text-rose-800',
-        info: 'bg-blue-50 border-blue-200 text-blue-800',
+    const iconColors = {
+        success: 'text-emerald-400',
+        error: 'text-rose-400',
+        info: 'text-blue-400',
     };
 
     const icons = {
-        success: <CheckCircle size={20} />,
-        error: <AlertTriangle size={20} />,
-        info: <Info size={20} />,
+        success: <CheckCircle size={18} className={iconColors.success} />,
+        error: <AlertTriangle size={18} className={iconColors.error} />,
+        info: <Info size={18} className={iconColors.info} />,
     };
 
     return (
         <div className={`
-      flex items-center gap-3 p-4 rounded-xl border shadow-lg max-w-sm w-full mb-3 transition-all duration-300 transform
-      ${bgColors[toast.type]}
-      ${visible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
+      flex items-center gap-3 px-4 py-3 rounded-full border border-white/10 shadow-2xl backdrop-blur-md bg-gray-900/95 min-w-[280px] max-w-sm mb-3 transition-all duration-300 transform pointer-events-auto
+      ${visible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-95'}
     `}>
             <div className="shrink-0">{icons[toast.type]}</div>
-            <p className="flex-1 text-sm font-semibold">{toast.message}</p>
-            <button onClick={handleRemove} className="opacity-50 hover:opacity-100 p-1">
+            <p className="flex-1 text-sm font-medium text-white tracking-wide">{toast.message}</p>
+            <button onClick={handleRemove} className="text-gray-400 hover:text-white transition-colors p-1 -mr-1">
                 <X size={16} />
             </button>
         </div>
@@ -48,12 +49,10 @@ const ToastItem: React.FC<ToastProps> = ({ toast, onRemove }) => {
 
 export const ToastContainer: React.FC<{ toasts: ToastMessage[], onRemove: (id: string) => void }> = ({ toasts, onRemove }) => {
     return (
-        <div className="fixed top-4 right-4 z-[100] flex flex-col items-end pointer-events-none">
-            <div className="pointer-events-auto">
-                {toasts.map(t => (
-                    <ToastItem key={t.id} toast={t} onRemove={onRemove} />
-                ))}
-            </div>
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center pointer-events-none">
+            {toasts.map(t => (
+                <ToastItem key={t.id} toast={t} onRemove={onRemove} />
+            ))}
         </div>
     );
 };

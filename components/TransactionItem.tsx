@@ -1,6 +1,8 @@
 import React, { memo } from 'react';
+import { Pencil, Sparkles, PlusCircle } from 'lucide-react';
 import { Transaction, TransactionType, Asset, CategoryItem } from '../types';
 import { Button } from './ui/Button';
+import { RegularCandidate } from '../hooks/useRegularExpenseDetector';
 
 interface TransactionItemProps {
     transaction: Transaction;
@@ -18,6 +20,11 @@ interface TransactionItemProps {
     onLongPress?: () => void;
     // Deduplication Prop
     presentTxIds?: Set<string>;
+
+    // Recurring Setup Candidate Props
+    isCandidate?: boolean;
+    candidateData?: RegularCandidate;
+    onRegisterRegular?: (candidate: RegularCandidate) => void;
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({
@@ -32,10 +39,13 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     isSelected = false,
     onToggleSelect,
     onLongPress,
-    presentTxIds
+    presentTxIds,
+    isCandidate = false,
+    candidateData,
+    onRegisterRegular
 }) => {
     const [isExpanded, setIsExpanded] = React.useState(false);
-    const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false);
+    const [showCandidateSetup, setShowCandidateSetup] = React.useState(false);
 
     // Long Press Logic
     const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
@@ -147,61 +157,37 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     }, [transaction.memo, (transaction as any).merchant]);
 
     const handleRowClick = () => {
-        // 1. If Selection Mode, always toggle
-        if (isSelectionMode && onToggleSelect) {
-            onToggleSelect();
-            return;
-        }
-
-        // 2. If Long Press was just triggered, do nothing (prevent click)
-        if (isLongPressTriggered.current) return;
-
-        // 3. Normal Click Behavior
-        // Desktop: Edit directly
-        if (window.innerWidth >= 1024) {
-            onEdit(transaction);
-        } else {
-            // Mobile: Toggle Expand
-            setIsExpanded(!isExpanded);
-        }
+        // Desktop & Mobile: Toggle Selection Mode (Action-based Selection)
+        if (onToggleSelect) onToggleSelect();
     };
-
-
-
-
-
-    // Unified Flag for Styling
-    const isLinkedTransfer = isTransfer && ((toAsset) || (fromAsset && !toAsset));
-
-    // V3 Deduplication Logic:
-    // MOVED: Now handled in TransactionList.tsx pre-filtering to avoid Virtualization glitches.
-
 
     return (
         <div
-            className={`w-full relative group transition-all duration-200
-            ${isSelected ? 'bg-blue-50/80' : 'hover:bg-slate-50/30'}`}
+            className={`w-full relative group transition-all duration-300 overflow-hidden
+            ${isSelected ? 'bg-indigo-50' : 'hover:bg-slate-50/30'}`}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
             onTouchMove={handleTouchEnd}
         >
+            {/* ✨ Inline Sparkle Indicator */}
+            {isCandidate && !showCandidateSetup && (
+                <div
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setShowCandidateSetup(true);
+                    }}
+                    className="absolute left-1 top-1/2 -translate-y-1/2 flex items-center justify-center cursor-pointer p-1.5 rounded-full hover:bg-slate-100/80 transition-colors z-10"
+                    title="View Recurring Recommendation"
+                >
+                    <Sparkles className="text-amber-400 w-4 h-4 animate-pulse" />
+                </div>
+            )}
+
             {/* Main Row */}
             <div
-                className="grid grid-cols-[auto_50px_1fr_auto] lg:grid-cols-[auto_60px_1.5fr_1.2fr_1fr] gap-2 py-3 px-4 items-center cursor-pointer"
+                className="grid grid-cols-[50px_1fr_auto] lg:grid-cols-[60px_1.5fr_1.2fr_1fr] gap-2 py-3 px-4 items-center cursor-pointer"
                 onClick={handleRowClick}
             >
-                {/* Checkbox Column (Always present in grid to prevent jumping, but width goes to 0 if hidden) */}
-                <div className={`overflow-hidden transition-all duration-300 ease-spring ${isSelectionMode ? 'w-6 opacity-100 mr-2' : 'w-0 opacity-0 group-hover:w-6 group-hover:opacity-100 mr-0 group-hover:mr-2'}`}>
-                    <div
-                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-slate-300 bg-white'}`}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (onToggleSelect) onToggleSelect();
-                        }}
-                    >
-                        {isSelected && <span className="text-white text-xs font-bold">✓</span>}
-                    </div>
-                </div>
 
                 {/* Col 1: Time */}
                 <div className="text-center">
@@ -290,7 +276,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                 </div>
 
                 {/* Col 4: Amount & Installment Info (Right) */}
-                <div className="text-right flex flex-col items-end min-w-0">
+                <div className={`text-right flex flex-col items-end min-w-0 transition-transform duration-300 ease-spring ${isSelected ? '-translate-x-[70px]' : 'translate-x-0'}`}>
                     {/* V3 Dual Line Display for Transfers (Unified) */}
                     {isTransfer && ((toAsset) || (fromAsset && !toAsset)) ? (
                         <div className="flex flex-col items-end">
@@ -327,11 +313,65 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                         </p>
                     )}
                 </div>
+
+                {/* Desktop Slide-in Action Buttons (V5: Minimalist Action) */}
+                <div className={`hidden lg:flex absolute right-0 top-0 bottom-0 items-center px-4 transition-all duration-300 ease-spring ${isSelected ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}`}>
+                    <Button
+                        onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}
+                        variant="ghost"
+                        size="sm"
+                        className="w-10 h-10 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all transform active:scale-90"
+                    >
+                        <Pencil size={18} strokeWidth={2.5} />
+                    </Button>
+                </div>
             </div>
 
-            {/* Mobile Expanded Details */}
+            {/* Recurring Bill Setup Expansion (Premium UI) */}
+            {isCandidate && showCandidateSetup && candidateData && (
+                <div className="px-4 py-3 bg-amber-50/50 border-t border-amber-100 flex flex-col md:flex-row gap-3 items-start md:items-center justify-between animate-in slide-in-from-top-2 duration-300">
+                    <div className="flex gap-3 items-start">
+                        <div className="p-2 bg-amber-100/50 rounded-xl text-amber-500 shrink-0 mt-0.5">
+                            <Sparkles size={18} />
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium text-slate-900 tracking-tight">
+                                Recurring pattern detected
+                            </p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                                Avg. <strong>₩{candidateData.averageAmount.toLocaleString()}</strong> over {candidateData.occurrences} months
+                            </p>
+                        </div>
+                    </div>
+                    <div className="w-full md:w-auto flex gap-2">
+                        <Button
+                            onClick={(e) => { e.stopPropagation(); setShowCandidateSetup(false); }}
+                            variant="ghost"
+                            size="sm"
+                            className="flex-1 md:flex-none text-slate-500 hover:text-slate-700"
+                        >
+                            Dismiss
+                        </Button>
+                        <Button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (onRegisterRegular) onRegisterRegular(candidateData);
+                                setShowCandidateSetup(false);
+                            }}
+                            variant="primary"
+                            size="sm"
+                            className="flex-1 md:flex-none bg-slate-900 hover:bg-slate-800 border-transparent text-white gap-1.5 shadow-sm"
+                        >
+                            <PlusCircle size={14} />
+                            Add Bill
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Mobile Expanded Details (Fallback for context) */}
             {isExpanded && !isSelectionMode && (
-                <div className="lg:hidden px-4 pb-3 pt-0 bg-slate-50/30 animate-in slide-in-from-top-1">
+                <div className="px-4 pb-3 pt-0 bg-slate-50/30 animate-in slide-in-from-top-1 border-t border-slate-100/50">
                     <div className="flex flex-wrap gap-2 my-2">
                         {/* Mobile Expanded: Memo (Moved here) */}
                         {transaction.merchant && transaction.memo && (
@@ -356,8 +396,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                         )}
                     </div>
 
-
-
                     <div className="flex justify-end gap-2 pt-2 border-t border-slate-100/50">
                         <Button
                             onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}
@@ -366,16 +404,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                             className="rounded-xl text-xs font-bold shadow-sm h-auto py-1.5 bg-white border-slate-200"
                         >
                             Edit
-                        </Button>
-                        <Button
-                            onClick={(e) => { e.stopPropagation(); if (isConfirmingDelete) onDelete(transaction); else setIsConfirmingDelete(true); }}
-                            size="sm"
-                            className={`rounded-xl text-xs font-bold shadow-sm transition-colors h-auto py-1.5 ${isConfirmingDelete
-                                ? 'bg-rose-600 text-white hover:bg-rose-700'
-                                : 'bg-white border border-rose-100 text-rose-600 hover:bg-rose-50'
-                                }`}
-                        >
-                            {isConfirmingDelete ? 'Confirm Delete' : 'Delete'}
                         </Button>
                     </div>
                 </div>

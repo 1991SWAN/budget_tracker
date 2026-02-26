@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+// @version 2.6.4 (Stable - Restored Original Layout)
 import { Asset, TransactionType, CategoryItem } from '../types';
 import { Button } from './ui/Button';
 import {
@@ -10,7 +11,8 @@ import {
     TrendingDown,
     TrendingUp,
     ArrowLeftRight,
-    X
+    X,
+    Bell
 } from 'lucide-react';
 
 interface FilterBarProps {
@@ -28,6 +30,10 @@ interface FilterBarProps {
     onAssetsChange: (ids: string[]) => void;
     assets: Asset[];
     categories: CategoryItem[];
+    // Review Mode Extension for Lab
+    isReviewActive?: boolean;
+    onReviewToggle?: (active: boolean) => void;
+    reviewCount?: number;
 }
 
 const FilterBar: React.FC<FilterBarProps> = ({
@@ -37,7 +43,10 @@ const FilterBar: React.FC<FilterBarProps> = ({
     filterSubExpense, onSubExpenseChange,
     filterCategories, onCategoriesChange,
     filterAssets, onAssetsChange,
-    assets, categories
+    assets, categories,
+    isReviewActive = false,
+    onReviewToggle,
+    reviewCount = 0
 }) => {
     // Dropdown States
     const [activeDropdown, setActiveDropdown] = useState<'category' | 'asset' | 'date' | null>(null);
@@ -261,12 +270,12 @@ const FilterBar: React.FC<FilterBarProps> = ({
             {/* Row 2: Quick Access Chips */}
             <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
                 {[
-                    { id: 'ALL', label: 'All', icon: <LayoutGrid size={14} /> },
                     { id: TransactionType.EXPENSE, label: 'Expenses', icon: <TrendingDown size={14} /> },
                     { id: TransactionType.INCOME, label: 'Income', icon: <TrendingUp size={14} /> },
                     { id: TransactionType.TRANSFER, label: 'Transfers', icon: <ArrowLeftRight size={14} /> },
                 ].map((f) => {
                     const isActive = filterType === f.id;
+                    const isTransfer = f.id === TransactionType.TRANSFER;
                     let activeClass = 'bg-slate-900 text-white border-slate-900';
 
                     // Semantic colors for Active Chips
@@ -276,34 +285,46 @@ const FilterBar: React.FC<FilterBarProps> = ({
                     }
 
                     return (
-                        <div key={f.id} className="flex">
+                        <div key={f.id} className="flex items-center gap-1">
                             <button
-                                onClick={() => onTypeChange(f.id as any)}
+                                onClick={() => onTypeChange(isActive ? 'ALL' : f.id as any)}
                                 className={`
                                     flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border shadow-sm
                                     ${isActive
                                         ? activeClass
                                         : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}
-                                    ${isActive && f.id === TransactionType.EXPENSE ? 'rounded-r-none border-r-0 shadow-none' : ''}
                                 `}
                             >
                                 <span className="shrink-0">{f.icon}</span>
                                 <span>{f.label}</span>
                             </button>
 
+                            {/* Lab Specific Alert Button next to Transfers */}
+                            {isTransfer && onReviewToggle && (
+                                <button
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onReviewToggle(!isReviewActive);
+                                    }}
+                                    className="flex items-center justify-center w-8 h-8 rounded-full transition-all text-slate-400 hover:text-amber-500 hover:bg-amber-50"
+                                    title="Review Candidates"
+                                >
+                                    <Bell size={18} fill={isReviewActive ? "currentColor" : "none"} />
+                                </button>
+                            )}
+
                             {isActive && f.id === TransactionType.EXPENSE && (
-                                <div className="flex bg-rose-500 border border-rose-500 border-l-0 rounded-r-full pr-1 overflow-hidden items-center">
-                                    <div className="w-[1px] h-3 bg-white/30" />
+                                <div className="flex gap-0.5 items-center ml-1 bg-rose-50/50 p-0.5 rounded-full border border-rose-100">
                                     {[
-                                        { id: 'ALL', label: 'All' },
                                         { id: 'REGULAR', label: 'Regular' },
                                         { id: 'INSTALLMENT', label: 'Inst.' }
                                     ].map(sub => (
                                         <button
                                             key={sub.id}
-                                            onClick={() => onSubExpenseChange(sub.id as any)}
-                                            className={`px-2.5 py-1 text-[10px] font-bold rounded-full transition-colors whitespace-nowrap
-                                                ${filterSubExpense === sub.id ? 'bg-white text-rose-600 shadow-sm' : 'text-white/80 hover:text-white'}
+                                            onClick={() => onSubExpenseChange(filterSubExpense === sub.id ? 'ALL' : sub.id as any)}
+                                            className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all whitespace-nowrap
+                                                ${filterSubExpense === sub.id ? 'bg-rose-500 text-white shadow-md' : 'text-rose-400 hover:text-rose-600 hover:bg-rose-100/50'}
                                             `}
                                         >
                                             {sub.label}

@@ -185,7 +185,6 @@ export interface RecurringTransaction {
   dayOfMonth: number;
   category: Category;
   billType: BillType;
-  groupName?: string; // For custom grouping (e.g. "Housing", "Subscriptions")
 
   installmentDetails?: {
     startDate: string;
@@ -204,7 +203,7 @@ export interface SavingsGoal {
   deadline?: string;
 }
 
-export type View = 'dashboard' | 'transactions' | 'assets' | 'add' | 'analysis' | 'settings' | 'settings-categories';
+export type View = 'dashboard' | 'transactions' | 'assets' | 'add' | 'analysis' | 'settings' | 'settings-categories' | 'lab';
 
 export interface Budget {
   id: string;

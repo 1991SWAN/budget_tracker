@@ -35,7 +35,7 @@ export const useTransferReconciler = (
     const scanCandidates = useCallback(async () => {
         setIsScanning(true);
         try {
-            const { pairs, singles } = await SupabaseService.getReconciliationCandidates();
+            const { pairs, singles } = await SupabaseService.getReconciliationCandidates(1);
             console.log(`[TransferReconciler] Received from server: ${pairs?.length || 0} Pairs, ${singles?.length || 0} Singles`);
 
             // Further filter by ignoredIds in memory for immediate UI response

@@ -35,14 +35,12 @@ const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, onR
         category: Category;
         billType: BillType;
         dayOfMonth: number;
-        groupName: string;
     }>({
         name: '',
         amount: '',
         category: Category.UTILITIES,
         billType: BillType.SUBSCRIPTION,
-        dayOfMonth: 1,
-        groupName: ''
+        dayOfMonth: 1
     });
 
     const [paymentAssetId, setPaymentAssetId] = useState<string>('');
@@ -55,8 +53,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, onR
             amount: '',
             category: Category.UTILITIES,
             billType: BillType.SUBSCRIPTION,
-            dayOfMonth: 1,
-            groupName: ''
+            dayOfMonth: 1
         });
         setModalType('edit');
     };
@@ -68,8 +65,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, onR
             amount: bill.amount,
             category: bill.category,
             billType: bill.billType || BillType.SUBSCRIPTION,
-            dayOfMonth: bill.dayOfMonth,
-            groupName: bill.groupName || ''
+            dayOfMonth: bill.dayOfMonth
         });
         setModalType('edit');
     };
@@ -95,8 +91,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, onR
                 amount: Number(formData.amount),
                 dayOfMonth: Number(formData.dayOfMonth),
                 category: formData.category,
-                billType: formData.billType,
-                groupName: formData.groupName
+                billType: formData.billType
             });
         } else if (modalType === 'pay' && selectedBill) {
             onRecurringChange('pay', {
@@ -199,22 +194,14 @@ const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, onR
                             options={Object.values(BillType).map(t => ({ label: t, value: t }))}
                         />
                     </div>
-                    <div className="flex gap-4">
+                    <div className="w-1/2">
                         <Input
-                            label="Group"
-                            placeholder="e.g. Housing"
-                            value={formData.groupName}
-                            onChange={e => setFormData({ ...formData, groupName: e.target.value })}
+                            label="Day"
+                            type="number"
+                            min={1} max={31}
+                            value={formData.dayOfMonth}
+                            onChange={e => setFormData({ ...formData, dayOfMonth: Number(e.target.value) })}
                         />
-                        <div className="w-24">
-                            <Input
-                                label="Day"
-                                type="number"
-                                min={1} max={31}
-                                value={formData.dayOfMonth}
-                                onChange={e => setFormData({ ...formData, dayOfMonth: Number(e.target.value) })}
-                            />
-                        </div>
                     </div>
                 </div>
             </Dialog>

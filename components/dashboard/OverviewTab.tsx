@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Transaction, Asset, RecurringTransaction, TransactionType, AssetType } from '../../types';
+import { RegularCandidate } from '../../hooks/useRegularExpenseDetector';
 import TransactionItem from '../TransactionItem';
 import { FinanceCalculator } from '../../services/financeCalculator';
 import { Card } from '../ui/Card';
@@ -35,6 +36,9 @@ interface OverviewTabProps {
     onDeleteTransaction: (tx: Transaction) => void;
     onFilterChange: (filter: 'today' | 'week' | 'month') => void;
     activityFilter: 'today' | 'week' | 'month';
+    candidates?: RegularCandidate[];
+    candidateTxIds?: Set<string>;
+    onRegisterRegular?: (candidate: RegularCandidate) => void;
 }
 
 const BudgetStatusWidget = ({ transactions, assets }: { transactions: Transaction[], assets: Asset[] }) => {
@@ -125,7 +129,8 @@ const BudgetStatusWidget = ({ transactions, assets }: { transactions: Transactio
 const OverviewTab: React.FC<OverviewTabProps> = ({
     transactions, assets, recurring, monthlyBudget,
     onOpenBudgetModal, onNavigateToTransactions, onNavigateToAssets, onEditTransaction, onDeleteTransaction,
-    onFilterChange, activityFilter
+    onFilterChange, activityFilter,
+    candidates = [], candidateTxIds = new Set(), onRegisterRegular
 }) => {
     const { categories } = useCategoryManager();
     const currentMonth = new Date().toISOString().slice(0, 7);
@@ -507,6 +512,9 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
                                                     categories={categories}
                                                     onEdit={onEditTransaction}
                                                     onDelete={onDeleteTransaction}
+                                                    isCandidate={candidateTxIds.has(tx.id)}
+                                                    candidateData={candidateTxIds.has(tx.id) ? candidates.find(c => c.transactionIds.includes(tx.id)) : undefined}
+                                                    onRegisterRegular={onRegisterRegular}
                                                 />
                                             </div>
                                         ))}

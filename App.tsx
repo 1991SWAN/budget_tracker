@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { AppShell } from './components/layout/AppShell';
 import { useToast } from './contexts/ToastContext';
 import ErrorBoundary from "./components/ErrorBoundary";
 
 import { useTransactionSearch } from "./hooks/useTransactionSearch";
+import { useGlobalRegularExpenseDetector, RegularCandidate } from './hooks/useRegularExpenseDetector';
 
 import FilterBar from "./components/FilterBar";
 import TransactionList from "./components/TransactionList";
@@ -18,8 +20,6 @@ import { ImportWizardModal } from './components/import/ImportWizardModal';
 import Dashboard from './components/Dashboard';
 import AssetManager from './components/AssetManager';
 import SmartInput from './components/SmartInput';
-import { AppShell } from './components/layout/AppShell';
-import { TransferNotificationToast } from './components/ui/TransferNotificationToast';
 import { SettingsView } from './components/settings/SettingsView';
 
 import { CategorySettings } from './components/settings/CategorySettings';
@@ -59,6 +59,7 @@ const App: React.FC = () => {
   } = useAppData(user);
 
   // Modal Visibility State for Reconciliation (Restored)
+  const [isReviewActive, setIsReviewActive] = useState(false);
   const [showReconciliationModal, setShowReconciliationModal] = useState(false);
   const [showSmartInput, setShowSmartInput] = useState(false);
   const [isPennyChatOpen, setIsPennyChatOpen] = useState(false);
@@ -172,7 +173,8 @@ const App: React.FC = () => {
         expenseType: filterSubExpense,
         categories: filterCategories,
         assets: filterAssets,
-        dateRange
+        // When in Review mode, we ignore the global date filter to show all candidates
+        dateRange: isReviewActive ? null : dateRange
       });
     }, 300);
 
@@ -195,6 +197,24 @@ const App: React.FC = () => {
   } = useTransferReconciler(transactions, assets, categories, loadData);
 
   const [isReconciliationModalOpen, setIsReconciliationModalOpen] = useState(false);
+
+  // V5: Global Regular Expense Detector (Scans max 3 months for performance)
+  const { candidates: regularCandidates, candidateTxIds: regularCandidateTxIds } = useGlobalRegularExpenseDetector(user, recurring);
+
+  const handleRegisterRegular = (candidate: RegularCandidate) => {
+    const newItem = {
+      id: Date.now().toString(),
+      name: candidate.name,
+      amount: candidate.averageAmount, // Usually positive since expenses are negative, but let's be careful. If averageAmount is negative, we might want Math.abs
+      dayOfMonth: new Date(candidate.lastDate).getDate(),
+      category: Category.OTHER,
+      billType: BillType.SUBSCRIPTION,
+      groupName: 'Auto Detected'
+    };
+    SupabaseService.saveRecurring(newItem as RecurringTransaction);
+    setRecurring(prev => [...prev, newItem as RecurringTransaction]);
+    addToast('New regular bill added!', 'success');
+  };
 
 
 
@@ -460,7 +480,6 @@ const App: React.FC = () => {
       view={view}
       onNavigate={navigateTo}
       onImportClick={triggerImport}
-      onImportFile={handleImportFile}
       onQuickAddClick={() => setShowSmartInput(true)}
       onAddAsset={() => window.dispatchEvent(new CustomEvent('open-asset-form'))}
     >
@@ -545,15 +564,10 @@ const App: React.FC = () => {
           setModalType('bill');
           setSelectedItem(null);
           setFormData({ name: '', amount: '', dayOfMonth: 1, category: Category.UTILITIES, billType: BillType.SUBSCRIPTION, groupName: group });
-          // Optional: switch to transactions view if we want to show the modal there, but modal is global in App, so it opens over whatever view.
-          // However, user might expect to be in Transactions context.
-          // Given the design "Go to Transactions to add bills" inside the empty state message, 
-          // maybe we should switch view? 
-          // The empty state message says "Go to 'Transactions' to add bills."
-          // The button is shortcut. Let's just open modal, but maybe switch view to transactions so when they close they are there?
-          // The button says "+ Add Bill to {group}".
-          // Let's just open modal.
         }}
+        regularCandidates={regularCandidates}
+        regularCandidateTxIds={regularCandidateTxIds}
+        onRegisterRegular={handleRegisterRegular}
       />}
       {view === 'assets' && <AssetManager assets={assets} transactions={transactions} onAdd={async (a) => {
         await SupabaseService.saveAsset(a);
@@ -610,72 +624,72 @@ const App: React.FC = () => {
           }
         }}
       />}
-      {view === 'transactions' && <div className="space-y-4">
-        {/* ... existing transaction view code ... */}
-        <div className="flex flex-col gap-4">
-          {/* Header & Actions */}
-          {/* Header & Actions */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
-            <div>
-              <h1 className="text-3xl font-bold text-primary">Transactions</h1>
-              <p className="text-muted">Review and manage your financial history.</p>
+      {view === 'transactions' && (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
+              <div>
+                <h1 className="text-3xl font-bold text-primary">Transactions</h1>
+                <p className="text-muted">Review and manage your financial history.</p>
+              </div>
+              <div className="flex gap-2">
+                {dateRange && (
+                  <button onClick={() => setDateRange(null)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full text-xs font-bold hover:bg-slate-200">
+                    Clear Date
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex gap-2">
 
-              {dateRange && (
-                <button onClick={() => setDateRange(null)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full text-xs font-bold hover:bg-slate-200">
-                  Clear Date
-                </button>
-              )}
-            </div>
+            <FilterBar
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+              filterType={filterType}
+              onTypeChange={setFilterType}
+              filterSubExpense={filterSubExpense}
+              onSubExpenseChange={setFilterSubExpense}
+              filterCategories={filterCategories}
+              onCategoriesChange={setFilterCategories}
+              filterAssets={filterAssets}
+              onAssetsChange={setFilterAssets}
+              assets={assets}
+              categories={categories}
+              isReviewActive={isReviewActive}
+              onReviewToggle={() => setIsReconciliationModalOpen(true)}
+              reviewCount={transferCandidates.length + singleCandidates.length}
+            />
           </div>
 
-          {/* Integrated Filter Toolbar */}
-          <FilterBar
-            searchTerm={searchTerm}
-            onSearchChange={setSearchTerm}
-            dateRange={dateRange}
-            onDateRangeChange={setDateRange}
-            filterType={filterType}
-            onTypeChange={setFilterType}
-            filterSubExpense={filterSubExpense}
-            onSubExpenseChange={setFilterSubExpense}
-            filterCategories={filterCategories}
-            onCategoriesChange={setFilterCategories}
-            filterAssets={filterAssets}
-            onAssetsChange={setFilterAssets}
-            assets={assets}
-            categories={categories}
-          />
+          <ErrorBoundary>
+            <TransactionList
+              transactions={filteredTransactions}
+              assets={assets}
+              categories={categories}
+              onEdit={handleEditTransaction}
+              onDelete={handleDeleteTransaction}
+              onDeleteTransactions={handleDeleteTransactions}
+              searchTerm={searchTerm}
+              onLoadMore={fetchMoreTransactions}
+              hasMore={hasMoreTransactions}
+              isFetchingMore={isFetchingMore}
+              candidates={regularCandidates}
+              candidateTxIds={regularCandidateTxIds}
+              onRegisterRegular={handleRegisterRegular}
+            />
+          </ErrorBoundary>
         </div>
+      )}
 
-        {/* Transaction List */}
-        <ErrorBoundary>
-          <TransactionList
-            transactions={filteredTransactions}
-            assets={assets}
-            categories={categories}
-            onEdit={handleEditTransaction}
-            onDelete={handleDeleteTransaction}
-            onDeleteTransactions={handleDeleteTransactions}
-            searchTerm={searchTerm}
-            onLoadMore={fetchMoreTransactions}
-            hasMore={hasMoreTransactions}
-            isFetchingMore={isFetchingMore}
-          />
-        </ErrorBoundary>
-      </div>}
+
 
       {view === 'settings' && <SettingsView onNavigate={navigateTo} />}
 
       {view === 'settings-categories' && <CategorySettings onNavigate={navigateTo} />}
-      {view === 'settings-import' && <ImportSettings onNavigate={navigateTo} />}
+      {view === 'settings-import' && <ImportSettings onNavigate={navigateTo} onImportFile={handleImportFile} />}
 
-      {/* Global Transfer Notification Toast */}
-      <TransferNotificationToast
-        count={transferCandidates.length + singleCandidates.length}
-        onReview={() => setIsReconciliationModalOpen(true)}
-      />
+      {/* Global Transfer Notification Toast - Transactions View Only */}
       <PennyChat
         isOpen={isPennyChatOpen}
         onClose={() => setIsPennyChatOpen(false)}
@@ -689,4 +703,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-// Force Re-bundle

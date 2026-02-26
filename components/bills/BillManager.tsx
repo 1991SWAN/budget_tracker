@@ -16,54 +16,30 @@ interface BillManagerProps {
 }
 
 const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurringChange, onEditBill, onPayBill, onAddBill }) => {
-    // --- Local State for Groups ---
-    const [billGroup, setBillGroup] = useState<string>('All');
-    const [billGroups, setBillGroups] = useState<string[]>(() => {
-        try {
-            const saved = localStorage.getItem('smartpenny_custom_groups');
-            const parsed = saved ? JSON.parse(saved) : [];
-            return Array.isArray(parsed) ? parsed : [];
-        } catch (e) {
-            return [];
-        }
-    });
-    const [isAddingGroup, setIsAddingGroup] = useState(false);
-    const [newGroupInput, setNewGroupInput] = useState('');
-
-    // --- Effects ---
-    useEffect(() => {
-        localStorage.setItem('smartpenny_custom_groups', JSON.stringify(billGroups));
-    }, [billGroups]);
-
-    // --- Handlers: Groups ---
-    const handleAddGroup = () => {
-        if (newGroupInput.trim() && !billGroups.includes(newGroupInput.trim())) {
-            const newGroup = newGroupInput.trim();
-            setBillGroups([...billGroups, newGroup]);
-            setBillGroup(newGroup);
-            setNewGroupInput('');
-            setIsAddingGroup(false);
-        }
-    };
-
-    const handleDeleteGroup = (groupToDelete: string) => {
-        const updatedGroups = billGroups.filter(g => g !== groupToDelete);
-        setBillGroups(updatedGroups);
-        if (billGroup === groupToDelete) setBillGroup('All');
-    };
+    // --- Local State for Filter ---
+    const [billFilter, setBillFilter] = useState<BillType | 'All'>('All');
 
     // --- Render Helpers ---
     const today = new Date();
+
+    const uniquePresentTypes = useMemo(() => {
+        const types = new Set<BillType>();
+        recurring.forEach(bill => {
+            if (bill.billType) types.add(bill.billType);
+        });
+        return Array.from(types);
+    }, [recurring]);
+
     const sortedBills = useMemo(() => {
         return recurring
-            .filter(bill => billGroup === 'All' || (bill.groupName || 'Default') === billGroup)
+            .filter(bill => billFilter === 'All' || bill.billType === billFilter)
             .sort((a, b) => {
                 const aDiff = a.dayOfMonth - today.getDate();
                 const bDiff = b.dayOfMonth - today.getDate();
                 if ((aDiff >= 0 && bDiff >= 0) || (aDiff < 0 && bDiff < 0)) return a.dayOfMonth - b.dayOfMonth;
                 return aDiff >= 0 ? -1 : 1; // Upcoming first
             });
-    }, [recurring, billGroup, today]);
+    }, [recurring, billFilter, today]);
 
     return (
         <Card className="flex flex-col h-full bg-surface" padding="lg">
@@ -79,52 +55,23 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
                 </Button>
             </div>
 
-            {/* Group Tabs */}
-            <div className="flex space-x-2 mb-4 overflow-x-auto pb-2 scrollbar-hide items-center relative">
-                {['All', ...billGroups].map(group => (
-                    <button
-                        key={group}
-                        onClick={() => setBillGroup(group)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 ${billGroup === group
-                            ? 'bg-primary text-white shadow-md'
-                            : 'bg-slate-100 text-muted hover:bg-slate-200'
-                            }`}
-                    >
-                        {group}
-                        {group !== 'All' && billGroup === group && (
-                            <span
-                                onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group); }}
-                                className="ml-1 hover:bg-white/20 rounded-full w-4 h-4 flex items-center justify-center transition-colors"
-                            >
-                                <X size={10} />
-                            </span>
-                        )}
-                    </button>
-                ))}
-
-                <div className="relative">
-                    <button
-                        onClick={() => setIsAddingGroup(!isAddingGroup)}
-                        className="px-2 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center w-8 h-8 transition-all"
-                    >
-                        <Plus size={16} />
-                    </button>
-                    {isAddingGroup && (
-                        <div className="absolute top-0 left-full ml-2 bg-white p-2 rounded-xl shadow-xl border border-slate-100 flex items-center gap-2 z-10 w-48 animate-in fade-in zoom-in duration-200 origin-left">
-                            <input
-                                type="text"
-                                autoFocus
-                                placeholder="Group Name"
-                                value={newGroupInput}
-                                onChange={(e) => setNewGroupInput(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') handleAddGroup(); if (e.key === 'Escape') setIsAddingGroup(false); }}
-                                className="w-full text-xs p-1.5 border border-slate-200 rounded-lg outline-none focus:border-indigo-500"
-                            />
-                            <Button onClick={handleAddGroup} size="sm">Add</Button>
-                        </div>
-                    )}
+            {/* Type Filter Tabs */}
+            {uniquePresentTypes.length > 0 && (
+                <div className="flex space-x-2 mb-4 overflow-x-auto pb-2 scrollbar-hide items-center relative">
+                    {['All', ...uniquePresentTypes].map(type => (
+                        <button
+                            key={type}
+                            onClick={() => setBillFilter(type as BillType | 'All')}
+                            className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 ${billFilter === type
+                                ? 'bg-primary text-white shadow-md'
+                                : 'bg-slate-100 text-muted hover:bg-slate-200'
+                                }`}
+                        >
+                            {type}
+                        </button>
+                    ))}
                 </div>
-            </div>
+            )}
 
             {/* Bill List */}
             <div className="space-y-3 overflow-y-auto pr-2 scrollbar-thin flex-1 min-h-0">
@@ -145,7 +92,7 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
                                     </div>
                                     <div>
                                         <p className="font-semibold text-primary">{bill.name}</p>
-                                        <p className="text-[10px] text-muted">{bill.groupName || 'Default'} • {bill.category}</p>
+                                        <p className="text-[10px] text-muted">{bill.category}</p>
                                     </div>
                                 </div>
                                 <div className="text-right flex flex-col items-end gap-1">
