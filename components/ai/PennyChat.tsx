@@ -53,7 +53,7 @@ export const PennyChat: React.FC<PennyChatProps> = ({
         {
             id: 'welcome',
             role: 'assistant',
-            content: '안녕하세요! 저는 Penny입니다. 귀하의 지출 내역을 기반으로 분석을 도와드리거나, 내역을 직접 수정해 드릴 수 있어요. 어떤 도움이 필요하신가요?'
+            content: "Hello! I'm Penny. I can help you analyze your spending habits or edit transactions directly. How can I help you today?"
         }
     ]);
     const [isLoading, setIsLoading] = useState(false);
@@ -242,20 +242,20 @@ export const PennyChat: React.FC<PennyChatProps> = ({
                                                 {/* Action Details Preview */}
                                                 <div className="text-xs space-y-2 mb-4">
                                                     {message.action.type === 'DELETE' && (
-                                                        <p className="text-slate-600">트랜잭션을 데이터베이스에서 영구적으로 삭제합니다.</p>
+                                                        <p className="text-slate-600">Permanently delete this transaction from the database.</p>
                                                     )}
                                                     {message.action.type === 'UPDATE' && (
                                                         <div className="space-y-1">
                                                             {message.action.payload.category_id && (
                                                                 <div className="flex justify-between">
-                                                                    <span className="text-slate-400">카테고리:</span>
+                                                                    <span className="text-slate-400">Category:</span>
                                                                     <span className="font-bold text-blue-600">{categories.find(c => c.id === message.action?.payload.category_id)?.name || 'Unknown'}</span>
                                                                 </div>
                                                             )}
                                                             {message.action.payload.amount && (
                                                                 <div className="flex justify-between">
-                                                                    <span className="text-slate-400">금액:</span>
-                                                                    <span className="font-bold text-rose-600">{message.action.payload.amount.toLocaleString()}원</span>
+                                                                    <span className="text-slate-400">Amount:</span>
+                                                                    <span className="font-bold text-rose-600">₩{message.action.payload.amount.toLocaleString()}</span>
                                                                 </div>
                                                             )}
                                                         </div>
@@ -263,12 +263,12 @@ export const PennyChat: React.FC<PennyChatProps> = ({
                                                     {message.action.type === 'CREATE' && (
                                                         <div className="space-y-1">
                                                             <div className="flex justify-between">
-                                                                <span className="text-slate-400">내용:</span>
+                                                                <span className="text-slate-400">Description:</span>
                                                                 <span className="font-bold">{message.action.payload.memo || message.action.payload.merchant}</span>
                                                             </div>
                                                             <div className="flex justify-between">
-                                                                <span className="text-slate-400">금액:</span>
-                                                                <span className="font-bold text-rose-600">{message.action.payload.amount.toLocaleString()}원</span>
+                                                                <span className="text-slate-400">Amount:</span>
+                                                                <span className="font-bold text-rose-600">₩{message.action.payload.amount.toLocaleString()}</span>
                                                             </div>
                                                         </div>
                                                     )}
@@ -281,20 +281,20 @@ export const PennyChat: React.FC<PennyChatProps> = ({
                                                             className="flex-1 h-9 text-xs"
                                                             onClick={() => handleCancelAction(message.id)}
                                                         >
-                                                            취소
+                                                            Cancel
                                                         </Button>
                                                         <Button
                                                             variant="primary"
                                                             className="flex-1 h-9 text-xs gap-1.5"
                                                             onClick={() => handleConfirmAction(message.id, message.action)}
                                                         >
-                                                            <Check size={14} /> 확인
+                                                            <Check size={14} /> Confirm
                                                         </Button>
                                                     </div>
                                                 )}
                                                 {message.action.status === 'confirmed' && (
                                                     <div className="flex items-center justify-center gap-2 py-1 text-emerald-600 font-bold text-xs bg-emerald-50 rounded-lg border border-emerald-100">
-                                                        <Check size={14} /> 완료됨
+                                                        <Check size={14} /> Completed
                                                     </div>
                                                 )}
                                             </div>
@@ -306,7 +306,7 @@ export const PennyChat: React.FC<PennyChatProps> = ({
                                 <div className="flex items-start gap-2 animate-in fade-in">
                                     <div className="p-3 bg-white rounded-2xl rounded-tl-none border border-slate-100 shadow-sm flex items-center gap-3">
                                         <RefreshCw size={16} className="text-primary animate-spin" />
-                                        <span className="text-sm font-bold text-slate-400">Penny가 분석 중...</span>
+                                        <span className="text-sm font-bold text-slate-400">Penny is analyzing...</span>
                                     </div>
                                 </div>
                             )}
@@ -324,7 +324,7 @@ export const PennyChat: React.FC<PennyChatProps> = ({
                                             handleSend();
                                         }
                                     }}
-                                    placeholder="무엇이든 물어보세요..."
+                                    placeholder="Ask me anything..."
                                     className="flex-1 bg-transparent border-none outline-none text-sm font-bold text-slate-700 placeholder:text-slate-400 resize-none h-10 py-2 scrollbar-hide"
                                 />
                                 <button

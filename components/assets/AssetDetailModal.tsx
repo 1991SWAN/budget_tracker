@@ -217,8 +217,8 @@ export const AssetDetailModal: React.FC<{
                                                 </div>
                                                 <div className="text-right flex flex-col items-end">
                                                     <p className="font-bold text-destructive">-{tx.amount.toLocaleString()}</p>
-                                                    <p className="text-[11px] font-bold text-slate-500 mb-1">(월 {Math.round(tx.amount / tx.installment.totalMonths).toLocaleString()})</p>
-                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${tx.installment.isInterestFree ? 'bg-emerald-50 text-secondary border-emerald-100' : 'bg-rose-50 text-destructive border-rose-100'}`}>{tx.installment.isInterestFree ? '무이자' : '이자'}</span>
+                                                    <p className="text-[11px] font-bold text-slate-500 mb-1">({Math.round(tx.amount / tx.installment.totalMonths).toLocaleString()}/mo)</p>
+                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${tx.installment.isInterestFree ? 'bg-emerald-50 text-secondary border-emerald-100' : 'bg-rose-50 text-destructive border-rose-100'}`}>{tx.installment.isInterestFree ? 'Interest-free' : 'Interest'}</span>
                                                 </div>
                                             </div>
                                             <div className="mt-3">

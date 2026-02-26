@@ -28,7 +28,7 @@ export class ExportService {
             const cat = categories.find(c => c.id === id);
             if (cat) return cat.name;
             // Fallback: If ID is actually a legacy name or enum
-            return id === 'Other' ? '기타' : id;
+            return id === 'Other' ? 'Other' : id;
         };
 
         // --- Helper: Memo Parser (@Merchant #Tag) ---
@@ -69,21 +69,21 @@ export class ExportService {
             // Installment Formatter
             let installmentStr = '';
             if (t.installment && t.installment.totalMonths > 1) {
-                installmentStr = `${t.installment.totalMonths}개월`;
-                if (t.installment.currentMonth) installmentStr += ` (${t.installment.currentMonth}회차)`;
+                installmentStr = `${t.installment.totalMonths} mos`;
+                if (t.installment.currentMonth) installmentStr += ` (${t.installment.currentMonth}/${t.installment.totalMonths})`;
             }
 
             return {
-                날짜: t.date,
-                시간: timeStr,
-                자산: getAssetName(t.assetId),
-                유형: t.type === 'INCOME' ? '수입' : t.type === 'EXPENSE' ? '지출' : '이체',
-                금액: t.amount,
-                카테고리: getCategoryName(t.category),
-                내용: content || (merchant ? '' : '내용 없음'), // If merchant exists, main content might be empty
-                가맹점: t.merchant || merchant, // Database col OR Parsed
-                할부: installmentStr,
-                태그: tags,
+                Date: t.date,
+                Time: timeStr,
+                Asset: getAssetName(t.assetId),
+                Type: t.type === 'INCOME' ? 'Income' : t.type === 'EXPENSE' ? 'Expense' : 'Transfer',
+                Amount: t.amount,
+                Category: getCategoryName(t.category),
+                Description: content || (merchant ? '' : 'No description'), // If merchant exists, main content might be empty
+                Merchant: t.merchant || merchant, // Database col OR Parsed
+                Installment: installmentStr,
+                Tags: tags,
                 // Hidden/Technical Columns (Optional, maybe at the end)
                 _AssetID: t.assetId,
                 _OriginalMemo: t.memo
@@ -107,42 +107,42 @@ export class ExportService {
         ];
         txSheet['!cols'] = wscols;
 
-        XLSX.utils.book_append_sheet(workbook, txSheet, '거래내역');
+        XLSX.utils.book_append_sheet(workbook, txSheet, 'Transactions');
 
         // 2. Assets Sheet
         const assetData = assets.map(a => ({
-            자산명: a.name,
-            금융사: a.institution || '',
-            유형: a.type,
-            잔액: a.balance,
-            통화: a.currency,
-            계좌번호: a.accountNumber || ''
+            'Asset Name': a.name,
+            Institution: a.institution || '',
+            Type: a.type,
+            Balance: a.balance,
+            Currency: a.currency,
+            'Account Number': a.accountNumber || ''
         }));
         const assetSheet = XLSX.utils.json_to_sheet(assetData);
         assetSheet['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 8 }, { wch: 20 }];
-        XLSX.utils.book_append_sheet(workbook, assetSheet, '자산현황');
+        XLSX.utils.book_append_sheet(workbook, assetSheet, 'Asset Status');
 
         // 3. Recurring Bills Sheet
         const recurringData = recurring.map(r => ({
-            이름: r.name,
-            금액: r.amount,
-            결제일: `매월 ${r.dayOfMonth}일`,
-            카테고리: getCategoryName(r.category), // Use helper here too
-            유형: r.billType
+            Name: r.name,
+            Amount: r.amount,
+            'Payment Day': `Every ${r.dayOfMonth}th`,
+            Category: getCategoryName(r.category), // Use helper here too
+            Type: r.billType
         }));
         const recurringSheet = XLSX.utils.json_to_sheet(recurringData);
-        XLSX.utils.book_append_sheet(workbook, recurringSheet, '고정지출');
+        XLSX.utils.book_append_sheet(workbook, recurringSheet, 'Recurring Bills');
 
         // 4. Goals Sheet
         const goalData = goals.map(g => ({
-            목표명: g.name,
-            목표금액: g.targetAmount,
-            현재금액: g.currentAmount,
-            달성률: g.targetAmount > 0 ? `${((g.currentAmount / g.targetAmount) * 100).toFixed(1)}%` : '0%',
-            마감일: g.deadline || ''
+            'Goal Name': g.name,
+            'Target Amount': g.targetAmount,
+            'Current Amount': g.currentAmount,
+            Progress: g.targetAmount > 0 ? `${((g.currentAmount / g.targetAmount) * 100).toFixed(1)}%` : '0%',
+            Deadline: g.deadline || ''
         }));
         const goalSheet = XLSX.utils.json_to_sheet(goalData);
-        XLSX.utils.book_append_sheet(workbook, goalSheet, '저축목표');
+        XLSX.utils.book_append_sheet(workbook, goalSheet, 'Savings Goals');
 
         // Generate filename with timestamp
         const dateStr = new Date().toISOString().split('T')[0];

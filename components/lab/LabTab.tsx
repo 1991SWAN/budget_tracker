@@ -155,7 +155,7 @@ const LabTab: React.FC<LabTabProps> = ({
                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-8 fade-in duration-300">
                     <div className="bg-slate-900 text-white pl-5 pr-3 py-3 rounded-2xl shadow-xl flex items-center gap-5">
                         <span className="text-sm font-medium whitespace-nowrap">
-                            {selectedTxIds.size}개 항목 선택됨
+                            {selectedTxIds.size} items selected
                         </span>
                         <div className="flex items-center gap-3 w-[1px] h-6 bg-slate-700/50 mx-1"></div>
                         <div className="flex items-center gap-2">

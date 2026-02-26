@@ -267,7 +267,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                     </span>
                     {transaction.installment && (
                         <span className="px-2 py-0.5 bg-blue-50/50 text-blue-600 rounded-md text-[10px] font-bold whitespace-nowrap flex items-center h-fit shrink-0">
-                            {transaction.installment.totalMonths}개월
+                            {transaction.installment.totalMonths} mos
                         </span>
                     )}
                     <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap px-1 shrink-0 truncate max-w-[120px]">
@@ -309,7 +309,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                     {/* Installment Monthly Amount (Visible on Mobile & Desktop) */}
                     {transaction.installment && transaction.installment.totalMonths > 1 && (
                         <p className="text-[10px] font-medium text-slate-400 mt-0.5">
-                            (월 {Math.round(transaction.amount / transaction.installment.totalMonths).toLocaleString()})
+                            ({Math.round(transaction.amount / transaction.installment.totalMonths).toLocaleString()}/mo)
                         </p>
                     )}
                 </div>
@@ -385,11 +385,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                         {transaction.installment && (
                             <>
                                 <span className="px-2 py-1 h-fit bg-blue-50 text-blue-600 border border-blue-100 rounded-lg text-[10px] font-bold flex items-center">
-                                    {transaction.installment.totalMonths}개월 할부
+                                    {transaction.installment.totalMonths} mo installment
                                 </span>
                                 {transaction.installment.isInterestFree && (
                                     <span className="px-2 py-1 h-fit bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg text-[10px] font-bold flex items-center">
-                                        무이자
+                                        Interest-free
                                     </span>
                                 )}
                             </>

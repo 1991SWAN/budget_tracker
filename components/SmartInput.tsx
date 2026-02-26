@@ -323,9 +323,9 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     } catch (err: any) {
       const isAIUnavailable = err.message?.includes('503') || err.message?.includes('UNAVAILABLE');
       if (isAIUnavailable) {
-        setError("현재 AI 사용량이 많아 처리가 지연되고 있습니다. 잠시 후 다시 시도해 주세요.");
+        setError("AI is currently overloaded. Please try again in a moment.");
       } else {
-        setError(err.message || "영수증 분석에 실패했습니다.");
+        setError(err.message || "Failed to analyze receipt.");
       }
     } finally {
       setLoading(false);
@@ -648,14 +648,14 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                   <RefreshCw size={20} />
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-blue-900 leading-tight">연동 거래 금액 동기화</h4>
-                  <p className="text-[10px] font-bold text-blue-600 uppercase tracking-tighter">Sync Linked Transaction</p>
+                  <h4 className="text-sm font-black text-blue-900 leading-tight">Sync Linked Transactions</h4>
+                  <p className="text-[10px] font-bold text-blue-600 uppercase tracking-tighter">Amount Synchronization</p>
                 </div>
               </div>
 
               <p className="text-xs text-blue-800 mb-4 leading-relaxed">
-                이 거래는 <span className="font-black underline mx-0.5">{syncConfirmData.linkedAssetName}</span>의 내역과 연결되어 있습니다.<br />
-                상대 거래의 금액도 <span className="font-black text-blue-600 bg-white px-1 rounded mx-0.5">₩{syncConfirmData.newAmount.toLocaleString()}</span>으로 함께 변경하시겠습니까?
+                This transaction is linked with <span className="font-black underline mx-0.5">{syncConfirmData.linkedAssetName}</span>.<br />
+                Would you like to sync the amount to <span className="font-black text-blue-600 bg-white px-1 rounded mx-0.5">₩{syncConfirmData.newAmount.toLocaleString()}</span> as well?
               </p>
 
               <div className="flex gap-2">
@@ -663,7 +663,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                   onClick={() => handleManualSubmit()} // Keep state as is, triggers dual update
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white border-none h-10 text-xs font-black shadow-lg shadow-blue-200"
                 >
-                  함께 수정
+                  Update Both
                 </Button>
                 <Button
                   onClick={() => {
@@ -688,7 +688,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                   variant="ghost"
                   className="flex-1 text-slate-500 h-10 text-xs font-bold"
                 >
-                  현재만 수정
+                  Update Only This
                 </Button>
               </div>
             </div>

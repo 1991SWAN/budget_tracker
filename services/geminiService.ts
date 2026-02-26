@@ -114,8 +114,7 @@ export const GeminiService = {
             Available Assets:
             ${assetContext}
             
-            Special Instructions for Transfers:
-            If the text describes a transfer (e.g., "A에서 B로 이체", "Transfer from A to B"), 
+            If the text describes a transfer (e.g., "Transfer from A to B"), 
             identify both the source account ('asset_id') and the destination account ('to_asset_id') from the list.
             
             Current Date Context: ${new Date().toISOString().split('T')[0]}
@@ -232,15 +231,14 @@ export const GeminiService = {
             
             INSTRUCTIONS:
             1. ANALYZE: Understand if the user is asking a question (e.g., "How much did I spend?") or requesting an action (e.g., "Delete my last Starbucks purchase", "Move yesterday's lunch to 'Education' category").
-            2. RESPOND: Provide a concise, helpful answer in Korean (since the app is Korean-focused). Use a friendly tone.
+            2. RESPOND: Provide a concise, helpful answer in English (since the app's primary language is English). Use a friendly tone.
             3. ACT: If an action is requested:
                - DELETE: Identify the correct transaction ID.
                - UPDATE: Identify transaction ID and fields to change (category_id, amount, etc.).
                - CREATE: Extract amount, date, category_id, asset_id.
             
-            RESPONSE FORMAT (JSON ONLY):
             {
-              "answer": "A friendly Korean response explaining what you found or what you're about to do.",
+              "answer": "A friendly English response explaining what you found or what you're about to do.",
               "action": {
                 "type": "CREATE" | "UPDATE" | "DELETE" | "NONE",
                 "payload": {
@@ -288,10 +286,10 @@ export const GeminiService = {
         }
       });
 
-      return response.text ? JSON.parse(response.text) : { answer: "죄송해요, 이해하지 못했어요.", action: { type: "NONE" } };
+      return response.text ? JSON.parse(response.text) : { answer: "I'm sorry, I didn't understand that.", action: { type: "NONE" } };
     } catch (error) {
       console.error("[Gemini] Penny Request Error:", error);
-      return { answer: "분석 중 오류가 발생했습니다.", action: { type: "NONE" } };
+      return { answer: "An error occurred during analysis.", action: { type: "NONE" } };
     }
   }
 };
