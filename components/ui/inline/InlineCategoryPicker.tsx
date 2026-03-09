@@ -55,7 +55,7 @@ export const InlineCategoryPicker: React.FC<InlineCategoryPickerProps> = ({
                 className={`group flex items-center gap-1.5 min-h-[32px] px-2 py-1 rounded-md cursor-pointer hover:bg-slate-100/70 transition-colors w-full h-full`}
                 title="Click to change category"
             >
-                <div className={`p-1.5 rounded-lg ${selectedOption?.color || 'bg-slate-100'} bg-opacity-20 flex shrink-0`}>
+                <div className="flex shrink-0">
                     <span className="text-xs">{selectedOption?.emoji || '🏷️'}</span>
                 </div>
                 <span className={`text-xs font-semibold truncate ${displayColor}`}>

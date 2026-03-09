@@ -279,6 +279,15 @@ const App: React.FC = () => {
     setEditingTransaction(null);
   };
 
+  const handleInlineUpdate = (updatedTx: Transaction) => {
+    const oldTx = transactions.find(t => t.id === updatedTx.id);
+    if (oldTx) {
+      handleUpdateTransaction(oldTx, updatedTx);
+    } else {
+      handleUpdateTransactions([updatedTx]);
+    }
+  };
+
   // --- Import Handlers ---
   const triggerImport = () => {
     // Set default asset ID if not already set or invalid
@@ -555,7 +564,8 @@ const App: React.FC = () => {
         onRecurringChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteRecurring(item.id); setRecurring(prev => prev.filter(r => r.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveRecurring(newItem); setRecurring(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveRecurring(item); setRecurring(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r)); } else if (action === 'pay') { handleAddTransaction({ id: 'bp-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.EXPENSE, category: item.category, memo: `Bill Pay: ${item.name}`, assetId: item.assetId, emoji: '⚡' }); } }}
         onGoalChange={(action, item) => { if (action === 'delete' && item.id) { SupabaseService.deleteGoal(item.id); setGoals(prev => prev.filter(g => g.id !== item.id)); } else if (action === 'add') { const newItem = { ...item, id: Date.now().toString() }; SupabaseService.saveGoal(newItem); setGoals(prev => [...prev, newItem]); } else if (action === 'update') { SupabaseService.saveGoal(item); setGoals(prev => prev.map(g => g.id === item.id ? { ...g, ...item } : g)); } else if (action === 'contribute') { const updated = { ...item, currentAmount: item.currentAmount + item.amount }; SupabaseService.saveGoal(updated); setGoals(prev => prev.map(g => g.id === item.id ? updated : g)); handleAddTransaction({ id: 'gc-' + Date.now(), date: new Date().toISOString().split('T')[0], amount: item.amount, type: TransactionType.TRANSFER, category: Category.INVESTMENT, memo: `Goal: ${item.name}`, assetId: item.assetId, toAssetId: item.toAssetId, emoji: '💰' }); } }}
         onAddTransaction={handleAddTransaction}
-        onEditTransaction={(tx) => { setEditingTransaction(tx); setShowSmartInput(true); }} // Re-use smart input for editing
+        onEditTransaction={handleEditTransaction}
+        onInlineEdit={handleInlineUpdate}
         onDeleteTransaction={handleDeleteTransaction}
         monthlyBudget={monthlyBudget}
         onBudgetChange={handleBudgetChange}
@@ -668,6 +678,7 @@ const App: React.FC = () => {
               assets={assets}
               categories={categories}
               onEdit={handleEditTransaction}
+              onInlineEdit={handleInlineUpdate}
               onDelete={handleDeleteTransaction}
               onDeleteTransactions={handleDeleteTransactions}
               searchTerm={searchTerm}
@@ -677,6 +688,7 @@ const App: React.FC = () => {
               candidates={regularCandidates}
               candidateTxIds={regularCandidateTxIds}
               onRegisterRegular={handleRegisterRegular}
+              recurring={recurring}
             />
           </ErrorBoundary>
         </div>

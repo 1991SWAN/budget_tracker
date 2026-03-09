@@ -139,8 +139,10 @@ export interface AssetOpeningBalance {
 // Dictionary for Tag Autocomplete
 export interface Tag {
   id: string;
+  user_id: string; // Owner of the tag
   name: string;
   usage_count: number;
+  color?: string; // e.g. 'bg-blue-100' or hex
 }
 
 export interface Transaction {
@@ -158,7 +160,8 @@ export interface Transaction {
   linkedTransactionId?: string;
   linkedTransactionSourceAssetId?: string; // New: For rendering "From Asset" on Target Side
   originalText?: string;
-  merchant?: string; // Parsed Merchant Name
+  merchant?: string; // Parsed Merchant Name (Stored in column)
+  tags?: (string | Tag)[];   // Associated Tag Names or Objects
 
   installment?: {
     totalMonths: number;

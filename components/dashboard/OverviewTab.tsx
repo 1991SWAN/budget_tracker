@@ -33,6 +33,7 @@ interface OverviewTabProps {
     onNavigateToAssets: () => void;
     onNavigateToWeb?: () => void;
     onEditTransaction: (tx: Transaction) => void;
+    onInlineEdit?: (tx: Transaction) => void;
     onDeleteTransaction: (tx: Transaction) => void;
     onFilterChange: (filter: 'today' | 'week' | 'month') => void;
     activityFilter: 'today' | 'week' | 'month';
@@ -130,7 +131,8 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
     transactions, assets, recurring, monthlyBudget,
     onOpenBudgetModal, onNavigateToTransactions, onNavigateToAssets, onEditTransaction, onDeleteTransaction,
     onFilterChange, activityFilter,
-    candidates = [], candidateTxIds = new Set(), onRegisterRegular
+    candidates = [], candidateTxIds = new Set(), onRegisterRegular,
+    onInlineEdit
 }) => {
     const { categories } = useCategoryManager();
     const currentMonth = new Date().toISOString().slice(0, 7);
@@ -511,10 +513,13 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
                                                     toAsset={tx.toAssetId ? assets.find(a => a.id === tx.toAssetId) : undefined}
                                                     categories={categories}
                                                     onEdit={onEditTransaction}
+                                                    onInlineEdit={onInlineEdit}
                                                     onDelete={onDeleteTransaction}
                                                     isCandidate={candidateTxIds.has(tx.id)}
                                                     candidateData={candidateTxIds.has(tx.id) ? candidates.find(c => c.transactionIds.includes(tx.id)) : undefined}
                                                     onRegisterRegular={onRegisterRegular}
+                                                    recurring={recurring}
+                                                    assets={assets}
                                                 />
                                             </div>
                                         ))}

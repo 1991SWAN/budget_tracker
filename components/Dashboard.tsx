@@ -17,6 +17,7 @@ interface DashboardProps {
   onGoalChange: (action: 'add' | 'update' | 'delete' | 'contribute', item: any) => void;
   onAddTransaction: (transaction: Transaction) => void;
   onEditTransaction: (transaction: Transaction) => void;
+  onInlineEdit?: (transaction: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
   monthlyBudget: number;
   onBudgetChange: (amount: number) => void;
@@ -33,7 +34,7 @@ type TabUser = 'overview' | 'trends' | 'planning' | 'lab';
 
 const Dashboard: React.FC<DashboardProps> = ({
   transactions, assets, categories, recurring, goals,
-  onRecurringChange, onGoalChange, onEditTransaction, onDeleteTransaction,
+  onRecurringChange, onGoalChange, onEditTransaction, onInlineEdit, onDeleteTransaction,
   monthlyBudget, onBudgetChange, onNavigateToTransactions,
   regularCandidates = [], regularCandidateTxIds = new Set(), onRegisterRegular
 }) => {
@@ -100,6 +101,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             onNavigateToTransactions={() => onNavigateToTransactions()}
             onNavigateToAssets={() => { /* No-op or implementation needed if switching views */ }}
             onEditTransaction={onEditTransaction}
+            onInlineEdit={onInlineEdit}
             onDeleteTransaction={(tx) => onDeleteTransaction(tx.id)}
             activityFilter={activityFilter}
             onFilterChange={setActivityFilter}
@@ -136,6 +138,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             recurring={recurring}
             onRecurringChange={onRecurringChange}
             onEditTransaction={onEditTransaction}
+            onInlineEdit={onInlineEdit}
           />
         )}
       </div>

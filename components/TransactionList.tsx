@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { GroupedVirtuoso } from 'react-virtuoso';
-import { Transaction, Asset, CategoryItem } from '../types';
+import { Transaction, Asset, CategoryItem, RecurringTransaction } from '../types';
 import TransactionItem from './TransactionItem';
 import { EmptyState } from './ui/EmptyState';
 import { Button } from './ui/Button';
@@ -17,6 +17,8 @@ interface TransactionListProps {
     onLoadMore?: () => void;
     hasMore?: boolean;
     isFetchingMore?: boolean;
+    onInlineEdit?: (tx: Transaction) => void;
+    recurring?: RecurringTransaction[];
 }
 
 // Helper to format Human Readable Date Labels
@@ -55,7 +57,9 @@ const TransactionList: React.FC<TransactionListProps> = ({
     isFetchingMore,
     candidates = [],
     candidateTxIds = new Set(),
-    onRegisterRegular
+    onRegisterRegular,
+    onInlineEdit,
+    recurring = []
 }) => {
     // Selection State
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -193,8 +197,10 @@ const TransactionList: React.FC<TransactionListProps> = ({
         presentTxIds,
         candidates,
         candidateTxIds,
-        onRegisterRegular
-    }), [categories, assets, onEdit, onDelete, selectedIds, isSelectionMode, handleToggleSelection, handleLongPress, presentTxIds, candidates, candidateTxIds, onRegisterRegular]);
+        onRegisterRegular,
+        onInlineEdit,
+        recurring
+    }), [categories, assets, onEdit, onDelete, selectedIds, isSelectionMode, handleToggleSelection, handleLongPress, presentTxIds, candidates, candidateTxIds, onRegisterRegular, onInlineEdit, recurring]);
 
     // Empty State
     if (sortedData.length === 0) {
@@ -258,7 +264,9 @@ const TransactionList: React.FC<TransactionListProps> = ({
                             presentTxIds,
                             candidates,
                             candidateTxIds,
-                            onRegisterRegular
+                            onRegisterRegular,
+                            onInlineEdit,
+                            recurring
                         } = context;
 
                         const isSelected = selectedIds.has(tx.id);
@@ -285,6 +293,9 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                     isCandidate={isCandidate}
                                     candidateData={candidateData}
                                     onRegisterRegular={onRegisterRegular}
+                                    onInlineEdit={onInlineEdit}
+                                    recurring={recurring}
+                                    assets={assets}
                                 />
                             </div>
                         );

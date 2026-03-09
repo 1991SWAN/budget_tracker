@@ -1,8 +1,16 @@
 import React, { memo } from 'react';
-import { Pencil, Sparkles, PlusCircle } from 'lucide-react';
-import { Transaction, TransactionType, Asset, CategoryItem } from '../types';
+import { Pencil, Sparkles, PlusCircle, Trash2 } from 'lucide-react';
+import { Transaction, TransactionType, Asset, CategoryItem, RecurringTransaction } from '../types';
 import { Button } from './ui/Button';
 import { RegularCandidate } from '../hooks/useRegularExpenseDetector';
+import { Repeat } from 'lucide-react';
+
+// Inline Components
+import { InlineText } from './ui/inline/InlineText';
+import { InlineNumber } from './ui/inline/InlineNumber';
+import { InlineDateTime } from './ui/inline/InlineDateTime';
+import { InlineCategoryPicker } from './ui/inline/InlineCategoryPicker';
+import { InlineAssetPicker } from './ui/inline/InlineAssetPicker';
 
 interface TransactionItemProps {
     transaction: Transaction;
@@ -25,6 +33,9 @@ interface TransactionItemProps {
     isCandidate?: boolean;
     candidateData?: RegularCandidate;
     onRegisterRegular?: (candidate: RegularCandidate) => void;
+    onInlineEdit?: (updatedTx: Transaction) => void;
+    recurring?: RecurringTransaction[];
+    assets?: Asset[];
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({
@@ -42,10 +53,30 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     presentTxIds,
     isCandidate = false,
     candidateData,
-    onRegisterRegular
+    onRegisterRegular,
+    onInlineEdit,
+    recurring = [],
+    assets = []
 }) => {
     const [isExpanded, setIsExpanded] = React.useState(false);
     const [showCandidateSetup, setShowCandidateSetup] = React.useState(false);
+
+    const handleUpdateField = (field: keyof Transaction, value: any) => {
+        if (!onInlineEdit) return;
+        const updatedTx = { ...transaction, [field]: value };
+        onInlineEdit(updatedTx);
+    };
+
+    const isRecurring = React.useMemo(() => {
+        // Check if memo or merchant matches any recurring bill name
+        const memo = transaction.memo?.toLowerCase() || '';
+        const merchant = (transaction as any).merchant?.toLowerCase() || '';
+        return recurring.some(r =>
+            memo.includes(r.name.toLowerCase()) ||
+            r.name.toLowerCase().includes(memo) ||
+            (merchant && (merchant.includes(r.name.toLowerCase()) || r.name.toLowerCase().includes(merchant)))
+        );
+    }, [transaction.memo, (transaction as any).merchant, recurring]);
 
     // Long Press Logic
     const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
@@ -109,9 +140,17 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
     // Time Logic
     const timeStr = React.useMemo(() => {
-        if (!transaction.timestamp) return '--:--';
-        const d = new Date(transaction.timestamp);
-        return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+        try {
+            if (transaction.timestamp) {
+                const dateObj = new Date(transaction.timestamp);
+                if (!isNaN(dateObj.getTime())) {
+                    const hh = dateObj.getHours().toString().padStart(2, '0');
+                    const mm = dateObj.getMinutes().toString().padStart(2, '0');
+                    return `${hh}:${mm}`;
+                }
+            }
+        } catch (e) { }
+        return '--:--';
     }, [transaction.timestamp]);
 
     // VIEW PARSING LOGIC: Handle @Mentions and #Tags
@@ -119,27 +158,31 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         const rawMemo = transaction.memo || '';
         let cleanMemo = rawMemo;
 
-        // 1. Extract Tags (#)
-        const tagMatches = rawMemo.match(/#(\S+)/g);
-        const tags = tagMatches ? tagMatches.map(t => t) : [];
-        if (tagMatches) {
-            tagMatches.forEach(tag => {
-                cleanMemo = cleanMemo.replace(tag, ''); // Remove tag from text
-            });
-        }
-
-        // 2. Legacy Merchant Check
-        const legacyMerchant = (transaction as any).merchant;
-        if (legacyMerchant) {
+        // 1. Prioritize Structured Data (Merchant)
+        if (transaction.merchant) {
+            // Remove the @Merchant if it exists in memo for clean display
+            cleanMemo = cleanMemo.replace(`@${transaction.merchant}`, '').trim();
             return {
-                mainText: legacyMerchant,
-                subText: cleanMemo.trim(),
-                isMention: false,
-                tags
+                mainText: cleanMemo || 'Transaction',
+                subText: transaction.merchant,
+                isMention: true,
+                tags: transaction.tags ? transaction.tags.map(t => typeof t === 'string' ? { name: t } : { name: t.name, color: t.color }) : []
             };
         }
 
-        // 3. Extract Merchant (@)
+        // 2. Fallback to parsing Tags (#) from memo if transaction.tags is empty
+        const tagMatches = rawMemo.match(/#(\S+)/g);
+        const displayTags = (transaction.tags && transaction.tags.length > 0) 
+            ? transaction.tags.map(t => typeof t === 'string' ? { name: t } : { name: t.name, color: t.color })
+            : (tagMatches ? tagMatches.map(t => ({ name: t.replace('#', '') })) : []);
+            
+        if (tagMatches) {
+            tagMatches.forEach(tag => {
+                cleanMemo = cleanMemo.replace(tag, ''); 
+            });
+        }
+
+        // 3. Fallback to parsing Merchant (@) from memo
         const mentionMatch = cleanMemo.match(/@(\S+)/);
         let merchantName = null;
 
@@ -152,55 +195,88 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
             mainText: cleanMemo.trim() || (merchantName ? '' : 'No Description'),
             subText: merchantName,
             isMention: !!merchantName,
-            tags
+            tags: displayTags
         };
-    }, [transaction.memo, (transaction as any).merchant]);
+    }, [transaction.memo, transaction.merchant, transaction.tags]);
 
     const handleRowClick = () => {
-        // Desktop & Mobile: Toggle Selection Mode (Action-based Selection)
-        if (onToggleSelect) onToggleSelect();
+        // Only trigger selection if not in an active inline edit or if clicked on non-interactive area
+        // But for simplicity, we allow selection mode to take priority if isSelectionMode is on
+        if (isSelectionMode && onToggleSelect) {
+            onToggleSelect();
+        }
     };
 
     return (
         <div
-            className={`w-full relative group transition-all duration-300 overflow-hidden
-            ${isSelected ? 'bg-indigo-50' : 'hover:bg-slate-50/30'}`}
+            className={`w-full relative group transition-all duration-300 hover:z-50 focus-within:z-50 hover:bg-slate-50/30`}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
             onTouchMove={handleTouchEnd}
         >
-            {/* ✨ Inline Sparkle Indicator */}
-            {isCandidate && !showCandidateSetup && (
-                <div
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setShowCandidateSetup(true);
-                    }}
-                    className="absolute left-1 top-1/2 -translate-y-1/2 flex items-center justify-center cursor-pointer p-1.5 rounded-full hover:bg-slate-100/80 transition-colors z-10"
-                    title="View Recurring Recommendation"
-                >
-                    <Sparkles className="text-amber-400 w-4 h-4 animate-pulse" />
-                </div>
-            )}
+            {/* Remove the absolute positioned sparkle indicator and move it to memo section */}
 
             {/* Main Row */}
             <div
-                className="grid grid-cols-[50px_1fr_auto] lg:grid-cols-[60px_1.5fr_1.2fr_1fr] gap-2 py-3 px-4 items-center cursor-pointer"
+                className="grid grid-cols-[50px_1fr_auto] lg:grid-cols-[60px_1.5fr_1.2fr_1fr] gap-3 lg:gap-4 py-2 lg:py-1.5 px-4 items-center cursor-pointer"
                 onClick={handleRowClick}
             >
 
                 {/* Col 1: Time */}
                 <div className="text-center">
-                    <span className="text-xs font-bold text-slate-400 font-mono tracking-tighter block opacity-60">{timeStr}</span>
+                    <InlineDateTime
+                        value={transaction.timestamp}
+                        className="w-full flex justify-center rounded transition-colors"
+                        onSave={(val) => {
+                            if (!onInlineEdit) return;
+                            const d = new Date(val);
+                            const y = d.getFullYear();
+                            const m = String(d.getMonth() + 1).padStart(2, '0');
+                            const day = String(d.getDate()).padStart(2, '0');
+                            const newDateStr = `${y}-${m}-${day}`;
+
+                            onInlineEdit({
+                                ...transaction,
+                                timestamp: d.getTime(),
+                                date: newDateStr
+                            });
+                        }}
+                        displayComponent={<span className="text-xs font-bold text-slate-400 font-mono tracking-tighter block opacity-60 hover:text-slate-600 hover:bg-slate-100 px-1 py-0.5 rounded transition-colors">{timeStr}</span>}
+                    />
                 </div>
 
                 {/* Col 2: Merchant & Memo & Asset (Mobile Center: 2 Columns) */}
                 <div className="min-w-0 flex items-center justify-between gap-2 pr-1">
                     {/* Inner Col 1: Text Info */}
-                    <div className="flex flex-col overflow-hidden">
-                        <p className={`font-bold text-[15px] truncate leading-tight ${isSelected ? 'text-blue-900' : 'text-slate-900'}`}>
-                            {mainText || <span className="text-slate-400 font-normal italic">No Description</span>}
-                        </p>
+                    <div className="flex flex-col min-w-0 w-full">
+                        <InlineText
+                            value={transaction.memo || ''}
+                            onSave={(val) => handleUpdateField('memo', val)}
+                            placeholder="Add description..."
+                            className="w-full hover:bg-transparent flex-none min-h-0 py-0"
+                            displayComponent={
+                                <div className="flex items-center gap-2 hover:bg-slate-100/70 transition-colors -ml-1 px-1 py-0.5 rounded">
+                                    <p className={`font-bold text-[15px] truncate leading-tight ${isSelected ? 'text-blue-900' : 'text-slate-900'}`}>
+                                        {mainText || <span className="text-slate-400 font-normal italic">No Description</span>}
+                                    </p>
+                                    {isCandidate && !showCandidateSetup && (
+                                        <div
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowCandidateSetup(true);
+                                            }}
+                                            className="flex items-center justify-center cursor-pointer p-0.5 shrink-0"
+                                            title="View Recurring Recommendation"
+                                        >
+                                            <Sparkles className="text-amber-400 w-3.5 h-3.5 animate-pulse" />
+                                        </div>
+                                    )}
+                                    {isRecurring && (
+                                        <Repeat size={14} className="text-indigo-400 shrink-0 opacity-70" title="Fixed Expense" />
+                                    )}
+                                </div>
+                            }
+                        />
 
                         {/* Mobile Subtext Row: Category/Merchant + Tags */}
                         <div className="text-xs text-slate-500 truncate mt-0.5 lg:hidden flex items-center gap-1.5 flex-wrap">
@@ -214,18 +290,23 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                                     <span className="text-slate-600">{subText}</span>
                                 )
                             ) : (
-                                <div className="flex items-center gap-1">
-                                    <span>{categoryEmoji}</span>
-                                    <span>{categoryName}</span>
-                                </div>
+                                <InlineCategoryPicker
+                                    value={transaction.category}
+                                    options={categories}
+                                    onSave={(val) => handleUpdateField('category', val)}
+                                    className="!p-0 !min-h-0"
+                                />
                             )}
 
                             {/* Tags Display */}
                             {tags.length > 0 && (
                                 <div className="flex items-center gap-1">
                                     {tags.map((tag, idx) => (
-                                        <span key={idx} className="text-[11px] text-blue-500 font-medium bg-blue-50 px-1 rounded-md">
-                                            {tag}
+                                        <span 
+                                            key={idx} 
+                                            className={`text-[11px] font-medium px-1 rounded-md ${tag.color || 'bg-blue-50 text-blue-500'}`}
+                                        >
+                                            #{tag.name}
                                         </span>
                                     ))}
                                 </div>
@@ -243,8 +324,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                             )}
                             {/* Tags Display (Desktop) */}
                             {tags.map((tag, idx) => (
-                                <span key={idx} className="text-[11px] text-blue-500 font-medium bg-blue-50 px-1 rounded-md cursor-pointer hover:bg-blue-100 transition-colors">
-                                    {tag}
+                                <span 
+                                    key={idx} 
+                                    className={`text-[11px] font-medium px-1 rounded-md cursor-pointer transition-colors ${tag.color || 'bg-blue-50 text-blue-500 hover:bg-blue-100'}`}
+                                >
+                                    #{tag.name}
                                 </span>
                             ))}
                         </div>
@@ -253,77 +337,107 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
                     {/* Inner Col 2: Asset Name Badge (Mobile Only) */}
                     <div className="lg:hidden shrink-0">
-                        <span className="text-[10px] text-slate-400 font-medium px-1.5 py-0.5">
-                            {asset?.name || 'Unknown'}
-                        </span>
+                        <InlineAssetPicker
+                            value={transaction.assetId}
+                            options={assets}
+                            onSave={(val) => handleUpdateField('assetId', val)}
+                        />
                     </div>
                 </div>
 
                 {/* Col 3: Center 2 (Desktop Only - Category, Asset, Installment Badge) */}
-                <div className="hidden lg:flex flex-nowrap gap-2 items-center">
-                    <span className={`px-2 py-0.5 bg-slate-50/50 border border-slate-100 ${categoryColorClass} rounded-md text-[11px] font-bold whitespace-nowrap flex items-center h-fit shrink-0 gap-1`}>
-                        <span>{categoryEmoji}</span>
-                        <span>{categoryName}</span>
-                    </span>
+                <div className="hidden lg:flex flex-nowrap gap-4 items-center">
+                    <InlineCategoryPicker
+                        value={transaction.category}
+                        options={categories}
+                        onSave={(val) => handleUpdateField('category', val)}
+                    />
                     {transaction.installment && (
-                        <span className="px-2 py-0.5 bg-blue-50/50 text-blue-600 rounded-md text-[10px] font-bold whitespace-nowrap flex items-center h-fit shrink-0">
-                            {transaction.installment.totalMonths} mos
-                        </span>
+                        <InlineNumber
+                            value={transaction.installment.totalMonths}
+                            isExpense={false}
+                            isCurrency={false}
+                            className="!min-h-0 !p-0 !min-w-0"
+                            inputClassName="w-10 min-w-[40px] text-center"
+                            displayComponent={
+                                <div className="px-2 py-0.5 bg-blue-50/50 text-blue-600 rounded-md text-[10px] font-bold whitespace-nowrap flex items-center h-fit shrink-0 hover:bg-blue-100/60 transition-colors cursor-pointer">
+                                    <span>{transaction.installment.totalMonths} mos</span>
+                                </div>
+                            }
+                            onSave={(val) => {
+                                if (val <= 1) {
+                                    handleUpdateField('installment', undefined);
+                                } else {
+                                    handleUpdateField('installment', { ...transaction.installment, totalMonths: val });
+                                }
+                            }}
+                        />
                     )}
-                    <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap px-1 shrink-0 truncate max-w-[120px]">
-                        {asset?.name || 'Unknown'}
-                    </span>
+                    <InlineAssetPicker
+                        value={transaction.assetId}
+                        options={assets}
+                        onSave={(val) => handleUpdateField('assetId', val)}
+                    />
                 </div>
 
                 {/* Col 4: Amount & Installment Info (Right) */}
-                <div className={`text-right flex flex-col items-end min-w-0 transition-transform duration-300 ease-spring ${isSelected ? '-translate-x-[70px]' : 'translate-x-0'}`}>
-                    {/* V3 Dual Line Display for Transfers (Unified) */}
-                    {isTransfer && ((toAsset) || (fromAsset && !toAsset)) ? (
-                        <div className="flex flex-col items-end">
-                            {/* Line 1: Source (Withdrawal) - Always Red */}
-                            <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] text-slate-400 max-w-[60px] truncate hidden md:block">
-                                    {toAsset ? asset?.name : fromAsset?.name}
-                                </span>
-                                <span className="text-[15px] font-bold text-rose-600 tracking-tight">
-                                    -{formattedAmount}
-                                </span>
+                <div className="text-right flex items-center justify-end gap-2 min-w-0 pr-8 lg:pr-12">
+                    <div className="flex flex-col items-end w-full">
+                        {/* V3 Dual Line Display for Transfers (Unified) */}
+                        {isTransfer && ((toAsset) || (fromAsset && !toAsset)) ? (
+                            <div className="flex flex-col items-end">
+                                {/* Line 1: Source (Withdrawal) - Always Red */}
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-slate-400 max-w-[60px] truncate hidden md:block">
+                                        {toAsset ? asset?.name : fromAsset?.name}
+                                    </span>
+                                    <span className="text-[15px] font-bold text-rose-600 tracking-tight">
+                                        -{formattedAmount}
+                                    </span>
+                                </div>
+                                {/* Line 2: Destination (Deposit) - Always Green */}
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="text-[10px] text-slate-400 max-w-[60px] truncate hidden md:block">
+                                        {toAsset ? toAsset.name : asset?.name}
+                                    </span>
+                                    <span className="text-[15px] font-bold text-emerald-600 tracking-tight">
+                                        +{formattedAmount}
+                                    </span>
+                                </div>
                             </div>
-                            {/* Line 2: Destination (Deposit) - Always Green */}
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                                <span className="text-[10px] text-slate-400 max-w-[60px] truncate hidden md:block">
-                                    {toAsset ? toAsset.name : asset?.name}
-                                </span>
-                                <span className="text-[15px] font-bold text-emerald-600 tracking-tight">
-                                    +{formattedAmount}
-                                </span>
+                        ) : (
+                            // Standard Display
+                            <div className="flex w-full justify-end items-center relative group/amount">
+                                <InlineNumber
+                                    value={transaction.amount}
+                                    isExpense={isExpense}
+                                    textClassName={`font-bold text-[15px] tabular-nums tracking-tight pl-2 pr-1 py-0.5 rounded hover:bg-slate-100/70 transition-colors ${amountColor}`}
+                                    onSave={(val) => handleUpdateField('amount', val)}
+                                />
                             </div>
-                        </div>
-                    ) : (
-                        // Standard Display
-                        <p className={`font-bold text-[15px] tabular-nums tracking-tight ${amountColor}`}>
-                            {amountSign}{formattedAmount}
-                        </p>
-                    )}
+                        )}
 
-                    {/* Installment Monthly Amount (Visible on Mobile & Desktop) */}
-                    {transaction.installment && transaction.installment.totalMonths > 1 && (
-                        <p className="text-[10px] font-medium text-slate-400 mt-0.5">
-                            ({Math.round(transaction.amount / transaction.installment.totalMonths).toLocaleString()}/mo)
-                        </p>
-                    )}
+                        {/* Installment Monthly Amount (Visible on Mobile & Desktop) */}
+                        {transaction.installment && transaction.installment.totalMonths > 1 && (
+                            <p className="text-[10px] font-medium text-slate-400 mt-0.5">
+                                ({Math.round(transaction.amount / transaction.installment.totalMonths).toLocaleString()}/mo)
+                            </p>
+                        )}
+                    </div>
                 </div>
 
-                {/* Desktop Slide-in Action Buttons (V5: Minimalist Action) */}
-                <div className={`hidden lg:flex absolute right-0 top-0 bottom-0 items-center px-4 transition-all duration-300 ease-spring ${isSelected ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}`}>
-                    <Button
-                        onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}
-                        variant="ghost"
-                        size="sm"
-                        className="w-10 h-10 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all transform active:scale-90"
+                {/* Action Buttons */}
+                <div className="absolute right-0 top-0 bottom-0 flex items-center pr-3 pl-1 lg:pr-4 lg:pl-2 transition-all duration-300 gap-1">
+                    <button
+                        onClick={(e) => { e.stopPropagation(); if (onToggleSelect) onToggleSelect(); else onDelete(transaction); }}
+                        className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${isSelected
+                            ? 'text-rose-500'
+                            : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100'
+                            }`}
+                        title={isSelected ? "Deselect" : "Select for deletion"}
                     >
-                        <Pencil size={18} strokeWidth={2.5} />
-                    </Button>
+                        <Trash2 size={16} />
+                    </button>
                 </div>
             </div>
 

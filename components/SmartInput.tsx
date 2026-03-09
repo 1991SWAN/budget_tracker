@@ -602,7 +602,9 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                             onClick={() => insertTag(tag.name)}
                             className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 flex justify-between items-center"
                           >
-                            <span className="font-bold text-blue-500">#{tag.name}</span>
+                            <span className={`font-bold ${tag.color ? tag.color.replace('bg-', 'text-') : 'text-blue-500'}`}>
+                              #{tag.name}
+                            </span>
                             <span className="text-xs text-slate-400">{tag.usage_count} used</span>
                           </button>
                         ))}

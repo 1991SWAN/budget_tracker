@@ -5,7 +5,7 @@ export const TransactionService = {
     getTransactions: async (limit: number = 50, offset: number = 0, filters?: TransactionFilters): Promise<Transaction[]> => {
         let query = supabase
             .from('transactions')
-            .select('*');
+            .select('*, transaction_tags(tags(id, name, color))');
 
         // Apply Filters
         if (filters) {
@@ -65,6 +65,8 @@ export const TransactionService = {
             linkedTransactionId: row.linked_transaction_id,
             linkedTransactionSourceAssetId: row.linked_transaction_id ? txAssetMap.get(row.linked_transaction_id) : undefined,
             hashKey: row.hash_key,
+            merchant: row.merchant,
+            tags: row.transaction_tags?.map((tt: any) => tt.tags).filter(Boolean) || [],
             isReconciliationIgnored: !!row.is_reconciliation_ignored,
             installment: (row.installment_total_months > 1 || row.installment) ? {
                 totalMonths: row.installment_total_months || row.installment?.totalMonths || row.installment?.total_months,
@@ -78,7 +80,7 @@ export const TransactionService = {
     getInstallmentsByAsset: async (assetId: string): Promise<Transaction[]> => {
         const { data, error } = await supabase
             .from('transactions')
-            .select('*')
+            .select('*, transaction_tags(tags(id, name, color))')
             .eq('asset_id', assetId)
             .gt('installment_total_months', 1)
             .order('date', { ascending: false });
@@ -95,6 +97,8 @@ export const TransactionService = {
             toAssetId: row.to_asset_id,
             linkedTransactionId: row.linked_transaction_id,
             hashKey: row.hash_key,
+            merchant: row.merchant,
+            tags: row.transaction_tags?.map((tt: any) => tt.tags).filter(Boolean) || [],
             isReconciliationIgnored: !!row.is_reconciliation_ignored,
             installment: {
                 totalMonths: row.installment_total_months,
@@ -107,15 +111,23 @@ export const TransactionService = {
 
     saveTransaction: async (tx: Transaction) => {
         const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // 1. Parse Merchant (@) and Tags (#) from memo
+        const merchantMatch = tx.memo?.match(/@(\S+)/);
+        const merchant = merchantMatch ? merchantMatch[1] : (tx.merchant || null);
+        const tagNames = tx.memo?.match(/#\S+/g)?.map(t => t.slice(1)) || [];
+
         const row = {
             id: tx.id,
-            user_id: user?.id,
+            user_id: user.id,
             date: tx.date,
             timestamp: tx.timestamp,
             amount: tx.amount,
             type: tx.type,
             category: tx.category,
             memo: tx.memo,
+            merchant: merchant,
             asset_id: tx.assetId,
             to_asset_id: tx.toAssetId,
             linked_transaction_id: tx.linkedTransactionId,
@@ -126,33 +138,101 @@ export const TransactionService = {
             is_reconciliation_ignored: tx.isReconciliationIgnored ?? false,
             hash_key: tx.hashKey || null
         };
+
         const { error } = await supabase.from('transactions').upsert(row);
-        if (error) console.error('Error saving transaction:', error);
+        if (error) {
+            console.error('Error saving transaction:', error);
+            return;
+        }
+
+        // 2. Handle Tags Many-to-Many
+        // Always delete existing relationships first to ensure cleanup works even if all tags are removed
+        await supabase.from('transaction_tags').delete().eq('transaction_id', tx.id);
+
+        if (tagNames.length > 0) {
+            const { TagService } = await import('./tagService');
+            // Upsert each tag and collect their IDs
+            const tagIds = await Promise.all(tagNames.map(name => TagService.upsertTag(name)));
+            const validTagIds = tagIds.filter(id => id !== null) as string[];
+
+            if (validTagIds.length > 0) {
+                const tagLinks = validTagIds.map(tagId => ({
+                    transaction_id: tx.id,
+                    tag_id: tagId,
+                    user_id: user.id
+                }));
+                await supabase.from('transaction_tags').insert(tagLinks);
+            }
+            await TagService.cleanupOrphanTags();
+        } else {
+            // Even if no tags in memo, we should check for orphans after deletion
+            const { TagService } = await import('./tagService');
+            await TagService.cleanupOrphanTags();
+        }
     },
 
     saveTransactions: async (txs: Transaction[]) => {
         const { data: { user } } = await supabase.auth.getUser();
-        const rows = txs.map(tx => ({
-            id: tx.id,
-            user_id: user?.id,
-            date: tx.date,
-            timestamp: tx.timestamp,
-            amount: tx.amount,
-            type: tx.type,
-            category: tx.category,
-            memo: tx.memo,
-            asset_id: tx.assetId,
-            to_asset_id: tx.toAssetId,
-            linked_transaction_id: tx.linkedTransactionId,
-            installment: tx.installment,
-            installment_total_months: tx.installment?.totalMonths ?? null,
-            installment_current_month: tx.installment?.currentMonth ?? null,
-            is_interest_free: tx.installment?.isInterestFree ?? null,
-            is_reconciliation_ignored: tx.isReconciliationIgnored ?? false,
-            hash_key: tx.hashKey || null
+        if (!user) return;
+
+        const { TagService } = await import('./tagService');
+
+        const processedRows = await Promise.all(txs.map(async tx => {
+            const merchantMatch = tx.memo?.match(/@(\S+)/);
+            const merchant = merchantMatch ? merchantMatch[1] : (tx.merchant || null);
+            const tagNames = tx.memo?.match(/#\S+/g)?.map(t => t.slice(1)) || [];
+
+            // Parallel tag upsert
+            const tagIds = await Promise.all(tagNames.map(name => TagService.upsertTag(name)));
+            const validTagIds = tagIds.filter(id => id !== null) as string[];
+
+            return {
+                row: {
+                    id: tx.id,
+                    user_id: user.id,
+                    date: tx.date,
+                    timestamp: tx.timestamp,
+                    amount: tx.amount,
+                    type: tx.type,
+                    category: tx.category,
+                    memo: tx.memo,
+                    merchant: merchant,
+                    asset_id: tx.assetId,
+                    to_asset_id: tx.toAssetId,
+                    linked_transaction_id: tx.linkedTransactionId,
+                    installment: tx.installment,
+                    installment_total_months: tx.installment?.totalMonths ?? null,
+                    installment_current_month: tx.installment?.currentMonth ?? null,
+                    is_interest_free: tx.installment?.isInterestFree ?? null,
+                    is_reconciliation_ignored: tx.isReconciliationIgnored ?? false,
+                    hash_key: tx.hashKey || null
+                },
+                tagIds: validTagIds
+            };
         }));
+
+        const rows = processedRows.map(p => p.row);
         const { error } = await supabase.from('transactions').upsert(rows);
-        if (error) console.error('Error saving transactions:', error);
+        if (error) {
+            console.error('Error saving transactions:', error);
+            return;
+        }
+
+        // Handle Tags for all transactions
+        for (const p of processedRows) {
+            // Always delete existing relationships first to ensure cleanup
+            await supabase.from('transaction_tags').delete().eq('transaction_id', p.row.id);
+
+            if (p.tagIds.length > 0) {
+                const tagLinks = p.tagIds.map(tagId => ({
+                    transaction_id: p.row.id,
+                    tag_id: tagId,
+                    user_id: user.id
+                }));
+                await supabase.from('transaction_tags').insert(tagLinks);
+            }
+        }
+        await TagService.cleanupOrphanTags();
     },
 
     deleteTransaction: async (id: string) => {
@@ -163,6 +243,9 @@ export const TransactionService = {
         } else if (count === 0) {
             throw new Error('No transaction deleted');
         }
+
+        const { TagService } = await import('./tagService');
+        await TagService.cleanupOrphanTags();
     },
 
     deleteTransactions: async (ids: string[]) => {
@@ -172,6 +255,9 @@ export const TransactionService = {
             console.error('Error deleting transactions:', error);
             throw error;
         }
+
+        const { TagService } = await import('./tagService');
+        await TagService.cleanupOrphanTags();
     },
 
     deleteTransactionsByAsset: async (assetId: string) => {

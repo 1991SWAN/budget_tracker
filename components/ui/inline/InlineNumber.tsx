@@ -7,6 +7,9 @@ interface InlineNumberProps {
     className?: string;
     textClassName?: string;
     isExpense?: boolean;
+    isCurrency?: boolean;
+    displayComponent?: React.ReactNode;
+    inputClassName?: string;
 }
 
 export const InlineNumber: React.FC<InlineNumberProps> = ({
@@ -14,7 +17,10 @@ export const InlineNumber: React.FC<InlineNumberProps> = ({
     onSave,
     className = '',
     textClassName = '',
-    isExpense = true
+    inputClassName = '',
+    isExpense = true,
+    isCurrency = true,
+    displayComponent
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [currentValue, setCurrentValue] = useState(value.toString());
@@ -59,7 +65,7 @@ export const InlineNumber: React.FC<InlineNumberProps> = ({
                 onChange={(e) => setCurrentValue(e.target.value)}
                 onBlur={handleSave}
                 onKeyDown={handleKeyDown}
-                className={`w-full min-w-[100px] text-right bg-slate-50 border-b-2 border-slate-500 rounded-none px-2 py-1 outline-none text-sm font-bold text-slate-900 ${className}`}
+                className={`text-right bg-slate-50 border-b-2 border-slate-500 rounded-none px-2 py-1 outline-none text-sm font-bold text-slate-900 ${inputClassName || 'w-full min-w-[100px]'} ${className}`}
             />
         );
     }
@@ -77,9 +83,11 @@ export const InlineNumber: React.FC<InlineNumberProps> = ({
             className={`group relative flex items-center justify-end min-h-[32px] px-2 py-1 rounded-md cursor-text hover:bg-slate-100/70 transition-colors ${className}`}
             title="Click to edit amount"
         >
-            <span className={`font-bold tracking-tight whitespace-nowrap ${amountColor} ${textClassName}`}>
-                {amountSign}₩{formattedAmount}
-            </span>
+            {displayComponent ? displayComponent : (
+                <span className={`font-bold tracking-tight whitespace-nowrap ${isCurrency ? amountColor : ''} ${textClassName}`}>
+                    {isCurrency && amountSign}{isCurrency && '₩'}{formattedAmount}
+                </span>
+            )}
         </div>
     );
 };
