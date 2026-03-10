@@ -106,7 +106,6 @@ export interface Asset {
 
   currency: string;
   color?: string;
-  description?: string;
 
   // Type Specifics
   creditDetails?: CreditCardDetails;
@@ -119,6 +118,7 @@ export interface Asset {
   accountNumber?: string;    // Last 4 Digits
   excludeFromTotal?: boolean;// Exclude from Net Worth calculation
   theme?: string;            // Visual Theme (Gradient ID)
+  productName?: string;      // Financial Product Name (e.g. "KB스타뱅킹", "국민은행-1234") - Persisted to DB description column
 
   // Legacy support for migration (optional)
   interestRate?: number;
@@ -216,4 +216,9 @@ export interface Budget {
   year?: number;
   month?: number;
   created_at?: string;
+}
+
+export interface NanoBananaSettings {
+  // Add specific fields as needed
+  [key: string]: any;
 }

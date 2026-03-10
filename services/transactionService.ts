@@ -5,7 +5,7 @@ export const TransactionService = {
     getTransactions: async (limit: number = 50, offset: number = 0, filters?: TransactionFilters): Promise<Transaction[]> => {
         let query = supabase
             .from('transactions')
-            .select('*, transaction_tags(tags(id, name, color))');
+            .select('*, transaction_tags(tags(id, name))');
 
         // Apply Filters
         if (filters) {
@@ -80,7 +80,7 @@ export const TransactionService = {
     getInstallmentsByAsset: async (assetId: string): Promise<Transaction[]> => {
         const { data, error } = await supabase
             .from('transactions')
-            .select('*, transaction_tags(tags(id, name, color))')
+            .select('*, transaction_tags(tags(id, name))')
             .eq('asset_id', assetId)
             .gt('installment_total_months', 1)
             .order('date', { ascending: false });
@@ -107,6 +107,22 @@ export const TransactionService = {
                 remainingBalance: row.installment?.remainingBalance || row.installment?.remaining_balance || row.amount
             }
         })) as Transaction[];
+    },
+
+    getHashKeysByDateRange: async (startDate: string, endDate: string): Promise<Set<string>> => {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('hash_key')
+            .gte('date', startDate)
+            .lte('date', endDate)
+            .not('hash_key', 'is', null);
+
+        if (error) {
+            console.error('Error fetching hash keys:', error);
+            return new Set();
+        }
+
+        return new Set(data.map((row: any) => row.hash_key));
     },
 
     saveTransaction: async (tx: Transaction) => {

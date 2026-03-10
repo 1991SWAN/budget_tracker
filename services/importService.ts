@@ -3,10 +3,12 @@ import { read, utils } from 'xlsx';
 
 export interface ColumnMapping {
   dateIndex: number;
+  timeIndex?: number; // Optional split time column
   amountIndex: number;
   amountInIndex?: number;
   amountOutIndex?: number;
   memoIndex: number;
+  memoIndices?: number[]; // Optional multiple memo columns for concatenation
   typeIndex?: number;
   assetIndex?: number;
   categoryIndex?: number;
@@ -21,6 +23,7 @@ export interface ImportPreset {
   headerHash: string; // JSON string of the first few columns or custom hash
   mapping: ColumnMapping;
   linkedAssetId?: string; // Optional: If set, this preset is bound to a specific asset
+  sourceType?: 'manual' | 'migration' | 'bank_salad' | 'simple_penny'; // Source identifier
   createdAt: number;
 }
 
@@ -29,21 +32,345 @@ const PRESET_STORAGE_KEY = 'smartpenny_import_presets';
 export interface ImportRow {
   index: number;
   data: any[];
-  status: 'valid' | 'invalid';
+  status: 'valid' | 'invalid' | 'duplicate';
   transaction?: Partial<Transaction>;
   reason?: string;
   assetId?: string; // Manually assigned assetId or detected one
 }
 
+export interface ColumnAnalysis {
+  index: number;
+  header?: string;
+  dataType: 'date' | 'number' | 'text' | 'unknown';
+  sampleValues: any[];
+  uniqueValueCount: number;
+  confidence: number;
+  suggestedField?: keyof ColumnMapping;
+}
+
+export interface GridAnalysisResult {
+  headerIndex: number;
+  columns: ColumnAnalysis[];
+}
+
 export const ImportService = {
+
   /**
-   * Generates a hash/signature for CSV Headers to identify the format.
-   * e.g., ["Date", "Description", "Amount"] -> "Date|Description|Amount"
+   * Parses a flexible date/time string or Excel serial number.
    */
+  parseLooseDate: (dateVal: any, timeVal?: any): Date | null => {
+    let year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    let ts = String(timeVal || '').trim();
+
+    if (typeof dateVal === 'number') {
+      if (dateVal > 10000) {
+        // 1. Excel Date Serial (e.g. 46089)
+        // 25569 = 1970년 1월 1일 기준 (엑셀 1900년 기준 보정값)
+        let date = new Date((dateVal - 25569) * 86400 * 1000 + (12 * 60 * 60 * 1000));
+        year = date.getFullYear();
+        month = date.getMonth();
+        day = date.getDate();
+        
+        // 만약 숫자값에 소수점(시간)이 포함되어 있다면 추출
+        const decimalPart = dateVal % 1;
+        if (decimalPart > 0) {
+          const totalSeconds = Math.round(decimalPart * 86400);
+          hour = Math.floor(totalSeconds / 3600);
+          minute = Math.floor((totalSeconds % 3600) / 60);
+          second = totalSeconds % 60;
+        }
+      } else if (dateVal > 0 && dateVal < 1) {
+        // 2. Excel Time Only (e.g. 0.941)
+        const totalSeconds = Math.round(dateVal * 86400);
+        hour = Math.floor(totalSeconds / 3600);
+        minute = Math.floor((totalSeconds % 3600) / 60);
+        second = totalSeconds % 60;
+      }
+    } else if (dateVal instanceof Date) {
+      year = dateVal.getFullYear();
+      month = dateVal.getMonth();
+      day = dateVal.getDate();
+      hour = dateVal.getHours();
+      minute = dateVal.getMinutes();
+      second = dateVal.getSeconds();
+    } else {
+      let ds = String(dateVal || '').trim();
+      if (!ds) return null;
+
+      let s = ts ? `${ds} ${ts}` : ds;
+      // 1. YYYY.MM.DD HH:mm:ss 스타일 파싱 (Regex)
+      const complexMatch = s.match(/(\d{4})[\.\/\-년]\s*(\d{1,2})[\.\/\-월]\s*(\d{1,2})[일]?\s*(?:(오전|오후|AM|PM)\s*)?(\d{1,2})?:?(\d{1,2})?(?::(\d{1,2}))?/i);
+      if (complexMatch) {
+        let [_, y, m, d, meridiem, hourStr, min, sec] = complexMatch;
+        year = parseInt(y);
+        month = parseInt(m) - 1;
+        day = parseInt(d);
+        hour = hourStr ? parseInt(hourStr, 10) : 0;
+        minute = min ? parseInt(min, 10) : 0;
+        second = sec ? parseInt(sec, 10) : 0;
+        if (meridiem) {
+          if ((meridiem === '오후' || meridiem.toUpperCase() === 'PM') && hour < 12) hour += 12;
+          if ((meridiem === '오전' || meridiem.toUpperCase() === 'AM') && hour === 12) hour = 0;
+        }
+      } else {
+        // 2. 8자리 숫자 스타일 (20240129)
+        const cleanS = ds.replace(/[\.\/]/g, '-').replace(/\s/g, '');
+        if (/^\d{8}$/.test(cleanS)) {
+          year = parseInt(cleanS.substring(0, 4));
+          month = parseInt(cleanS.substring(4, 6)) - 1;
+          day = parseInt(cleanS.substring(6, 8));
+        } else {
+          // 최후의 수단
+          const dDate = new Date(s);
+          if (isNaN(dDate.getTime())) return null;
+          year = dDate.getFullYear();
+          month = dDate.getMonth();
+          day = dDate.getDate();
+          hour = dDate.getHours();
+          minute = dDate.getMinutes();
+        }
+      }
+    }
+
+    // ─── Time 합성 단계: timeVal 처리 ───────────────────────────────
+    // dateVal에서 시간이 아직 결정되지 않은 경우(hour=0, minute=0)에만 적용
+    if (hour === 0 && minute === 0) {
+      const rawTimeVal = timeVal;
+
+      // Case 1: timeVal이 숫자 0~1 사이 (Excel 시간 소수, 예: 0.8654...)
+      if (typeof rawTimeVal === 'number' && rawTimeVal > 0 && rawTimeVal < 1) {
+        const totalSeconds = Math.round(rawTimeVal * 86400);
+        hour = Math.floor(totalSeconds / 3600);
+        minute = Math.floor((totalSeconds % 3600) / 60);
+        second = totalSeconds % 60;
+      }
+      // Case 2: timeVal이 문자열 — 소수 문자열 or "HH:MM:SS" 형식
+      else if (ts) {
+        const fractionNum = parseFloat(ts);
+        if (!isNaN(fractionNum) && fractionNum > 0 && fractionNum < 1) {
+          // "0.865486..." 형태의 소수 문자열 → Excel 시간 소수로 처리
+          const totalSeconds = Math.round(fractionNum * 86400);
+          hour = Math.floor(totalSeconds / 3600);
+          minute = Math.floor((totalSeconds % 3600) / 60);
+          second = totalSeconds % 60;
+        } else {
+          // "HH:MM:SS" / "오후 8:44:30" 등 일반 시간 문자열
+          const timeOnlyMatch = ts.match(/(?:(오전|오후|AM|PM)\s*)?(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/i);
+          if (timeOnlyMatch) {
+            let [_, tMeridiem, tHour, tMin, tSec] = timeOnlyMatch;
+            let h = parseInt(tHour, 10);
+            let m = parseInt(tMin, 10);
+            let s = tSec ? parseInt(tSec, 10) : 0;
+            if (tMeridiem) {
+              if ((tMeridiem === '오후' || tMeridiem.toUpperCase() === 'PM') && h < 12) h += 12;
+              if ((tMeridiem === '오전' || tMeridiem.toUpperCase() === 'AM') && h === 12) h = 0;
+            }
+            hour = h;
+            minute = m;
+            second = s;
+          }
+        }
+      }
+    }
+
+    return new Date(year, month, day, hour, minute, second);
+  },
+  discoverHeaderIndex: (grid: any[][]): number => {
+    if (grid.length < 2) return 0;
+
+    const getCellType = (v: any): string => {
+      const s = String(v || '').trim();
+      if (/^\d{2,4}[./-]\d{1,2}([./-]\d{1,2})?/.test(s)) return 'date';
+      const num = s.replace(/[,|원|\\$|\s]/g, '');
+      if (num !== '' && !isNaN(Number(num))) return 'num';
+      return 'txt';
+    };
+
+    const getRowSignature = (row: any[]) => row.map(getCellType).join('|');
+
+    // 1. Map all rows to their structural signatures
+    const signatures = grid.map(getRowSignature);
+
+    // 2. Scan for the first index where the same signature repeats significantly
+    // We'll look for the longest or earliest repeating block.
+    const scanLimit = Math.min(50, grid.length);
+    for (let i = 0; i < scanLimit - 3; i++) {
+        const sig = signatures[i];
+        if (sig.split('|').filter(t => t !== 'txt').length < 1) continue; // Skip rows that are all text (likely metadata)
+
+        // Check if this signature repeats in the next few rows
+        // Note: For real files, patterns might not be 100% identical due to empty cells, 
+        // but let's start with a strong consistency check.
+        let matchCount = 0;
+        const checkWindow = Math.min(10, grid.length - i); 
+        for (let j = 0; j < checkWindow; j++) {
+            if (signatures[i + j] === sig) matchCount++;
+        }
+
+        // If at least 60% of the next 10 rows match this signature, we've found the data body
+        if (matchCount >= Math.min(5, checkWindow)) {
+            // The header is the row BEFORE this repeating block.
+            // If i is 0, then Row 0 is the data (no header).
+            return i > 0 ? i - 1 : 0;
+        }
+    }
+
+    // 3. Last Fallback: Even if signatures aren't identical, find a block that consistently has dates/numbers
+    for (let i = 0; i < scanLimit - 3; i++) {
+        let densityCount = 0;
+        const window = Math.min(5, grid.length - i);
+        for (let j = 0; j < window; j++) {
+            const row = grid[i + j];
+            if (row.some(c => getCellType(c) === 'date') && row.some(c => getCellType(c) === 'num')) {
+                densityCount++;
+            }
+        }
+        if (densityCount >= Math.min(3, window)) {
+            return i > 0 ? i - 1 : 0;
+        }
+    }
+
+    return 0;
+  },
+
+  /**
+   * Analyzes columns to suggest mappings based on data patterns
+   */
+  analyzeColumns: (grid: any[][], displayGrid?: any[][]): GridAnalysisResult => {
+    if (grid.length === 0) return { headerIndex: 0, columns: [] };
+    
+    // Use displayGrid for UI preview, fallback to rawGrid
+    const uiGrid = displayGrid || grid;
+    
+    // Extract first 20 rows of the file for the UI preview
+    const previewRows = uiGrid.slice(0, 20);
+    const headerIndex = ImportService.discoverHeaderIndex(grid);
+    const headers = grid[headerIndex] || [];
+    
+    // Calculate the maximum number of columns across the preview rows and header
+    const numCols = Math.max(headers.length, ...previewRows.map(r => r.length));
+    
+    const analysis: ColumnAnalysis[] = [];
+    
+    // Sample up to 50 rows from rawGrid for type detection (numbers/dates more reliable)
+    const samples = grid.slice(headerIndex + 1, headerIndex + 51).filter(row => row.length > 0 && row.some(cell => cell !== ''));
+    
+    for (let colIdx = 0; colIdx < numCols; colIdx++) {
+      const colData = samples.map(row => row[colIdx]).filter(val => val !== undefined && val !== null && val !== '');
+      const uniqueValues = Array.from(new Set(colData));
+      
+      // Determine Data Type (using rawGrid numeric values for accuracy)
+      let dataType: ColumnAnalysis['dataType'] = 'unknown';
+      let dateMatches = 0;
+      let numberMatches = 0;
+      
+      colData.forEach(val => {
+        if (val instanceof Date) {
+          dateMatches++;
+        } else if (typeof val === 'number') {
+          // Excel date serial > 10000, time fraction 0~1
+          if (val > 10000) dateMatches++;
+          else if (val > 0 && val < 1) dateMatches++; // time fraction
+          else numberMatches++;
+        } else {
+          const s = String(val).trim();
+          if (/^\d{4}[\.\/\-년]\s*\d{1,2}[\.\/\-월]\s*\d{1,2}/.test(s) || /^\d{8}$/.test(s.replace(/[\.\/]/g, ''))) {
+            dateMatches++;
+          }
+          if (!isNaN(parseFloat(s.replace(/[^0-9\.-]/g, ''))) && s.replace(/[^0-9]/g, '').length > 0) {
+            numberMatches++;
+          }
+        }
+      });
+      
+      const totalCount = colData.length;
+      if (totalCount > 0) {
+        if (dateMatches / totalCount > 0.8) dataType = 'date';
+        else if (numberMatches / totalCount > 0.8) dataType = 'number';
+        else dataType = 'text';
+      }
+      
+      // Heuristic Recommendation
+      let suggestedField: keyof ColumnMapping | undefined;
+      let confidence = 0;
+      
+      const headerText = String(headers[colIdx] || '').toLowerCase();
+      
+      // Logic based on header name
+      if (headerText.includes('날짜') || headerText.includes('일자') || headerText.includes('date')) {
+        suggestedField = 'dateIndex';
+        confidence = 0.9;
+      } else if (headerText.includes('시간') || headerText.includes('time')) {
+        suggestedField = 'timeIndex';
+        confidence = 0.9;
+      } else if (headerText.includes('내용') || headerText.includes('적요') || headerText.includes('메모') || headerText.includes('memo') || headerText.includes('description')) {
+        suggestedField = 'memoIndex';
+        confidence = 0.8;
+      } else if (headerText.includes('금액') || headerText.includes('amount') || headerText.includes('거래금액')) {
+        suggestedField = 'amountIndex';
+        confidence = 0.9;
+      } else if (headerText.includes('수입') || headerText.includes('입금') || headerText.includes('income')) {
+        suggestedField = 'amountInIndex';
+        confidence = 0.9;
+      } else if (headerText.includes('지출') || headerText.includes('출금') || headerText.includes('expense')) {
+        suggestedField = 'amountOutIndex';
+        confidence = 0.9;
+      } else if (headerText.includes('분류') || headerText.includes('카테고리') || headerText.includes('category')) {
+        suggestedField = 'categoryIndex';
+        confidence = 0.8;
+      } else if (headerText.includes('가맹점') || headerText.includes('거래처') || headerText.includes('merchant')) {
+        suggestedField = 'merchantIndex';
+        confidence = 0.8;
+      }
+      
+      // Fallback to data type if header is cryptic
+      if (!suggestedField) {
+        if (dataType === 'date') {
+          suggestedField = 'dateIndex';
+          confidence = 0.6;
+        } else if (dataType === 'number') {
+          suggestedField = 'amountIndex';
+          confidence = 0.5;
+        }
+      }
+      
+      // Use displayGrid rows for sampleValues (shows human-readable format as seen in Excel)
+      const displaySampleValues = previewRows.map(row => row[colIdx]);
+
+      analysis.push({
+        index: colIdx,
+        header: headers[colIdx],
+        dataType,
+        sampleValues: displaySampleValues,
+        uniqueValueCount: uniqueValues.length,
+        confidence,
+        suggestedField
+      });
+    }
+    
+    return {
+      headerIndex,
+      columns: analysis
+    };
+  },
+
   generateHeaderHash: (headers: any[]): string => {
-    // Take first 10 columns to form a signature, joined by pipe
-    // Clean strings to improve matching (trim, lowercase?) -> Keeping it case-sensitive for now for precision
-    return headers.slice(0, 10).map(h => String(h || '').trim()).join('|');
+    // Take first 15 columns to form a signature for better precision
+    return headers.slice(0, 15).map(h => String(h || '').trim()).join('|');
+  },
+
+  /**
+   * Calculate similarity between two header hashes (Jaccard-like)
+   */
+  calculateSimilarity: (hash1: string, hash2: string): number => {
+    if (hash1 === hash2) return 1.0;
+    const set1 = new Set(hash1.split('|').filter(Boolean));
+    const set2 = new Set(hash2.split('|').filter(Boolean));
+    if (set1.size === 0 || set2.size === 0) return 0;
+
+    const intersection = new Set([...set1].filter(x => set2.has(x)));
+    const union = new Set([...set1, ...set2]);
+    return intersection.size / union.size;
   },
 
   /**
@@ -89,10 +416,6 @@ export const ImportService = {
     if (index === -1) return null;
 
     presets[index].mapping = mapping;
-    // We don't update headerHash usually because the format ID key is the header.
-    // But if we wanted to support 'renaming' or 're-hashing', we could. 
-    // For now, only mapping update is safe.
-
     localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(presets));
     return presets[index];
   },
@@ -110,23 +433,33 @@ export const ImportService = {
     }
   },
 
-  /**
-   * Finds a preset that matches the given CSV headers.
-   * Prioritizes presets bound to the specific targetAssetId.
-   */
   findMatchingPreset: (headers: any[], targetAssetId?: string): ImportPreset | null => {
     const hash = ImportService.generateHeaderHash(headers);
     const presets = ImportService.getPresets();
 
-    // 1. Try to find a preset specifically for this asset
+    let bestMatch: ImportPreset | null = null;
+    let maxSimilarity = 0.75; // Minimum threshold 75%
+
+    // 1. Try Strict Match first (prioritizing targetAssetId)
     if (targetAssetId) {
       const strictMatch = presets.find(p => p.headerHash === hash && p.linkedAssetId === targetAssetId);
       if (strictMatch) return strictMatch;
     }
+    const globalStrict = presets.find(p => p.headerHash === hash && !p.linkedAssetId);
+    if (globalStrict) return globalStrict;
 
-    // 2. Fallback to global preset (no linkedAssetId)
-    // We strictly avoid returning a preset that belongs to a DIFFERENT asset.
-    return presets.find(p => p.headerHash === hash && !p.linkedAssetId) || null;
+    // 2. Fuzzy Match (Similarity based)
+    for (const p of presets) {
+      if (p.linkedAssetId && p.linkedAssetId !== targetAssetId) continue; // Don't match presets of other accounts fuzzy
+
+      const sim = ImportService.calculateSimilarity(hash, p.headerHash);
+      if (sim > maxSimilarity) {
+        maxSimilarity = sim;
+        bestMatch = p;
+      }
+    }
+
+    return bestMatch;
   },
 
   /**
@@ -159,82 +492,69 @@ export const ImportService = {
    * Logic: AssetID + Timestamp(minute precision) + Amount + Memo
    */
   generateHashKey: (assetId: string, timestamp: number, amount: number, memo: string): string => {
-    // Round timestamp to minute to handle slight OCR/CSV format differences
-    // 60000ms = 1 minute
     const timeKey = Math.floor(timestamp / 60000);
     const raw = `${assetId}|${timeKey}|${amount}|${memo.trim()}`;
 
-    // Simple hash function for browser environment
     let hash = 0;
     for (let i = 0; i < raw.length; i++) {
       const char = raw.charCodeAt(i);
       hash = (hash << 5) - hash + char;
-      hash |= 0; // Convert to 32bit integer
+      hash |= 0; 
     }
     return hash.toString(16);
   },
 
   /**
    * Reads a file (CSV or Excel) and returns raw 2D array data.
-   * This is Step 1 of the wizard.
    */
-  parseFileToGrid: async (file: File): Promise<any[][]> => {
+  parseFileToGrid: async (file: File): Promise<{ rawGrid: any[][], displayGrid: any[][] }> => {
     const buffer = await file.arrayBuffer();
 
-    // Strategy 1: Prioritize Binary Read for Excel Files (.xls, .xlsx)
-    // This prevents "TextDecoder" from corrupting binary BIFF8/ZIP content.
+    const parseWorkbook = (wb: any) => {
+      const sheetName = wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      // rawGrid: 숫자/날짜 Serial 원본 (계산·파싱용)
+      const rawGrid = utils.sheet_to_json(ws, { header: 1, defval: '', raw: true }) as any[][];
+      // displayGrid: Excel에서 실제로 보이는 포맷 문자열 (매핑 화면 표시용)
+      const displayGrid = utils.sheet_to_json(ws, { header: 1, defval: '', raw: false }) as any[][];
+      return { rawGrid, displayGrid };
+    };
+
     if (file.name.match(/\.(xls|xlsx)$/i)) {
       try {
-        // type: 'array' handles binary buffers (BIFF8, ZIP) correctly
-        const workbook = read(buffer, { type: 'array', cellDates: true });
-
+        const workbook = read(buffer, { type: 'array', cellText: true });
         if (workbook.SheetNames.length > 0) {
-          const firstSheetName = workbook.SheetNames[0];
-          const rows = utils.sheet_to_json(workbook.Sheets[firstSheetName], { header: 1, defval: '' }) as any[][];
-          if (rows.length > 0) return rows;
+          const result = parseWorkbook(workbook);
+          if (result.rawGrid.length > 0) return result;
         }
       } catch (e) {
-        console.warn("Binary Excel read failed, falling back to text decoding...", e);
+        console.warn('Binary Excel read failed, falling back to text decoding...', e);
       }
     }
 
-    // Strategy 2: Text Decoding (CSV, HTML-as-XLS)
-    // 1. Try UTF-8 with fatal: true checks for invalid sequences (usually robust)
     let decodedText = '';
-    let encoding = 'utf-8';
-
     try {
       const decoder = new TextDecoder('utf-8', { fatal: true });
       decodedText = decoder.decode(buffer);
     } catch (e) {
-      // 2. Fallback to EUC-KR (Common for Korean Bank CSVs)
       try {
-        console.warn("UTF-8 decoding failed, trying EUC-KR/CP949");
+        console.warn('UTF-8 decoding failed, trying EUC-KR/CP949');
         const decoder = new TextDecoder('euc-kr');
         decodedText = decoder.decode(buffer);
-        encoding = 'euc-kr';
       } catch (err) {
-        console.error("Failed to decode file locally, trying SheetJS binary fallback", err);
-        // Fallback to reading as buffer and letting SheetJS guess (best effort)
-        const workbook = read(buffer, { type: 'array', cellDates: true });
-        const firstSheetName = workbook.SheetNames[0];
-        return utils.sheet_to_json(workbook.Sheets[firstSheetName], { header: 1, defval: '' }) as any[][];
+        console.error('Failed to decode file locally, trying SheetJS binary fallback', err);
+        const workbook = read(buffer, { type: 'array', cellText: true });
+        return parseWorkbook(workbook);
       }
     }
 
-    // Pass the correctly decoded string to SheetJS
-    const workbook = read(decodedText, { type: 'string', cellDates: true });
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
-
-    // Convert to JSON array of arrays (header: 1)
-    const rows = utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][];
-    return rows;
+    const workbook = read(decodedText, { type: 'string', cellText: true });
+    return parseWorkbook(workbook);
   },
+
 
   /**
    * Internal helper to parse and validate a single row.
-   * Extracted from the main loop to support real-time re-validation.
    */
   validateRow: (
     row: any[],
@@ -246,43 +566,26 @@ export const ImportService = {
   ): { transactions?: Partial<Transaction>[], reason?: string } => {
     try {
       const dateVal = row[mapping.dateIndex];
-      const memoVal = row[mapping.memoIndex];
-
+      
       // Amount Resolution
-      let amount = 0;
-      let determinedType: TransactionType | null = null;
+      const pendingTxs = [];
+      const parseAmt = (v: any) => {
+        if (typeof v === 'number') return v;
+        const s = String(v || '').trim();
+        if (!s) return 0;
+        return parseFloat(s.replace(/[^0-9.-]/g, '')) || 0;
+      };
 
-      if (mapping.amountInIndex !== undefined && mapping.amountInIndex >= 0 && mapping.amountOutIndex !== undefined && mapping.amountOutIndex >= 0) {
-        const inVal = row[mapping.amountInIndex];
-        const outVal = row[mapping.amountOutIndex];
+      if (mapping.amountInIndex !== undefined && mapping.amountInIndex >= 0) {
+        const inAmt = parseAmt(row[mapping.amountInIndex]);
+        if (inAmt > 0) pendingTxs.push({ amount: Math.abs(inAmt), type: TransactionType.INCOME });
+      }
+      if (mapping.amountOutIndex !== undefined && mapping.amountOutIndex >= 0) {
+        const outAmt = parseAmt(row[mapping.amountOutIndex]);
+        if (outAmt > 0) pendingTxs.push({ amount: Math.abs(outAmt), type: TransactionType.EXPENSE });
+      }
 
-        const parseAmt = (v: any) => {
-          if (typeof v === 'number') return v;
-          const s = String(v || '').trim();
-          if (!s) return 0;
-          return parseFloat(s.replace(/[^0-9.-]/g, '')) || 0;
-        };
-
-        const inAmount = parseAmt(inVal);
-        const outAmount = parseAmt(outVal);
-
-        const buildTx = (amt: number, t: TransactionType) => ({
-          amount: Math.abs(amt),
-          type: t
-        });
-
-        const pendingTxs = [];
-        if (inAmount > 0) pendingTxs.push(buildTx(inAmount, TransactionType.INCOME));
-        if (outAmount > 0) pendingTxs.push(buildTx(outAmount, TransactionType.EXPENSE));
-
-        if (pendingTxs.length === 0) throw new Error("No Amount detected");
-
-        // We will process these in a loop later, but for now we set a temporary structure
-        // to pass the info down.
-        // Actually, we need to return full transaction objects for each.
-        // Let's refactor to collect all "proto-transactions"
-        return ImportService._internalFinalizeRows(row, index, mapping, defaultAssetId, assets, categories, pendingTxs);
-      } else {
+      if (mapping.amountIndex !== undefined && mapping.amountIndex >= 0) {
         const amountVal = row[mapping.amountIndex];
         let amount = 0;
         if (typeof amountVal === 'number') {
@@ -295,18 +598,21 @@ export const ImportService = {
           if (isNaN(parsedFloat)) throw new Error("Invalid Amount");
           amount = parsedFloat;
         }
-
-        const type = amount < 0 ? TransactionType.EXPENSE : TransactionType.INCOME;
-        const pendingTxs = [{ amount: Math.abs(amount), type }];
-        return ImportService._internalFinalizeRows(row, index, mapping, defaultAssetId, assets, categories, pendingTxs);
+        if (amount !== 0) {
+          const type = amount < 0 ? TransactionType.EXPENSE : TransactionType.INCOME;
+          pendingTxs.push({ amount: Math.abs(amount), type });
+        }
       }
+
+      if (pendingTxs.length === 0) throw new Error("No Amount detected");
+      return ImportService._internalFinalizeRows(row, index, mapping, defaultAssetId, assets, categories, pendingTxs);
     } catch (err) {
       return { reason: (err as Error).message };
     }
   },
 
   /**
-   * Internal helper to avoid repeating normalization logic for split rows
+   * Internal helper with ULTRA-STRICT asset matching.
    */
   _internalFinalizeRows: (
     row: any[],
@@ -321,124 +627,73 @@ export const ImportService = {
       const dateVal = row[mapping.dateIndex];
       const memoVal = row[mapping.memoIndex];
 
-      // Asset Resolution
+      // --- Asset Resolution (ULTRA-STRICT) ---
       let currentAssetId = defaultAssetId;
       if (mapping.assetIndex !== undefined && mapping.assetIndex >= 0) {
         const assetVal = String(row[mapping.assetIndex] || '').trim();
         if (assetVal) {
-          const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
-          const searchNorm = normalize(assetVal);
-          const tokenize = (str: string) => str.toLowerCase().split(/[^a-z0-9가-힣]+/).filter(t => t.length > 0);
-          const searchTokens = tokenize(assetVal);
+          const normalize = (s: string) => s.toUpperCase().replace(/[^A-Z0-9가-힣]/g, '');
+          const normInput = normalize(assetVal);
+          let bestMatchId: string | null = null;
 
-          let bestMatchId = null;
-          let highestScore = 0;
-
+          // Tier 1: Product Name Match
           for (const a of assets) {
-            const nameNorm = normalize(a.name);
-            const instNorm = normalize(a.institution || '');
-            const combinedNorm = instNorm + nameNorm;
-            const accLast4 = a.accountNumber ? normalize(a.accountNumber).slice(-4) : '';
-
-            // 1. Perfect matches (Full string)
-            if (searchNorm === combinedNorm || searchNorm === nameNorm) {
+            const prodNorm = normalize(a.productName || '');
+            if (prodNorm && (normInput === prodNorm || normInput.includes(prodNorm))) {
               bestMatchId = a.id;
-              highestScore = 999;
               break;
-            }
-
-            // 2. Token scoring
-            let score = 0;
-            const nameTokens = new Set(tokenize(a.name));
-            const instTokens = new Set(tokenize(a.institution || ''));
-
-            for (const token of searchTokens) {
-              if (token.length < 2 && isNaN(Number(token))) continue;
-
-              // Heavy weight for institution match
-              if (instTokens.has(token)) {
-                score += 30;
-              }
-              // Medium weight for name match
-              else if (nameTokens.has(token)) {
-                score += 15;
-              }
-              // Account number match (last 4 digits)
-              else if (accLast4 && token.endsWith(accLast4)) {
-                score += 50;
-              }
-              else {
-                // Partial inclusion
-                for (const nt of nameTokens) {
-                  if (nt.length > 2 && token.length > 2 && (nt.includes(token) || token.includes(nt))) {
-                    score += 5;
-                    break;
-                  }
-                }
-              }
-            }
-
-            // Inclusion bonuses
-            if (nameNorm.length > 2 && searchNorm.includes(nameNorm)) score += 10;
-            if (instNorm.length > 2 && searchNorm.includes(instNorm)) score += 20;
-
-            if (score > highestScore) {
-              highestScore = score;
-              bestMatchId = a.id;
             }
           }
 
-          if (bestMatchId && highestScore >= 10) {
+          // Tier 2: Institution + Account Suffix (Both Required)
+          if (!bestMatchId) {
+            for (const a of assets) {
+              const instNorm = normalize(a.institution || '');
+              const accSuffix = a.accountNumber ? normalize(a.accountNumber).replace(/[^0-9]/g, '').slice(-4) : '';
+              
+              if (instNorm && accSuffix && accSuffix.length >= 4) {
+                if (normInput.includes(instNorm) && normInput.includes(accSuffix)) {
+                  bestMatchId = a.id;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (bestMatchId) {
             currentAssetId = bestMatchId;
           }
         }
       }
 
-      if (currentAssetId === 'dynamic') throw new Error("Account not found");
+      if (currentAssetId === 'dynamic') {
+        throw new Error("Account not found");
+      }
 
-      // Date Parsing
-      const parseLooseDate = (val: any): Date | null => {
-        if (val instanceof Date) return val;
-        let s = String(val || '').trim();
-        if (!s) return null;
-
-        const complexMatch = s.match(/(\d{4})[\.\/\-년]\s*(\d{1,2})[\.\/\-월]\s*(\d{1,2})[일]?\s*(?:(오전|오후|AM|PM)\s*)?(\d{1,2})?:?(\d{1,2})?(?::(\d{1,2}))?/i);
-        if (complexMatch) {
-          let [_, y, m, d, meridiem, hourStr, min, sec] = complexMatch;
-          let hour = hourStr ? parseInt(hourStr, 10) : 0;
-          let minute = min ? parseInt(min, 10) : 0;
-          let second = sec ? parseInt(sec, 10) : 0;
-          if (meridiem) {
-            if ((meridiem === '오후' || meridiem.toUpperCase() === 'PM') && hour < 12) hour += 12;
-            if ((meridiem === '오전' || meridiem.toUpperCase() === 'AM') && hour === 12) hour = 0;
-          }
-          return new Date(parseInt(y), parseInt(m) - 1, parseInt(d), hour, minute, second);
-        }
-
-        const simpleDateMatch = s.match(/^(\d{4})\s*[\.\/\-년]\s*(\d{1,2})\s*[\.\/\-월]\s*(\d{1,2})[일]?/);
-        if (simpleDateMatch) {
-          const [_, y, m, d] = simpleDateMatch;
-          return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-        }
-
-        const cleanS = s.replace(/[\.\/]/g, '-').replace(/\s/g, '');
-        if (/^\d{8}$/.test(cleanS)) {
-          return new Date(parseInt(cleanS.substring(0, 4)), parseInt(cleanS.substring(4, 6)) - 1, parseInt(cleanS.substring(6, 8)));
-        }
-
-        const dDate = new Date(s);
-        return isNaN(dDate.getTime()) ? null : dDate;
-      };
-
-      const d = parseLooseDate(dateVal);
+      const timeVal = mapping.timeIndex !== undefined && mapping.timeIndex >= 0 ? row[mapping.timeIndex] : undefined;
+      const d = ImportService.parseLooseDate(dateVal, timeVal);
       if (!d) throw new Error("Invalid Date");
 
-      const dateStr = d.toISOString().split('T')[0];
+      // toISOString().split('T')[0] 은 자정 근처 데이터가 어제로 밀리는 현상이 있음. 로컬 날짜 기준으로 생성.
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const timestamp = d.getTime();
 
-      // Merchant & Memo
+      // --- Merchant & Memo ---
       let merchantVal = undefined;
-      let finalMemo = String(memoVal || '').trim();
+      let memoParts: string[] = [];
+      const primaryMemo = String(memoVal || '').trim();
+      if (primaryMemo) memoParts.push(primaryMemo);
+
+      if (mapping.memoIndices && mapping.memoIndices.length > 0) {
+        for (const mIdx of mapping.memoIndices) {
+          if (mIdx >= 0 && mIdx !== mapping.memoIndex) {
+            const extra = String(row[mIdx] || '').trim();
+            if (extra && !memoParts.includes(extra)) memoParts.push(extra);
+          }
+        }
+      }
+
+      let finalMemo = memoParts.join(' ');
 
       if (mapping.merchantIndex !== undefined && mapping.merchantIndex >= 0) {
         const rawMerchant = String(row[mapping.merchantIndex] || '').trim();
@@ -463,7 +718,7 @@ export const ImportService = {
 
       if (!finalMemo) throw new Error("Empty Description");
 
-      // Category
+      // --- Category ---
       let categoryVal = Category.OTHER;
       if (mapping.categoryIndex !== undefined && mapping.categoryIndex >= 0) {
         const rawCat = String(row[mapping.categoryIndex] || '').trim();
@@ -483,9 +738,8 @@ export const ImportService = {
         }
       }
 
-      // Build Transactions
+      // --- Build Transactions ---
       const finalTransactions: Partial<Transaction>[] = pendingAmounts.map((p, subIdx) => {
-        // Handle Installment per transaction (usually only for expenses)
         let txInstallment = undefined;
         if (p.type === TransactionType.EXPENSE && mapping.installmentIndex !== undefined && mapping.installmentIndex >= 0) {
           const rawInst = String(row[mapping.installmentIndex] || '').trim();
@@ -532,13 +786,14 @@ export const ImportService = {
     mapping: ColumnMapping,
     defaultAssetId: string,
     assets: any[] = [],
-    categories: CategoryItem[] = []
+    categories: CategoryItem[] = [],
+    headerIndex: number = 0
   ): ImportRow[] => {
     const rows: ImportRow[] = [];
     const baseHashCounts = new Map<string, number>();
 
-    // Skip header row
-    for (let i = 1; i < grid.length; i++) {
+    // Start from the row after the header
+    for (let i = headerIndex + 1; i < grid.length; i++) {
       const rawRowData = grid[i];
       if (!rawRowData || rawRowData.some(cell => cell !== '') === false) continue;
 
@@ -546,7 +801,6 @@ export const ImportService = {
 
       if (transactions && transactions.length > 0) {
         transactions.forEach((tx, subIdx) => {
-          // Generate Unique HashKey for duplicate prevention
           const baseHash = ImportService.generateHashKey(
             tx.assetId!,
             tx.timestamp!,
@@ -576,16 +830,61 @@ export const ImportService = {
     return rows;
   },
 
-  // (Keeping the rest of the legacy mapping for backward compatibility if needed, 
-  // but we should eventually migrate ImportWizardModal to use mapRawDataToImportRows)
+  /**
+   * Reassigns hash keys for a list of ImportRows to ensure global uniqueness and consistent formatting.
+   * Now cross-checks against dbHashBank to identify existing record duplicates.
+   * Preserves the original subIdx from the transaction's existing hashKey (set by mapRawDataToImportRows)
+   * so that multi-transaction rows (e.g. 결제+취소 simultaneously) maintain correct #count#subIdx.
+   */
+  reassignHashKeys: (rows: ImportRow[], dbHashBank?: Set<string>): ImportRow[] => {
+    const baseHashCounts = new Map<string, number>();
+    
+    return rows.map(row => {
+      // Keep invalid rows as they are, but re-calculate for others
+      if (row.status === 'invalid' || !row.transaction) return row;
+      
+      const tx = row.transaction;
+      const baseHash = ImportService.generateHashKey(
+        tx.assetId!,
+        tx.timestamp!,
+        tx.amount!,
+        tx.memo!
+      );
+      
+      const currentCount = baseHashCounts.get(baseHash) || 0;
+      baseHashCounts.set(baseHash, currentCount + 1);
+      
+      // Preserve the original subIdx from mapRawDataToImportRows.
+      // The existing hashKey format is "{baseHash}#{count}#{subIdx}" — extract the last segment.
+      // Falls back to 0 if there's no pre-existing hashKey (e.g., manually added rows).
+      const existingSubIdx = tx.hashKey
+        ? parseInt(tx.hashKey.split('#').pop() ?? '0', 10)
+        : 0;
+      const subIdx = isNaN(existingSubIdx) ? 0 : existingSubIdx;
+      
+      const hashKey = `${baseHash}#${currentCount}#${subIdx}`;
+      tx.hashKey = hashKey;
+
+      // CROSS-CHECK against DB Hash Bank
+      let newStatus: 'valid' | 'duplicate' = 'valid';
+      if (dbHashBank && dbHashBank.has(hashKey)) {
+        newStatus = 'duplicate';
+      }
+
+      return { ...row, status: newStatus, transaction: { ...tx } };
+    });
+  },
+
+
   mapRawDataToTransactions: (
     grid: any[][],
     mapping: ColumnMapping,
     defaultAssetId: string,
     assets: any[] = [],
-    categories: CategoryItem[] = []
+    categories: CategoryItem[] = [],
+    headerIndex: number = 0
   ): { valid: Partial<Transaction>[], invalid: any[] } => {
-    const rows = ImportService.mapRawDataToImportRows(grid, mapping, defaultAssetId, assets, categories);
+    const rows = ImportService.mapRawDataToImportRows(grid, mapping, defaultAssetId, assets, categories, headerIndex);
     return {
       valid: rows.filter(r => r.status === 'valid').map(r => r.transaction!),
       invalid: rows.filter(r => r.status === 'invalid').map(r => ({ row: r.index + 1, data: r.data, reason: r.reason }))

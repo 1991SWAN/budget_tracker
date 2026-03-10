@@ -26,6 +26,7 @@ export const AssetService = {
             accountNumber: row.account_number,
             excludeFromTotal: row.exclude_from_total,
             theme: row.theme,
+            productName: row.product_name,
             initialBalance: obMap.get(row.id) || 0,
         })) as Asset[];
     },
@@ -39,7 +40,7 @@ export const AssetService = {
             type: asset.type,
             balance: asset.balance,
             currency: asset.currency,
-            description: asset.description,
+            product_name: asset.productName,
             interest_rate: asset.interestRate,
             limit: asset.limit,
             credit_details: asset.creditDetails,

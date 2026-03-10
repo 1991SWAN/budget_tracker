@@ -106,7 +106,10 @@ export const AssetDetailModal: React.FC<{
                     <div className="relative z-10 flex justify-between items-start">
                         <div>
                             <p className="opacity-80 font-medium tracking-wide uppercase text-sm mb-1">{asset.type.replace('_', ' ')}</p>
-                            <h2 className="text-3xl font-bold mb-2">{asset.name}</h2>
+                            <h2 className="text-3xl font-bold mb-1">{asset.name}</h2>
+                            {asset.productName && (
+                                <p className="text-sm font-medium opacity-70 mb-2">{asset.productName}</p>
+                            )}
                             <h1 className="text-4xl font-extrabold tracking-tight">{asset.balance.toLocaleString()} <span className="text-lg opacity-70 font-normal">KRW</span></h1>
                         </div>
                         {/* X Button Removed */}

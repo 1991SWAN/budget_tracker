@@ -47,6 +47,9 @@ export const AssetCard: React.FC<AssetCardProps> = ({ asset, transactions, onCli
                     <div className="flex justify-between items-start">
                         <div className="min-w-0 pr-2">
                             <h3 className="font-medium text-lg opacity-90 truncate tracking-tight leading-tight">{asset.name}</h3>
+                            {asset.productName && asset.productName !== asset.name && (
+                                <p className="text-[10px] font-bold opacity-60 uppercase tracking-tighter -mt-0.5">{asset.productName}</p>
+                            )}
                             {maskedNumber && (
                                 <p className="font-mono text-xs opacity-60 tracking-widest text-shadow-sm mt-0.5">
                                     {maskedNumber}

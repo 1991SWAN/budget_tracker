@@ -19,7 +19,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCan
         balance: 0,
         initialBalance: 0,
         currency: 'KRW',
-        description: '',
+        productName: '',
         ...initialData
     });
 
@@ -68,7 +68,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCan
                         : Number(formData.initialBalance))
                     : Number(formData.balance),
                 currency: formData.currency || 'KRW',
-                description: formData.description,
+                productName: formData.productName,
                 institution: formData.institution,
                 accountNumber: formData.accountNumber,
                 excludeFromTotal: formData.excludeFromTotal,
@@ -243,14 +243,17 @@ export const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCan
                     </div>
                 )}
 
-                {/* Description & Settings */}
                 <div className="space-y-3">
                     <Input
-                        placeholder="Description (Optional)"
-                        value={formData.description || ''}
-                        onChange={e => setFormData({ ...formData, description: e.target.value })}
+                        label="Product / Note"
+                        placeholder="e.g. KB Star Banking, Main Account"
+                        value={formData.productName || ''}
+                        onChange={e => setFormData({ ...formData, productName: e.target.value })}
                         size="sm"
                     />
+                    <p className="text-[10px] text-slate-400 font-medium px-1 -mt-2">
+                        금융사 상품명이나 별칭을 입력하면 CSV 임포트 시 자동 자산 감지가 더 정확해집니다.
+                    </p>
                     <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500 cursor-pointer px-1">
                         <input
                             type="checkbox"
