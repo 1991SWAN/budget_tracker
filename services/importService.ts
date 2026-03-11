@@ -113,9 +113,20 @@ export const ImportService = {
           if ((meridiem === '오전' || meridiem.toUpperCase() === 'AM') && hour === 12) hour = 0;
         }
       } else {
-        // 2. 8자리 숫자 스타일 (20240129)
         const cleanS = ds.replace(/[\.\/]/g, '-').replace(/\s/g, '');
-        if (/^\d{8}$/.test(cleanS)) {
+        // 2-A. Unix ms 문자열 (DB export timestamp: 13자리 숫자, 예: "1744520197000")
+        if (/^\d{13}$/.test(cleanS)) {
+          const d = new Date(Number(cleanS)); // Number()로 변환 필수 (문자열은 ms로 인식 안 함)
+          if (!isNaN(d.getTime())) {
+            year = d.getFullYear();
+            month = d.getMonth();
+            day = d.getDate();
+            hour = d.getHours();
+            minute = d.getMinutes();
+            second = d.getSeconds();
+          }
+        // 2-B. 8자리 숫자 스타일 (20240129)
+        } else if (/^\d{8}$/.test(cleanS)) {
           year = parseInt(cleanS.substring(0, 4));
           month = parseInt(cleanS.substring(4, 6)) - 1;
           day = parseInt(cleanS.substring(6, 8));
