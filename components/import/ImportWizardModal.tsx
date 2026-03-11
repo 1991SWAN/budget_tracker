@@ -798,13 +798,16 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                                                                 
                                                                 // 1. Date ID Formatting
                                                                 if (col.id === 'date') {
-                                                                    if (tx.timestamp) {
-                                                                        return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(tx.timestamp));
-                                                                    }
+                                                                    const fmt = (d: Date) => {
+                                                                        const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
+                                                                        if (hasTime) {
+                                                                            return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(d);
+                                                                        }
+                                                                        return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+                                                                    };
+                                                                    if (tx.timestamp) return fmt(new Date(tx.timestamp));
                                                                     // Unix ms (DB export timestamp, 1e12 이상) - INVALID 행 fallback
-                                                                    if (typeof rawVal === 'number' && rawVal >= 1e12) {
-                                                                        return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(rawVal));
-                                                                    }
+                                                                    if (typeof rawVal === 'number' && rawVal >= 1e12) return fmt(new Date(rawVal));
                                                                     // Excel Date Serial (46089 등)
                                                                     if (typeof rawVal === 'number' && rawVal > 10000) {
                                                                         const d = new Date((rawVal - 25569) * 86400 * 1000 + (12 * 60 * 60 * 1000));
@@ -826,6 +829,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                                                                 return rawVal || '';
                                                             })()}
                                                             readOnly={col.index < 0}
+                                                            title={col.id === 'date' && tx.timestamp ? new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(tx.timestamp)) : undefined}
                                                             onBlur={(e) => {
                                                                 if (col.index >= 0) {
                                                                     handleUpdateRowData(row.index, col.index, e.target.value);
