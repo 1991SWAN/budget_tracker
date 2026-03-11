@@ -33,13 +33,28 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // 1. hash_key가 있는 모든 거래 조회
-    const { data: transactions, error: fetchError } = await supabase
-      .from("transactions")
-      .select("id, asset_id, timestamp, amount, memo, hash_key")
-      .not("hash_key", "is", null);
+    // 1. hash_key가 있는 모든 거래를 페이지네이션으로 전체 조회 (기본 limit=1000 우회)
+    const PAGE_SIZE = 1000;
+    let allTransactions: any[] = [];
+    let page = 0;
 
-    if (fetchError) throw fetchError;
+    while (true) {
+      const { data, error: fetchError } = await supabase
+        .from("transactions")
+        .select("id, asset_id, timestamp, amount, memo, hash_key")
+        .not("hash_key", "is", null)
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+      if (fetchError) throw fetchError;
+      if (!data || data.length === 0) break;
+
+      allTransactions = allTransactions.concat(data);
+      if (data.length < PAGE_SIZE) break; // 마지막 페이지
+      page++;
+    }
+
+    const transactions = allTransactions;
+
     if (!transactions || transactions.length === 0) {
       return new Response(JSON.stringify({ message: "No transactions with hash_key found.", updated: 0 }), {
         headers: { "Content-Type": "application/json" },
@@ -94,30 +109,21 @@ Deno.serve(async (req: Request) => {
     }
 
     // 3. 실제 업데이트 (dry_run=false일 때만)
-    let successCount = 0;
-    let failCount = 0;
+    // PostgreSQL RPC를 사용해 단일 쿼리로 전체 업데이트 (타임아웃 방지)
+    const rpcPayload = updates.map(upd => ({ id: upd.id, hash_key: upd.new_hash }));
 
-    for (const upd of updates) {
-      const { error: updateError } = await supabase
-        .from("transactions")
-        .update({ hash_key: upd.new_hash })
-        .eq("id", upd.id);
+    const { data: updatedCount, error: rpcError } = await supabase
+      .rpc("bulk_update_hash_keys", { updates: rpcPayload });
 
-      if (updateError) {
-        console.error(`Failed to update ${upd.id}:`, updateError);
-        failCount++;
-      } else {
-        successCount++;
-      }
-    }
+    if (rpcError) throw rpcError;
 
     return new Response(
       JSON.stringify({
         dry_run: false,
         total: transactions.length,
-        updated: successCount,
+        updated: updatedCount ?? updates.length,
         unchanged: transactions.length - updates.length,
-        failed: failCount,
+        failed: 0,
       }),
       { headers: { "Content-Type": "application/json" } }
     );
