@@ -737,23 +737,36 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                                             return (
                                                 <div key={col.id} style={{ width: col.width }} className="flex-shrink-0 px-2">
                                                     {col.id === 'hashKey' ? (() => {
-                                                        const timeKey = Math.floor((tx.timestamp || 0) / 60000);
-                                                        const normalizedMemo = (tx.memo || '').trim().replace(/\s/g, '');
-                                                        const debugTitle = [
-                                                            `assetId  : ${tx.assetId}`,
-                                                            `timestamp: ${tx.timestamp}`,
-                                                            `timeKey  : ${timeKey}`,
-                                                            `amount   : ${tx.amount}`,
-                                                            `memo(raw): ${tx.memo}`,
-                                                            `memo(norm): ${normalizedMemo}`,
-                                                            `─────────────────────`,
-                                                            `raw: ${tx.assetId}|${timeKey}|${tx.amount}|${normalizedMemo}`,
-                                                            `hash: ${tx.hashKey}`,
-                                                        ].join('\n');
+                                                        const ts = (tx as any).timestamp as number | undefined;
+                                                        const assetId = (tx as any).assetId as string | undefined;
+                                                        const amount = (tx as any).amount as number | undefined;
+                                                        const memo = (tx as any).memo as string | undefined;
+                                                        const hashKey = (tx as any).hashKey as string | undefined;
+                                                        const timeKey = Math.floor((ts || 0) / 60000);
+                                                        const normalizedMemo = (memo || '').trim().replace(/\s/g, '');
+                                                        const timeDisplay = ts ? new Date(ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-';
                                                         return (
-                                                            <div className="font-mono bg-slate-50 px-2 py-1 rounded-lg w-full cursor-help" title={debugTitle}>
-                                                                <div className="text-[9px] text-slate-500 truncate">{tx.hashKey || '-'}</div>
-                                                                <div className="text-[8px] text-slate-300 truncate">{tx.timestamp || ''}</div>
+                                                            <div
+                                                                className="font-mono bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg w-full cursor-pointer hover:bg-amber-100 transition-colors"
+                                                                onClick={() => {
+                                                                    const info = [
+                                                                        `■ Hash Key Debug`,
+                                                                        ``,
+                                                                        `assetId   : ${assetId}`,
+                                                                        `timestamp : ${ts}`,
+                                                                        `timeKey   : ${timeKey}`,
+                                                                        `amount    : ${amount}`,
+                                                                        `memo(raw) : ${memo}`,
+                                                                        `memo(norm): ${normalizedMemo}`,
+                                                                        ``,
+                                                                        `raw: ${assetId}|${timeKey}|${amount}|${normalizedMemo}`,
+                                                                        `hash: ${hashKey}`,
+                                                                    ].join('\n');
+                                                                    alert(info);
+                                                                }}
+                                                            >
+                                                                <div className="text-[9px] text-slate-600 truncate">{hashKey || '-'}</div>
+                                                                <div className="text-[8px] text-amber-500 font-bold">{timeDisplay}</div>
                                                             </div>
                                                         );
                                                     })() : col.id === 'final_memo' ? (
