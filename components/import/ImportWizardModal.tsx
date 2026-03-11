@@ -801,6 +801,11 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                                                                     if (tx.timestamp) {
                                                                         return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(tx.timestamp));
                                                                     }
+                                                                    // Unix ms (DB export timestamp, 1e12 이상) - INVALID 행 fallback
+                                                                    if (typeof rawVal === 'number' && rawVal >= 1e12) {
+                                                                        return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(rawVal));
+                                                                    }
+                                                                    // Excel Date Serial (46089 등)
                                                                     if (typeof rawVal === 'number' && rawVal > 10000) {
                                                                         const d = new Date((rawVal - 25569) * 86400 * 1000 + (12 * 60 * 60 * 1000));
                                                                         return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`;
