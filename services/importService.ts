@@ -627,7 +627,7 @@ export const ImportService = {
         }
       }
 
-      if (pendingTxs.length === 0) throw new Error("No Amount detected");
+      if (pendingTxs.length === 0) throw new Error("Zero Amount"); // 0원 전용 에러 (skip 처리)
       return ImportService._internalFinalizeRows(row, index, mapping, defaultAssetId, assets, categories, pendingTxs);
     } catch (err) {
       return { reason: (err as Error).message };
@@ -848,6 +848,8 @@ export const ImportService = {
           });
         });
       } else {
+        // 0원 거래는 조용히 건너뜀 (INVALID 탭에 표시하지 않음)
+        if (reason === 'Zero Amount') continue;
         rows.push({
           index: i,
           data: rawRowData,
