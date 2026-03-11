@@ -63,7 +63,17 @@ export const ImportService = {
     let ts = String(timeVal || '').trim();
 
     if (typeof dateVal === 'number') {
-      if (dateVal > 10000) {
+      if (dateVal >= 1e12) {
+        // 0. Unix ms Timestamp (DB export timestamp, 예: 1744520197000)
+        // Excel serial은 최대 ~60000 수준 → 1e12와 겹치지 않음
+        const d = new Date(dateVal);
+        year = d.getFullYear();
+        month = d.getMonth();
+        day = d.getDate();
+        hour = d.getHours();
+        minute = d.getMinutes();
+        second = d.getSeconds();
+      } else if (dateVal > 10000) {
         // 1. Excel Date Serial (e.g. 46089)
         // 25569 = 1970년 1월 1일 기준 (엑셀 1900년 기준 보정값)
         let date = new Date((dateVal - 25569) * 86400 * 1000 + (12 * 60 * 60 * 1000));
