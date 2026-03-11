@@ -808,54 +808,6 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                                         })}
 
                                         <div className="flex-1 px-4 min-w-[200px]">
-                                            {/* ============================================================ */}
-                                            {/* ⚠️ __DEBUG__ HASH KEY INSPECTOR - 확인 후 삭제 요청할 것    */}
-                                            {/* ============================================================ */}
-                                            {tx.hashKey && (() => {
-                                                const timeKey = tx.timestamp ? Math.floor(tx.timestamp / 60000) : 'N/A';
-                                                const baseHash = tx.hashKey.split('#')[0];
-                                                const countPart = tx.hashKey.split('#')[1];
-                                                const subIdxPart = tx.hashKey.split('#')[2];
-                                                const assetName = assets.find(a => a.id === tx.assetId)?.name ?? tx.assetId ?? 'N/A';
-                                                return (
-                                                    <details className="mb-1">
-                                                        <summary className="cursor-pointer text-[9px] font-black text-amber-700 bg-amber-100 border border-amber-300 rounded px-2 py-0.5 inline-flex items-center gap-1 select-none">
-                                                            🔑 __DEBUG__ HashKey Inspector
-                                                        </summary>
-                                                        <div className="mt-1 p-2 bg-yellow-50 border-2 border-yellow-400 rounded-lg text-[9px] font-mono leading-relaxed">
-                                                            <div className="text-yellow-800 font-black mb-1 border-b border-yellow-300 pb-0.5">
-                                                                ▶ FULL HASHKEY: <span className="text-slate-900">{tx.hashKey}</span>
-                                                            </div>
-                                                            <div className="grid grid-cols-[90px_1fr] gap-x-1 gap-y-0.5">
-                                                                <span className="text-yellow-600 font-black">baseHash</span>
-                                                                <span className="text-slate-800">{baseHash}</span>
-
-                                                                <span className="text-yellow-600 font-black">count (#)</span>
-                                                                <span className="text-slate-800">{countPart} <span className="text-yellow-500">(파일내 중복 순번)</span></span>
-
-                                                                <span className="text-yellow-600 font-black">subIdx (#)</span>
-                                                                <span className="text-slate-800">{subIdxPart} <span className="text-yellow-500">(행내 거래 번호)</span></span>
-
-                                                                <span className="text-yellow-600 font-black border-t border-yellow-200 pt-0.5 mt-0.5">INPUT: assetId</span>
-                                                                <span className="text-slate-800 border-t border-yellow-200 pt-0.5 mt-0.5 truncate" title={tx.assetId}>{assetName}</span>
-
-                                                                <span className="text-yellow-600 font-black">INPUT: timeKey</span>
-                                                                <span className="text-slate-800">{timeKey} <span className="text-yellow-500">(timestamp÷60000)</span></span>
-
-                                                                <span className="text-yellow-600 font-black">INPUT: timestamp</span>
-                                                                <span className="text-slate-800">{tx.timestamp} → {tx.timestamp ? new Date(tx.timestamp).toLocaleString('ko-KR') : 'N/A'}</span>
-
-                                                                <span className="text-yellow-600 font-black">INPUT: amount</span>
-                                                                <span className="text-slate-800">{tx.amount}</span>
-
-                                                                <span className="text-yellow-600 font-black">INPUT: memo</span>
-                                                                <span className="text-slate-800 truncate" title={tx.memo}>&quot;{tx.memo}&quot;</span>
-                                                            </div>
-                                                        </div>
-                                                    </details>
-                                                );
-                                            })()}
-                                            {/* ============================================================ */}
                                             {isInvalid ? (
                                                 <div className="flex items-center gap-2">
                                                     <AlertTriangle size={14} className="text-rose-500 flex-shrink-0" />

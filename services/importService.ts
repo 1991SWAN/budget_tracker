@@ -493,7 +493,9 @@ export const ImportService = {
    */
   generateHashKey: (assetId: string, timestamp: number, amount: number, memo: string): string => {
     const timeKey = Math.floor(timestamp / 60000);
-    const raw = `${assetId}|${timeKey}|${amount}|${memo.trim()}`;
+    // 방안 C: memo 공백 완전 제거 (파일 출처별 공백 차이 무력화)
+    const normalizedMemo = memo.trim().replace(/\s/g, '');
+    const raw = `${assetId}|${timeKey}|${amount}|${normalizedMemo}`;
 
     let hash = 0;
     for (let i = 0; i < raw.length; i++) {
