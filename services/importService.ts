@@ -638,8 +638,14 @@ export const ImportService = {
           const normInput = normalize(assetVal);
           let bestMatchId: string | null = null;
 
+          // Tier 0: Direct ID Match (DB export CSV 전용 - 10자 이상 순수 숫자 ID)
+          if (/^\d{10,}$/.test(assetVal)) {
+            const directMatch = assets.find(a => String(a.id) === assetVal);
+            if (directMatch) bestMatchId = directMatch.id;
+          }
+
           // Tier 1: Product Name Match
-          for (const a of assets) {
+          if (!bestMatchId) for (const a of assets) {
             const prodNorm = normalize(a.productName || '');
             if (prodNorm && (normInput === prodNorm || normInput.includes(prodNorm))) {
               bestMatchId = a.id;
