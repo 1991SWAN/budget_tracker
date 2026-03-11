@@ -736,11 +736,27 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
 
                                             return (
                                                 <div key={col.id} style={{ width: col.width }} className="flex-shrink-0 px-2">
-                                                    {col.id === 'hashKey' ? (
-                                                        <div className="font-mono text-[9px] text-slate-400 bg-slate-50 px-2 py-1 rounded-lg truncate w-full" title={tx.hashKey}>
-                                                            {tx.hashKey || '-'}
-                                                        </div>
-                                                    ) : col.id === 'final_memo' ? (
+                                                    {col.id === 'hashKey' ? (() => {
+                                                        const timeKey = Math.floor((tx.timestamp || 0) / 60000);
+                                                        const normalizedMemo = (tx.memo || '').trim().replace(/\s/g, '');
+                                                        const debugTitle = [
+                                                            `assetId  : ${tx.assetId}`,
+                                                            `timestamp: ${tx.timestamp}`,
+                                                            `timeKey  : ${timeKey}`,
+                                                            `amount   : ${tx.amount}`,
+                                                            `memo(raw): ${tx.memo}`,
+                                                            `memo(norm): ${normalizedMemo}`,
+                                                            `─────────────────────`,
+                                                            `raw: ${tx.assetId}|${timeKey}|${tx.amount}|${normalizedMemo}`,
+                                                            `hash: ${tx.hashKey}`,
+                                                        ].join('\n');
+                                                        return (
+                                                            <div className="font-mono bg-slate-50 px-2 py-1 rounded-lg w-full cursor-help" title={debugTitle}>
+                                                                <div className="text-[9px] text-slate-500 truncate">{tx.hashKey || '-'}</div>
+                                                                <div className="text-[8px] text-slate-300 truncate">{tx.timestamp || ''}</div>
+                                                            </div>
+                                                        );
+                                                    })() : col.id === 'final_memo' ? (
                                                         <div className="text-[11px] font-bold text-slate-700 italic truncate" title={tx.memo}>
                                                             {tx.memo}
                                                         </div>
