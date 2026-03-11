@@ -110,19 +110,35 @@ export const TransactionService = {
     },
 
     getHashKeysByDateRange: async (startDate: string, endDate: string): Promise<Set<string>> => {
-        const { data, error } = await supabase
-            .from('transactions')
-            .select('hash_key')
-            .gte('date', startDate)
-            .lte('date', endDate)
-            .not('hash_key', 'is', null);
+        const allHashKeys: string[] = [];
+        const PAGE_SIZE = 1000;
+        let from = 0;
+        let hasMore = true;
 
-        if (error) {
-            console.error('Error fetching hash keys:', error);
-            return new Set();
+        while (hasMore) {
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('hash_key')
+                .gte('date', startDate)
+                .lte('date', endDate)
+                .not('hash_key', 'is', null)
+                .range(from, from + PAGE_SIZE - 1);
+
+            if (error) {
+                console.error('Error fetching hash keys:', error);
+                break;
+            }
+
+            if (data && data.length > 0) {
+                allHashKeys.push(...data.map((row: any) => row.hash_key));
+                from += PAGE_SIZE;
+                hasMore = data.length === PAGE_SIZE; // 1000건 미만이면 마지막 페이지
+            } else {
+                hasMore = false;
+            }
         }
 
-        return new Set(data.map((row: any) => row.hash_key));
+        return new Set(allHashKeys);
     },
 
     saveTransaction: async (tx: Transaction) => {
