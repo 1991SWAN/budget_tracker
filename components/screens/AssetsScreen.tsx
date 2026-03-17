@@ -5,6 +5,7 @@ import { Asset, Transaction } from '../../types';
 interface AssetsScreenProps {
     assets: Asset[];
     transactions: Transaction[];
+    createRequestKey?: number;
     onAdd: (asset: Asset) => Promise<void>;
     onEdit: (asset: Asset) => Promise<void>;
     onDelete: (assetId: string) => Promise<void>;

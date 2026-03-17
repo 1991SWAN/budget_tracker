@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import {
     CategoryId,
@@ -97,6 +97,7 @@ export const useAppController = (user: any) => {
     } = useModalManager(assets, categories);
 
     const modalRef = useRef<HTMLDivElement>(null);
+    const [assetFormRequestKey, setAssetFormRequestKey] = useState(0);
 
     const refreshAssets = useCallback(async () => {
         const freshAssets = await AssetService.getAssets();
@@ -112,6 +113,10 @@ export const useAppController = (user: any) => {
         deleteTransactions
     } = useTransactionManager(transactions, setTransactions, refreshAssets);
     const viewState = useAppViewState({ loadData });
+    const handleAddAssetRequest = useCallback(() => {
+        viewState.navigateTo('assets');
+        setAssetFormRequestKey(previous => previous + 1);
+    }, [viewState.navigateTo]);
 
     const {
         candidates: transferCandidates,
@@ -237,7 +242,7 @@ export const useAppController = (user: any) => {
             onImportClick: () => transactionController.openImport(),
             onImportFile: (file: File) => transactionController.openImport(file),
             onQuickAddClick: transactionController.openQuickAdd,
-            onAddAsset: () => window.dispatchEvent(new CustomEvent('open-asset-form'))
+            onAddAsset: handleAddAssetRequest
         },
         actions: {
             openQuickAdd: transactionController.openQuickAdd,
@@ -305,6 +310,7 @@ export const useAppController = (user: any) => {
             assets: {
                 assets,
                 transactions,
+                createRequestKey: assetFormRequestKey,
                 onAdd: assetController.handleAssetAdd,
                 onEdit: assetController.handleAssetEdit,
                 onDelete: assetController.handleAssetDelete,

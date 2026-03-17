@@ -15,6 +15,7 @@ type GroupOption = 'none' | 'institution' | 'type';
 interface AssetManagerProps {
   assets: Asset[];
   transactions: Transaction[];
+  createRequestKey?: number;
   onAdd: (asset: Asset) => void;
   onEdit: (asset: Asset) => void;
   onDelete: (assetId: string) => void;
@@ -22,7 +23,7 @@ interface AssetManagerProps {
   onClearHistory?: (assetId: string) => void;
 }
 
-const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd, onEdit, onDelete, onPay, onClearHistory }) => {
+const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, createRequestKey, onAdd, onEdit, onDelete, onPay, onClearHistory }) => {
   const [activeTab, setActiveTab] = useState<AssetTab>('ALL');
   const [showForm, setShowForm] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
@@ -44,16 +45,13 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, transactions, onAdd
     }
   }, [assets, selectedAsset]);
 
-  // Global trigger for mobile FAB
+  // Explicit request flow from the shell/FAB into the assets screen
   useEffect(() => {
-    const handleOpenForm = () => {
-      setSelectedAsset(null);
-      setIsEditing(false);
-      setShowForm(true);
-    };
-    window.addEventListener('open-asset-form', handleOpenForm);
-    return () => window.removeEventListener('open-asset-form', handleOpenForm);
-  }, []);
+    if (!createRequestKey) return;
+    setSelectedAsset(null);
+    setIsEditing(false);
+    setShowForm(true);
+  }, [createRequestKey]);
 
   // View Options State
   const [sortBy, setSortBy] = useState<SortOption>('default');

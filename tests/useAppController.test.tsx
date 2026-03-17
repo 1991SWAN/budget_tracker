@@ -226,6 +226,28 @@ describe('useAppController', () => {
         expect(result.current.overlays.smartInput.initialData?.id).toBe('tx-1');
     });
 
+    it('routes add-asset requests through explicit assets screen state instead of a window event', () => {
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+        const { result } = renderHook(() => useAppController({ id: 'user-1' }));
+
+        expect(result.current.screens.assets.createRequestKey).toBe(0);
+
+        act(() => {
+            result.current.shell.onNavigate('transactions');
+            result.current.shell.onAddAsset();
+        });
+
+        expect(result.current.shell.view).toBe('assets');
+        expect(result.current.screens.assets.createRequestKey).toBe(1);
+        expect(dispatchSpy).not.toHaveBeenCalled();
+
+        act(() => {
+            result.current.shell.onAddAsset();
+        });
+
+        expect(result.current.screens.assets.createRequestKey).toBe(2);
+    });
+
     it('dispatches import confirmation through the transaction action hooks', async () => {
         const { result } = renderHook(() => useAppController({ id: 'user-1' }));
 
