@@ -3,6 +3,7 @@ import { Sparkles, PlusCircle, Trash2 } from 'lucide-react';
 import { Transaction, Asset, CategoryItem, TransactionType } from '../../types';
 import { RegularCandidate } from '../../hooks/useRegularExpenseDetector';
 import { Button } from '../ui/Button';
+import { getTransactionTagNames, parseTransactionDetailsInput } from '../../utils/transactionDetails';
 
 // Inline Components
 import { InlineText } from '../ui/inline/InlineText';
@@ -53,31 +54,19 @@ const LabTransactionItem: React.FC<LabTransactionItemProps> = ({
 
     // Parse Memo for display vs Edit value
     const { cleanMemo, isMention, tags } = React.useMemo(() => {
-        const rawMemo = transaction.memo || '';
-        let clean = rawMemo;
-
-        const tagMatches = rawMemo.match(/#(\S+)/g);
-        const tags = tagMatches ? tagMatches.map(t => t) : [];
-        if (tagMatches) {
-            tagMatches.forEach(tag => {
-                clean = clean.replace(tag, '');
-            });
-        }
-
-        const mentionMatch = clean.match(/@(\S+)/);
-        let merchantName = null;
-
-        if (mentionMatch) {
-            merchantName = mentionMatch[1];
-            clean = clean.replace(mentionMatch[0], '');
-        }
+        const parsedLegacy = parseTransactionDetailsInput(transaction.memo || '');
+        const merchantName = transaction.merchant || parsedLegacy.merchant;
+        const clean = transaction.memo || parsedLegacy.memo || '';
+        const displayTags = getTransactionTagNames(transaction.tags).length > 0
+            ? getTransactionTagNames(transaction.tags).map(tag => `#${tag}`)
+            : parsedLegacy.tags.map(tag => `#${tag}`);
 
         return {
             cleanMemo: clean.trim() || merchantName || '', // Provide at least merchant name if empty
             isMention: !!merchantName,
-            tags
+            tags: displayTags
         };
-    }, [transaction.memo]);
+    }, [transaction.memo, transaction.merchant, transaction.tags]);
 
     // Color Logic for Amount
     let amountColor = 'text-slate-900';

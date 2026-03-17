@@ -14,6 +14,8 @@ export enum AssetType {
   LOAN = 'LOAN'
 }
 
+export type CategoryId = string;
+
 export interface CategoryItem {
   id: string;
   user_id: string;
@@ -151,7 +153,7 @@ export interface Transaction {
   timestamp?: number;
   amount: number;
   type: TransactionType;
-  category: string; // Stores Category ID (UUID) or Name (Legacy)
+  category: CategoryId; // May still contain a legacy name during normalization boundaries
   memo: string;
   assetId: string;
   toAssetId?: string;
@@ -186,7 +188,7 @@ export interface RecurringTransaction {
   name: string;
   amount: number;
   dayOfMonth: number;
-  category: Category;
+  category: CategoryId;
   billType: BillType;
 
   installmentDetails?: {
@@ -206,12 +208,12 @@ export interface SavingsGoal {
   deadline?: string;
 }
 
-export type View = 'dashboard' | 'transactions' | 'assets' | 'add' | 'analysis' | 'settings' | 'settings-categories' | 'lab';
+export type View = 'dashboard' | 'transactions' | 'assets' | 'add' | 'analysis' | 'settings' | 'settings-categories' | 'settings-import' | 'lab';
 
 export interface Budget {
   id: string;
   user_id: string;
-  category_id: string;
+  category_id: CategoryId;
   amount: number;
   year?: number;
   month?: number;

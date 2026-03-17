@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { View } from '../../types';
 import { Card } from '../ui/Card';
-import { SupabaseService } from '../../services/supabaseService';
-import { ExportService } from '../../services/exportService';
 import { ResetDataModal } from './ResetDataModal';
 import { Tag, Palette, Settings2, Database } from 'lucide-react';
+import { useSettingsController } from '../../hooks/useSettingsController';
 
 interface SettingsViewProps {
     onNavigate: (view: View) => void;
@@ -12,28 +11,7 @@ interface SettingsViewProps {
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
     const [showResetModal, setShowResetModal] = useState(false);
-
-    const handleExport = async () => {
-        try {
-            // Fetch fresh data
-            const [txs, assets, recurring, goals, categories] = await Promise.all([
-                SupabaseService.getTransactions(),
-                SupabaseService.getAssets(),
-                SupabaseService.getRecurring(),
-                SupabaseService.getGoals(),
-                SupabaseService.getCategories()
-            ]);
-            ExportService.exportData(txs, assets, recurring, goals, categories);
-        } catch (e) {
-            console.error("Export failed", e);
-            alert("Failed to export data.");
-        }
-    };
-
-    const handleResetConfirm = async (options: any) => {
-        await SupabaseService.resetData(options);
-        window.location.reload();
-    };
+    const { handleExport, handleResetConfirm } = useSettingsController();
 
     return (
         <div className="space-y-8 p-6 max-w-5xl mx-auto">

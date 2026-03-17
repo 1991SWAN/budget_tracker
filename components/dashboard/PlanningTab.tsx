@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { RecurringTransaction, SavingsGoal, Asset, Category, BillType, AssetType } from '../../types';
+import { RecurringTransaction, SavingsGoal, Asset, BillType, AssetType, CategoryItem } from '../../types';
 import BillManager from '../bills/BillManager';
 import GoalManager from '../goals/GoalManager';
 import SubscriptionView from '../subscription/SubscriptionView';
@@ -8,17 +8,20 @@ import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 import { Trash2 } from 'lucide-react';
+import { getDefaultCategoryId } from '../../utils/category';
 
 interface PlanningTabProps {
     recurring: RecurringTransaction[];
     goals: SavingsGoal[];
     assets: Asset[];
+    categories: CategoryItem[];
     onRecurringChange: (action: 'add' | 'update' | 'delete' | 'pay', item: any) => void;
     onGoalChange: (action: 'add' | 'update' | 'delete' | 'contribute', item: any) => void;
 }
 
-const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, onRecurringChange, onGoalChange }) => {
+const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, categories, onRecurringChange, onGoalChange }) => {
     const today = new Date();
+    const defaultExpenseCategoryId = getDefaultCategoryId(categories, 'EXPENSE', ['Housing & Bill', 'Other']);
 
     // Generate days for the current month for Calendar Strip
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -32,13 +35,13 @@ const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, onR
     const [formData, setFormData] = useState<{
         name: string;
         amount: string | number;
-        category: Category;
+        category: string;
         billType: BillType;
         dayOfMonth: number;
     }>({
         name: '',
         amount: '',
-        category: Category.UTILITIES,
+        category: defaultExpenseCategoryId,
         billType: BillType.SUBSCRIPTION,
         dayOfMonth: 1
     });
@@ -51,7 +54,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, onR
         setFormData({
             name: '',
             amount: '',
-            category: Category.UTILITIES,
+            category: defaultExpenseCategoryId,
             billType: BillType.SUBSCRIPTION,
             dayOfMonth: 1
         });
@@ -126,6 +129,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, onR
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <BillManager
                     recurring={recurring}
+                    categories={categories}
                     // BillManager mainly just displays lists now, but we want it to trigger OUR modals
                     // So we must update BillManager props to accept onEdit/onAdd overrides, 
                     // OR we pass the logic down.
@@ -184,8 +188,10 @@ const PlanningTab: React.FC<PlanningTabProps> = ({ recurring, goals, assets, onR
                         <Select
                             label="Category"
                             value={formData.category}
-                            onChange={e => setFormData({ ...formData, category: e.target.value as Category })}
-                            options={Object.values(Category).map(c => ({ label: c, value: c }))}
+                            onChange={e => setFormData({ ...formData, category: e.target.value })}
+                            options={categories
+                                .filter(category => category.type === 'EXPENSE')
+                                .map(category => ({ label: category.name, value: category.id }))}
                         />
                         <Select
                             label="Type"

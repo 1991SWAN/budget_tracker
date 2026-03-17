@@ -125,6 +125,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             recurring={recurring}
             goals={goals}
             assets={assets}
+            categories={categories}
             onRecurringChange={onRecurringChange}
             onGoalChange={onGoalChange}
           />

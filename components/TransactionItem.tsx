@@ -162,10 +162,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         if (transaction.merchant) {
             // Remove the @Merchant if it exists in memo for clean display
             cleanMemo = cleanMemo.replace(`@${transaction.merchant}`, '').trim();
+            const hasDetails = !!cleanMemo;
             return {
-                mainText: cleanMemo || 'Transaction',
-                subText: transaction.merchant,
-                isMention: true,
+                mainText: cleanMemo || transaction.merchant,
+                subText: hasDetails ? transaction.merchant : undefined,
+                isMention: hasDetails,
                 tags: transaction.tags ? transaction.tags.map(t => typeof t === 'string' ? { name: t } : { name: t.name, color: t.color }) : []
             };
         }
@@ -487,10 +488,10 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
             {isExpanded && !isSelectionMode && (
                 <div className="px-4 pb-3 pt-0 bg-slate-50/30 animate-in slide-in-from-top-1 border-t border-slate-100/50">
                     <div className="flex flex-wrap gap-2 my-2">
-                        {/* Mobile Expanded: Memo (Moved here) */}
+                        {/* Mobile Expanded: Details (Moved here) */}
                         {transaction.merchant && transaction.memo && (
                             <div className="w-fit max-w-full text-[10px] text-slate-600 mb-0 px-2 py-1 bg-white border border-slate-100 rounded-lg break-words shadow-sm flex items-center">
-                                <span className="font-bold mr-1 text-slate-400 shrink-0">Memo</span>
+                                <span className="font-bold mr-1 text-slate-400 shrink-0">Details</span>
                                 <span>{transaction.memo}</span>
                             </div>
                         )}

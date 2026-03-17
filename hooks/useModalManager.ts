@@ -1,14 +1,26 @@
-import { useState, useRef } from 'react';
-import { RecurringTransaction, SavingsGoal, Asset, Category, BillType, AssetType } from '../types';
+import { useState } from 'react';
+import { RecurringTransaction, SavingsGoal, Asset, BillType, AssetType, CategoryItem } from '../types';
+import { getDefaultCategoryId } from '../utils/category';
+import {
+    createBillModalForm,
+    createBudgetModalForm,
+    createFundGoalModalForm,
+    createGoalModalForm,
+    createImportModalForm,
+    createPayCardModalForm,
+    ModalFormData,
+    ModalSelectedItem,
+    ModalType,
+    toBillModalForm,
+    toGoalModalForm,
+} from './modalTypes';
 
-export type ModalType = 'bill' | 'goal' | 'pay-bill' | 'fund-goal' | 'budget' | 'pay-card' | 'import' | null;
-
-export const useModalManager = (assets: Asset[]) => {
+export const useModalManager = (assets: Asset[], categories: CategoryItem[]) => {
     const [modalType, setModalType] = useState<ModalType>(null);
-    const [selectedItem, setSelectedItem] = useState<any>(null);
+    const [selectedItem, setSelectedItem] = useState<ModalSelectedItem>(null);
 
     // Form State
-    const [formData, setFormData] = useState<any>({});
+    const [formData, setFormData] = useState<ModalFormData>(createImportModalForm());
 
     // Payment Specific State
     const [paymentAsset, setPaymentAsset] = useState<string>('');
@@ -23,18 +35,21 @@ export const useModalManager = (assets: Asset[]) => {
     const openAddBill = () => {
         setModalType('bill');
         setSelectedItem(null);
-        setFormData({ name: '', amount: '', dayOfMonth: 1, category: Category.UTILITIES, billType: BillType.SUBSCRIPTION });
+        setFormData(createBillModalForm(
+            getDefaultCategoryId(categories, 'EXPENSE', ['Housing & Bill', 'Other'])
+        ));
     };
 
     const openEditBill = (bill: RecurringTransaction) => {
         setModalType('bill');
         setSelectedItem(bill);
-        setFormData({ ...bill });
+        setFormData(toBillModalForm(bill));
     };
 
     const openPayBill = (bill: RecurringTransaction) => {
         setModalType('pay-bill');
         setSelectedItem(bill);
+        setFormData(createImportModalForm());
         // Auto-select first non-credit asset
         setPaymentAsset(assets.find(a => a.type !== AssetType.CREDIT_CARD)?.id || '');
         setPaymentError(null);
@@ -43,19 +58,19 @@ export const useModalManager = (assets: Asset[]) => {
     const openAddGoal = () => {
         setModalType('goal');
         setSelectedItem(null);
-        setFormData({ name: '', targetAmount: '', emoji: '🎯', deadline: '' });
+        setFormData(createGoalModalForm());
     };
 
     const openEditGoal = (goal: SavingsGoal) => {
         setModalType('goal');
         setSelectedItem(goal);
-        setFormData({ ...goal });
+        setFormData(toGoalModalForm(goal));
     };
 
     const openFundGoal = (goal: SavingsGoal) => {
         setModalType('fund-goal');
         setSelectedItem(goal);
-        setFormData({ amount: '' });
+        setFormData(createFundGoalModalForm());
         setPaymentAsset(assets.find(a => a.type !== AssetType.CREDIT_CARD)?.id || '');
         setDestinationAsset('');
         setPaymentError(null);
@@ -64,18 +79,16 @@ export const useModalManager = (assets: Asset[]) => {
     const openEditBudget = (currentBudget: number) => {
         setModalType('budget');
         setSelectedItem(null);
-        setFormData({ amount: currentBudget });
+        setFormData(createBudgetModalForm(currentBudget));
     };
 
     const openPayCard = (card: Asset) => {
         setModalType('pay-card');
         setSelectedItem(card);
-        setFormData({
-            amount: Math.abs(card.balance),
-            date: new Date().toISOString().split('T')[0],
-            memo: `Credit Card Payoff: ${card.name}`,
-            category: Category.TRANSFER
-        });
+        setFormData(createPayCardModalForm(
+            card,
+            getDefaultCategoryId(categories, 'TRANSFER', ['Card Payment', 'Savings/Invest'])
+        ));
         setPaymentAsset(assets.find(a => a.type !== AssetType.CREDIT_CARD)?.id || '');
         setPaymentError(null);
     };
@@ -83,14 +96,14 @@ export const useModalManager = (assets: Asset[]) => {
     const openImport = () => {
         setModalType('import');
         setSelectedItem(null);
-        setFormData({});
+        setFormData(createImportModalForm());
     };
 
     const closeModal = () => {
         setModalType(null);
         setSelectedItem(null);
         setPaymentError(null);
-        setFormData({});
+        setFormData(createImportModalForm());
     };
 
     return {

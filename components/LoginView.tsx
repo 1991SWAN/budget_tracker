@@ -1,50 +1,21 @@
-import React, { useState } from 'react';
-import { supabase } from '../services/supabaseService';
+import React from 'react';
 import { Card } from './ui/Card';
 import { Input } from './ui/Input';
-import { useToast } from '../contexts/ToastContext';
 import { Coins } from 'lucide-react';
+import { useLoginController } from '../hooks/useLoginController';
 
 export const LoginView: React.FC = () => {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [mode, setMode] = useState<'LOGIN' | 'SIGNUP'>('LOGIN');
-    const { addToast } = useToast();
-
-    // Check for forced logout reason
-    React.useEffect(() => {
-        const reason = sessionStorage.getItem('logout_reason');
-        if (reason === 'concurrent_login') {
-            addToast('Logged out because account was accessed from another device.', 'error');
-            sessionStorage.removeItem('logout_reason');
-        }
-    }, [addToast]);
-
-    const handleAuth = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        try {
-            if (mode === 'LOGIN') {
-                const { error } = await supabase.auth.signInWithPassword({
-                    email,
-                    password,
-                });
-                if (error) throw error;
-            } else {
-                const { error } = await supabase.auth.signUp({
-                    email,
-                    password,
-                });
-                if (error) throw error;
-                addToast("Confirmation email sent! Please check your inbox.", 'success');
-            }
-        } catch (error: any) {
-            addToast(error.message || 'Authentication failed', 'error');
-        } finally {
-            setLoading(false);
-        }
-    };
+    const {
+        email,
+        setEmail,
+        password,
+        setPassword,
+        loading,
+        mode,
+        handleAuth,
+        handleGoogleAuth,
+        toggleMode,
+    } = useLoginController();
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
@@ -98,24 +69,7 @@ export const LoginView: React.FC = () => {
                     <button
                         type="button"
                         disabled={loading}
-                        onClick={async () => {
-                            setLoading(true);
-                            try {
-                                const { error } = await supabase.auth.signInWithOAuth({
-                                    provider: 'google',
-                                    options: {
-                                        redirectTo: window.location.origin,
-                                        queryParams: {
-                                            prompt: 'select_account'
-                                        }
-                                    }
-                                });
-                                if (error) throw error;
-                            } catch (error: any) {
-                                addToast(error.message, 'error');
-                                setLoading(false);
-                            }
-                        }}
+                        onClick={handleGoogleAuth}
                         className="w-full bg-white border border-slate-300 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
                     >
                         <span className="text-lg">🇬</span> Google
@@ -124,7 +78,7 @@ export const LoginView: React.FC = () => {
 
                 <div className="mt-6 text-center">
                     <button
-                        onClick={() => setMode(mode === 'LOGIN' ? 'SIGNUP' : 'LOGIN')}
+                        onClick={toggleMode}
                         className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold"
                     >
                         {mode === 'LOGIN'

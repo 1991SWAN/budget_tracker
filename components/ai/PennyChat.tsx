@@ -3,30 +3,24 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Send,
     X,
-    Sparkles,
     Trash2,
     Edit2,
     PlusCircle,
     RefreshCw,
-    AlertCircle,
     BrainCircuit,
     User,
     Check
 } from 'lucide-react';
-import { GeminiService } from '../../services/geminiService';
-import { TransactionService } from '../../services/transactionService';
-import { Transaction, Asset, CategoryItem, TransactionType } from '../../types';
+import { CategoryItem } from '../../types';
 import { Button } from '../ui/Button';
 import { useToast } from '../../contexts/ToastContext';
+import type { PennyChatAction, PennyChatResponse } from '../../hooks/usePennyChatController';
 
 interface Message {
     id: string;
     role: 'user' | 'assistant';
     content: string;
-    action?: {
-        type: 'CREATE' | 'UPDATE' | 'DELETE' | 'NONE';
-        payload: any;
-        confirmationRequired: boolean;
+    action?: PennyChatAction & {
         status?: 'pending' | 'confirmed' | 'cancelled';
     };
 }
@@ -34,19 +28,17 @@ interface Message {
 interface PennyChatProps {
     isOpen: boolean;
     onClose: () => void;
-    transactions: Transaction[];
-    assets: Asset[];
     categories: CategoryItem[];
-    onActionSuccess: () => void;
+    onSubmitPrompt: (input: string) => Promise<PennyChatResponse>;
+    onConfirmAction: (action: PennyChatAction) => Promise<void>;
 }
 
 export const PennyChat: React.FC<PennyChatProps> = ({
     isOpen,
     onClose,
-    transactions,
-    assets,
     categories,
-    onActionSuccess
+    onSubmitPrompt,
+    onConfirmAction
 }) => {
     const [input, setInput] = useState('');
     const [messages, setMessages] = useState<Message[]>([
@@ -81,8 +73,7 @@ export const PennyChat: React.FC<PennyChatProps> = ({
         setIsLoading(true);
 
         try {
-            const context = { transactions, assets, categories };
-            const result = await GeminiService.processPennyRequest(input, context);
+            const result = await onSubmitPrompt(input);
 
             const assistantMessage: Message = {
                 id: (Date.now() + 1).toString(),
@@ -103,44 +94,10 @@ export const PennyChat: React.FC<PennyChatProps> = ({
         }
     };
 
-    const handleConfirmAction = async (messageId: string, action: any) => {
+    const handleConfirmAction = async (messageId: string, action: PennyChatAction) => {
         try {
             setIsLoading(true);
-            const { type, payload } = action;
-
-            if (type === 'DELETE') {
-                await TransactionService.deleteTransaction(payload.id);
-                addToast('Transaction deleted.', 'success');
-            } else if (type === 'UPDATE') {
-                // Fetch the original transaction to get all fields or just update partial
-                // For safety, assume payload has enough data for upsert if it's an update
-                // But TransactionService.saveTransaction expects a full Transaction object.
-                // Better to find the transaction in our context first.
-                const original = transactions.find(t => t.id === payload.id);
-                if (original) {
-                    const updated: Transaction = {
-                        ...original,
-                        ...payload,
-                        // Ensure category ID vs Name mapping if needed
-                        category: payload.category_id || payload.category || original.category
-                    };
-                    await TransactionService.saveTransaction(updated);
-                    addToast('Transaction updated.', 'success');
-                }
-            } else if (type === 'CREATE') {
-                const newTx: any = {
-                    id: crypto.randomUUID(),
-                    date: payload.date || new Date().toISOString().split('T')[0],
-                    amount: payload.amount,
-                    type: payload.type || TransactionType.EXPENSE,
-                    category: payload.category_id || categories[0].id,
-                    assetId: payload.asset_id || assets[0].id,
-                    memo: payload.memo || payload.merchant || 'AI Generated',
-                    timestamp: new Date().toISOString()
-                };
-                await TransactionService.saveTransaction(newTx);
-                addToast('New transaction added.', 'success');
-            }
+            await onConfirmAction(action);
 
             // Update message status
             setMessages(prev => prev.map(m =>
@@ -148,8 +105,6 @@ export const PennyChat: React.FC<PennyChatProps> = ({
                     ? { ...m, action: { ...m.action, status: 'confirmed' } }
                     : m
             ));
-
-            onActionSuccess(); // Refresh data
         } catch (error) {
             console.error('Action Error:', error);
             addToast('Failed to process request.', 'error');
@@ -263,7 +218,7 @@ export const PennyChat: React.FC<PennyChatProps> = ({
                                                     {message.action.type === 'CREATE' && (
                                                         <div className="space-y-1">
                                                             <div className="flex justify-between">
-                                                                <span className="text-slate-400">Description:</span>
+                                                                <span className="text-slate-400">Details:</span>
                                                                 <span className="font-bold">{message.action.payload.memo || message.action.payload.merchant}</span>
                                                             </div>
                                                             <div className="flex justify-between">

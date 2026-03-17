@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { RecurringTransaction, Category, BillType, Asset, AssetType } from '../../types';
+import { RecurringTransaction, BillType, Asset, CategoryItem } from '../../types';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { Mail, Plus, X } from 'lucide-react';
+import { getCategoryLabel } from '../../utils/category';
 
 interface BillManagerProps {
     recurring: RecurringTransaction[];
+    categories: CategoryItem[];
     assets: Asset[];
     onRecurringChange: (action: 'add' | 'update' | 'delete' | 'pay', item: any) => void;
     // New handlers via props
@@ -15,7 +17,7 @@ interface BillManagerProps {
     onAddBill: () => void;
 }
 
-const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurringChange, onEditBill, onPayBill, onAddBill }) => {
+const BillManager: React.FC<BillManagerProps> = ({ recurring, categories, assets, onRecurringChange, onEditBill, onPayBill, onAddBill }) => {
     // --- Local State for Filter ---
     const [billFilter, setBillFilter] = useState<BillType | 'All'>('All');
 
@@ -92,7 +94,7 @@ const BillManager: React.FC<BillManagerProps> = ({ recurring, assets, onRecurrin
                                     </div>
                                     <div>
                                         <p className="font-semibold text-primary">{bill.name}</p>
-                                        <p className="text-[10px] text-muted">{bill.category}</p>
+                                        <p className="text-[10px] text-muted">{getCategoryLabel(bill.category, categories)}</p>
                                     </div>
                                 </div>
                                 <div className="text-right flex flex-col items-end gap-1">

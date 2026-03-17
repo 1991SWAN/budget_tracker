@@ -1,5 +1,6 @@
 import { Transaction, TransactionType, Category, CategoryItem } from '../types';
-import { read, utils } from 'xlsx';
+import { generateTransactionHashBase, getTimeKey, resolveHashDirection } from '../utils/hashKey';
+import { getTransactionTagNames } from '../utils/transactionDetails';
 
 export interface ColumnMapping {
   dateIndex: number;
@@ -11,6 +12,7 @@ export interface ColumnMapping {
   memoIndices?: number[]; // Optional multiple memo columns for concatenation
   typeIndex?: number;
   assetIndex?: number;
+  toAssetIndex?: number;
   categoryIndex?: number;
   merchantIndex?: number;
   tagIndex?: number;
@@ -32,10 +34,25 @@ const PRESET_STORAGE_KEY = 'smartpenny_import_presets';
 export interface ImportRow {
   index: number;
   data: any[];
-  status: 'valid' | 'invalid' | 'duplicate';
+  status: 'valid' | 'invalid' | 'duplicate' | 'needs_review';
   transaction?: Partial<Transaction>;
+  subIdx: number; // For rows that split into multiple transactions (In/Out at same time)
   reason?: string;
   assetId?: string; // Manually assigned assetId or detected one
+  replace_target_id?: string; // Optional: ID in the DB to replace when reconciled
+  review_candidates?: ImportReviewCandidate[];
+}
+
+export interface ImportReviewCandidate {
+  id: string;
+  memo?: string;
+  merchant?: string;
+  date?: string;
+  timestamp?: number;
+  amount?: number;
+  assetId?: string;
+  type?: string;
+  hashKey?: string;
 }
 
 export interface ColumnAnalysis {
@@ -59,7 +76,7 @@ export const ImportService = {
    * Parses a flexible date/time string or Excel serial number.
    */
   parseLooseDate: (dateVal: any, timeVal?: any): Date | null => {
-    let year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    let year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, millisecond = 0;
     let ts = String(timeVal || '').trim();
 
     if (typeof dateVal === 'number') {
@@ -73,6 +90,7 @@ export const ImportService = {
         hour = d.getHours();
         minute = d.getMinutes();
         second = d.getSeconds();
+        millisecond = d.getMilliseconds();
       } else if (dateVal > 10000) {
         // 1. Excel Date Serial (e.g. 46089)
         // 25569 = 1970년 1월 1일 기준 (엑셀 1900년 기준 보정값)
@@ -108,8 +126,9 @@ export const ImportService = {
       if (!ds) return null;
 
       let s = ts ? `${ds} ${ts}` : ds;
-      // 1. YYYY.MM.DD HH:mm:ss 스타일 파싱 (Regex)
-      const complexMatch = s.match(/(\d{4})[\.\/\-년]\s*(\d{1,2})[\.\/\-월]\s*(\d{1,2})[일]?\s*(?:(오전|오후|AM|PM)\s*)?(\d{1,2})?:?(\d{1,2})?(?::(\d{1,2}))?/i);
+      // 1. YYYY.MM.DD HH:mm:ss 또는 YYYY. MM. DD. 오후 hh:mm 스타일 파싱 (Regex)
+      // 변경점: [\.\/\-년] 뒤에 공백 여부 파악, 일(day) 뒤에 점유무 포함.
+      const complexMatch = s.match(/(\d{4})[\.\/\-년]\s*(\d{1,2})[\.\/\-월]\s*(\d{1,2})[일\.]?\s*(?:(오전|오후|AM|PM)\s*)?(\d{1,2})?:?(\d{1,2})?(?::(\d{1,2}))?/i);
       if (complexMatch) {
         let [_, y, m, d, meridiem, hourStr, min, sec] = complexMatch;
         year = parseInt(y);
@@ -194,7 +213,7 @@ export const ImportService = {
       }
     }
 
-    return new Date(year, month, day, hour, minute, second);
+    return new Date(year, month, day, hour, minute, second, millisecond);
   },
   discoverHeaderIndex: (grid: any[][]): number => {
     if (grid.length < 2) return 0;
@@ -316,6 +335,9 @@ export const ImportService = {
       let confidence = 0;
       
       const headerText = String(headers[colIdx] || '').toLowerCase();
+      const typeMatchRatio = totalCount > 0
+        ? colData.filter(val => ImportService.parseTransactionTypeValue(val) !== null).length / totalCount
+        : 0;
       
       // Logic based on header name
       if (headerText.includes('날짜') || headerText.includes('일자') || headerText.includes('date')) {
@@ -327,6 +349,17 @@ export const ImportService = {
       } else if (headerText.includes('내용') || headerText.includes('적요') || headerText.includes('메모') || headerText.includes('memo') || headerText.includes('description')) {
         suggestedField = 'memoIndex';
         confidence = 0.8;
+      } else if (
+        headerText.includes('입출금') ||
+        headerText.includes('거래구분') ||
+        headerText.includes('type') ||
+        headerText.includes('debit') ||
+        headerText.includes('credit') ||
+        (headerText.includes('구분') && typeMatchRatio >= 0.5) ||
+        typeMatchRatio >= 0.8
+      ) {
+        suggestedField = 'typeIndex';
+        confidence = Math.max(0.8, Math.min(0.95, 0.7 + typeMatchRatio * 0.3));
       } else if (headerText.includes('금액') || headerText.includes('amount') || headerText.includes('거래금액')) {
         suggestedField = 'amountIndex';
         confidence = 0.9;
@@ -510,27 +543,223 @@ export const ImportService = {
 
   /**
    * Generates a unique hash key for a transaction to prevent duplicates.
-   * Logic: AssetID + Timestamp(minute precision) + Amount + Memo
+   * Logic: AssetID + Timestamp(minute precision) + Amount + Direction(IN/OUT) + Memo
    */
-  generateHashKey: (assetId: string, timestamp: number, amount: number, memo: string): string => {
-    const timeKey = Math.floor(timestamp / 60000);
-    // 방안 C: memo 공백 완전 제거 (파일 출처별 공백 차이 무력화)
-    const normalizedMemo = memo.trim().replace(/\s/g, '');
-    const raw = `${assetId}|${timeKey}|${amount}|${normalizedMemo}`;
+  generateHashKey: (
+    assetId: string,
+    timestamp: number,
+    amount: number,
+    memo: string,
+    type?: TransactionType,
+    toAssetId?: string
+  ): string => {
+    const direction = resolveHashDirection({ type, toAssetId });
+    return generateTransactionHashBase(assetId, timestamp, amount, memo, direction);
+  },
 
-    let hash = 0;
-    for (let i = 0; i < raw.length; i++) {
-      const char = raw.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash |= 0; 
+  normalizeImportedCellValue: (value: any): string => {
+    const normalized = String(value ?? '').trim();
+    if (!normalized) return '';
+    if (/^(null|undefined|none|n\/a|na)$/i.test(normalized)) return '';
+    return normalized;
+  },
+
+  parseTransactionTypeValue: (value: any): TransactionType | null => {
+    const rawValue = ImportService.normalizeImportedCellValue(value);
+    if (!rawValue) return null;
+
+    const normalized = rawValue
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[\s_\-\/()[\]{}+]+/g, '');
+
+    if (!normalized) return null;
+
+    const matchesAny = (tokens: string[]) => tokens.includes(normalized);
+
+    if (matchesAny(['transfer', 'xfer', '이체', '송금', '자금이동'])) {
+      return TransactionType.TRANSFER;
     }
-    return hash.toString(16);
+
+    if (matchesAny(['income', 'credit', 'deposit', 'inflow', '입금', '수입', '입'])) {
+      return TransactionType.INCOME;
+    }
+
+    if (matchesAny(['expense', 'debit', 'withdrawal', 'outflow', '출금', '지출', '출', '결제', '사용'])) {
+      return TransactionType.EXPENSE;
+    }
+
+    return null;
+  },
+
+  resolveAssetId: (value: any, assets: any[]): string | null => {
+    const assetVal = ImportService.normalizeImportedCellValue(value);
+    if (!assetVal) return null;
+
+    const normalize = (s: string) => s.toUpperCase().replace(/[^A-Z0-9가-힣]/g, '');
+    const normInput = normalize(assetVal);
+    let bestMatchId: string | null = null;
+
+    if (/^\d{10,}$/.test(assetVal)) {
+      const directMatch = assets.find(a => String(a.id) === assetVal);
+      if (directMatch) return directMatch.id;
+    }
+
+    for (const a of assets) {
+      const prodNorm = normalize(a.productName || '');
+      if (prodNorm && (normInput === prodNorm || normInput.includes(prodNorm))) {
+        bestMatchId = a.id;
+        break;
+      }
+    }
+
+    if (!bestMatchId) {
+      for (const a of assets) {
+        const instNorm = normalize(a.institution || '');
+        const accSuffix = a.accountNumber ? normalize(a.accountNumber).replace(/[^0-9]/g, '').slice(-4) : '';
+
+        if (instNorm && accSuffix && accSuffix.length >= 4) {
+          if (normInput.includes(instNorm) && normInput.includes(accSuffix)) {
+            bestMatchId = a.id;
+            break;
+          }
+        }
+      }
+    }
+
+    return bestMatchId;
+  },
+
+  normalizeReviewMemo: (memo: string): string => {
+    return String(memo || '')
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/\(주\)|주식회사|\bcorp\b|\binc\b/gi, '')
+      .replace(/[\s\p{P}\p{S}]+/gu, '');
+  },
+
+  getNeedsReviewMemoKey: (memo: string, type?: TransactionType): string => {
+    const normalized = ImportService.normalizeReviewMemo(memo);
+    if (!normalized) return '';
+
+    // Numeric identifiers can lose leading zeros when exported through numeric cells.
+    // Apply the lenient comparison to income/expense review matching only.
+    if (
+      (type === TransactionType.INCOME || type === TransactionType.EXPENSE) &&
+      /^\d+$/.test(normalized)
+    ) {
+      const stripped = normalized.replace(/^0+/, '');
+      return stripped || '0';
+    }
+
+    return normalized;
+  },
+
+  getTimeKey: (timestamp: number): number => getTimeKey(timestamp),
+
+  getNeedsReviewLabel: (type?: TransactionType): string => {
+    if (type === TransactionType.EXPENSE) return '지출';
+    if (type === TransactionType.INCOME) return '수입';
+    return '거래';
+  },
+
+  buildNeedsReviewCandidates: (transaction: Partial<Transaction>, reconciliationCandidates: any[] = []): any[] => {
+    if (
+      (transaction.type !== TransactionType.INCOME && transaction.type !== TransactionType.EXPENSE) ||
+      !transaction.assetId ||
+      !transaction.timestamp ||
+      !transaction.amount
+    ) {
+      return [];
+    }
+
+    const transactionMemoSource = transaction.memo || transaction.merchant || '';
+    const reviewMemo = ImportService.getNeedsReviewMemoKey(transactionMemoSource, transaction.type);
+    if (!reviewMemo) return [];
+
+    const REVIEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+    const rawMemo = String(transactionMemoSource).trim();
+    const transactionTimestamp = Number(transaction.timestamp);
+    const transactionTimeKey = ImportService.getTimeKey(transactionTimestamp);
+    const transactionType = transaction.type;
+
+    return reconciliationCandidates
+      .filter(candidate => {
+        const candidateTimestamp = Number(candidate.timestamp);
+        if (!candidate?.id || !candidateTimestamp) return false;
+
+        const candidateMemo = ImportService.getNeedsReviewMemoKey(String(candidate.memo || candidate.merchant || ''), candidate.type);
+        if (candidateMemo !== reviewMemo) return false;
+
+        if (
+          candidate.asset_id !== transaction.assetId ||
+          candidate.type !== transactionType ||
+          Number(candidate.amount) !== Number(transaction.amount)
+        ) {
+          return false;
+        }
+
+        if (transactionType === TransactionType.EXPENSE) {
+          return ImportService.getTimeKey(candidateTimestamp) === transactionTimeKey;
+        }
+
+        return (
+          candidateTimestamp <= transactionTimestamp &&
+          (transactionTimestamp - candidateTimestamp) <= REVIEW_WINDOW_MS
+        );
+      })
+      .map(candidate => ({
+        ...candidate,
+        timestamp: Number(candidate.timestamp),
+        score: {
+          rawMemoExact: String(candidate.memo || candidate.merchant || '').trim() === rawMemo ? 1 : 0,
+          timeKeyExact: ImportService.getTimeKey(Number(candidate.timestamp)) === transactionTimeKey ? 1 : 0,
+          delta: Math.abs(transactionTimestamp - Number(candidate.timestamp)),
+        }
+      }))
+      .sort((left, right) => {
+        if (right.score.rawMemoExact !== left.score.rawMemoExact) {
+          return right.score.rawMemoExact - left.score.rawMemoExact;
+        }
+
+        if (right.score.timeKeyExact !== left.score.timeKeyExact) {
+          return right.score.timeKeyExact - left.score.timeKeyExact;
+        }
+
+        if (left.score.delta !== right.score.delta) {
+          return left.score.delta - right.score.delta;
+        }
+
+        return String(left.id).localeCompare(String(right.id));
+      });
+  },
+
+  selectNeedsReviewTarget: (candidates: any[]): string | undefined => {
+    if (candidates.length === 0) return undefined;
+    if (candidates.length === 1) return candidates[0].id;
+
+    const [best, second] = candidates;
+    if (!second) return best.id;
+
+    const bestScore = best.score || { rawMemoExact: 0, timeKeyExact: 0, delta: Number.MAX_SAFE_INTEGER };
+    const secondScore = second.score || { rawMemoExact: 0, timeKeyExact: 0, delta: Number.MAX_SAFE_INTEGER };
+
+    if (
+      bestScore.rawMemoExact !== secondScore.rawMemoExact ||
+      bestScore.timeKeyExact !== secondScore.timeKeyExact ||
+      bestScore.delta !== secondScore.delta
+    ) {
+      return best.id;
+    }
+
+    return undefined;
   },
 
   /**
    * Reads a file (CSV or Excel) and returns raw 2D array data.
    */
   parseFileToGrid: async (file: File): Promise<{ rawGrid: any[][], displayGrid: any[][] }> => {
+    const { read, utils } = await import('xlsx');
     const buffer = await file.arrayBuffer();
 
     const parseWorkbook = (wb: any) => {
@@ -542,6 +771,45 @@ export const ImportService = {
       const displayGrid = utils.sheet_to_json(ws, { header: 1, defval: '', raw: false }) as any[][];
       return { rawGrid, displayGrid };
     };
+
+    const scoreParsedGrid = (result: { rawGrid: any[][], displayGrid: any[][] }): number => {
+      const sampleValues = result.displayGrid
+        .slice(0, 100)
+        .flat()
+        .map(cell => String(cell ?? ''))
+        .filter(Boolean);
+
+      const suspiciousChars = sampleValues.reduce((count, value) => {
+        const hardFailures = value.match(/[�﷿]/g)?.length ?? 0;
+        const mojibake = value.match(/[ÃÂìëêíð]/g)?.length ?? 0;
+        return count + hardFailures * 10 + mojibake;
+      }, 0);
+
+      return (result.rawGrid.length * 5) + sampleValues.length - (suspiciousChars * 20);
+    };
+
+    const tryArrayWorkbook = (options: Record<string, unknown> = {}) => {
+      try {
+        const workbook = read(buffer, { type: 'array', cellText: true, ...options });
+        if (workbook.SheetNames.length === 0) return null;
+        const result = parseWorkbook(workbook);
+        return result.rawGrid.length > 0 ? result : null;
+      } catch {
+        return null;
+      }
+    };
+
+    if (file.name.match(/\.(csv|txt|tsv)$/i)) {
+      const candidates = [
+        tryArrayWorkbook({ codepage: 65001 }),
+        tryArrayWorkbook({ codepage: 949 }),
+      ].filter((candidate): candidate is { rawGrid: any[][], displayGrid: any[][] } => Boolean(candidate));
+
+      if (candidates.length > 0) {
+        candidates.sort((left, right) => scoreParsedGrid(right) - scoreParsedGrid(left));
+        return candidates[0];
+      }
+    }
 
     if (file.name.match(/\.(xls|xlsx)$/i)) {
       try {
@@ -571,8 +839,24 @@ export const ImportService = {
       }
     }
 
-    const workbook = read(decodedText, { type: 'string', cellText: true });
-    return parseWorkbook(workbook);
+    try {
+      const workbook = read(decodedText, { type: 'string', cellText: true });
+      return parseWorkbook(workbook);
+    } catch (err) {
+      console.warn('String workbook parse failed, trying array/codepage fallback...', err);
+
+      const fallbackCandidates = [
+        tryArrayWorkbook({ codepage: 65001 }),
+        tryArrayWorkbook({ codepage: 949 }),
+      ].filter((candidate): candidate is { rawGrid: any[][], displayGrid: any[][] } => Boolean(candidate));
+
+      if (fallbackCandidates.length > 0) {
+        fallbackCandidates.sort((left, right) => scoreParsedGrid(right) - scoreParsedGrid(left));
+        return fallbackCandidates[0];
+      }
+
+      throw err;
+    }
   },
 
 
@@ -610,6 +894,10 @@ export const ImportService = {
 
       if (mapping.amountIndex !== undefined && mapping.amountIndex >= 0) {
         const amountVal = row[mapping.amountIndex];
+        const rawTypeValue = mapping.typeIndex !== undefined && mapping.typeIndex >= 0
+          ? row[mapping.typeIndex]
+          : undefined;
+        const explicitType = ImportService.parseTransactionTypeValue(rawTypeValue);
         let amount = 0;
         if (typeof amountVal === 'number') {
           amount = amountVal;
@@ -622,7 +910,16 @@ export const ImportService = {
           amount = parsedFloat;
         }
         if (amount !== 0) {
-          const type = amount < 0 ? TransactionType.EXPENSE : TransactionType.INCOME;
+          if (
+            mapping.typeIndex !== undefined &&
+            mapping.typeIndex >= 0 &&
+            String(rawTypeValue ?? '').trim() !== '' &&
+            explicitType === null
+          ) {
+            throw new Error("Invalid Type");
+          }
+
+          const type = explicitType ?? (amount < 0 ? TransactionType.EXPENSE : TransactionType.INCOME);
           pendingTxs.push({ amount: Math.abs(amount), type });
         }
       }
@@ -653,45 +950,9 @@ export const ImportService = {
       // --- Asset Resolution (ULTRA-STRICT) ---
       let currentAssetId = defaultAssetId;
       if (mapping.assetIndex !== undefined && mapping.assetIndex >= 0) {
-        const assetVal = String(row[mapping.assetIndex] || '').trim();
-        if (assetVal) {
-          const normalize = (s: string) => s.toUpperCase().replace(/[^A-Z0-9가-힣]/g, '');
-          const normInput = normalize(assetVal);
-          let bestMatchId: string | null = null;
-
-          // Tier 0: Direct ID Match (DB export CSV 전용 - 10자 이상 순수 숫자 ID)
-          if (/^\d{10,}$/.test(assetVal)) {
-            const directMatch = assets.find(a => String(a.id) === assetVal);
-            if (directMatch) bestMatchId = directMatch.id;
-          }
-
-          // Tier 1: Product Name Match
-          if (!bestMatchId) for (const a of assets) {
-            const prodNorm = normalize(a.productName || '');
-            if (prodNorm && (normInput === prodNorm || normInput.includes(prodNorm))) {
-              bestMatchId = a.id;
-              break;
-            }
-          }
-
-          // Tier 2: Institution + Account Suffix (Both Required)
-          if (!bestMatchId) {
-            for (const a of assets) {
-              const instNorm = normalize(a.institution || '');
-              const accSuffix = a.accountNumber ? normalize(a.accountNumber).replace(/[^0-9]/g, '').slice(-4) : '';
-              
-              if (instNorm && accSuffix && accSuffix.length >= 4) {
-                if (normInput.includes(instNorm) && normInput.includes(accSuffix)) {
-                  bestMatchId = a.id;
-                  break;
-                }
-              }
-            }
-          }
-
-          if (bestMatchId) {
-            currentAssetId = bestMatchId;
-          }
+        const mappedAssetId = ImportService.resolveAssetId(row[mapping.assetIndex], assets);
+        if (mappedAssetId) {
+          currentAssetId = mappedAssetId;
         }
       }
 
@@ -709,6 +970,7 @@ export const ImportService = {
 
       // --- Merchant & Memo ---
       let merchantVal = undefined;
+      let tagNames: string[] = [];
       let memoParts: string[] = [];
       const primaryMemo = String(memoVal || '').trim();
       if (primaryMemo) memoParts.push(primaryMemo);
@@ -728,24 +990,22 @@ export const ImportService = {
         const rawMerchant = String(row[mapping.merchantIndex] || '').trim();
         if (rawMerchant) {
           merchantVal = rawMerchant;
-          if (!finalMemo.toLowerCase().includes(`@${rawMerchant.toLowerCase()}`)) {
-            finalMemo = finalMemo ? `${finalMemo} @${rawMerchant}` : `@${rawMerchant}`;
-          }
         }
       }
 
       if (mapping.tagIndex !== undefined && mapping.tagIndex >= 0) {
         const rawTag = String(row[mapping.tagIndex] || '').trim();
         if (rawTag) {
-          const cleanTag = rawTag.replace(/\s+/g, '_');
-          const formattedTag = cleanTag.startsWith('#') ? cleanTag : `#${cleanTag}`;
-          if (!finalMemo.toLowerCase().includes(formattedTag.toLowerCase())) {
-            finalMemo = `${finalMemo} ${formattedTag}`;
-          }
+          tagNames = getTransactionTagNames(
+            rawTag
+              .split(/[;,|]/)
+              .map(tag => tag.trim())
+              .filter(Boolean)
+          );
         }
       }
 
-      if (!finalMemo) throw new Error("Empty Description");
+      if (!finalMemo && !merchantVal && tagNames.length === 0) throw new Error("Empty Details");
 
       // --- Category ---
       let categoryVal = Category.OTHER;
@@ -768,7 +1028,10 @@ export const ImportService = {
       }
 
       // --- Build Transactions ---
-      const finalTransactions: Partial<Transaction>[] = pendingAmounts.map((p, subIdx) => {
+      const defaultTransferCategory = categories.find(c => c.type === TransactionType.TRANSFER)?.id ?? Category.TRANSFER;
+      const finalTransactions: Partial<Transaction>[] = [];
+
+      pendingAmounts.forEach((p, subIdx) => {
         let txInstallment = undefined;
         if (p.type === TransactionType.EXPENSE && mapping.installmentIndex !== undefined && mapping.installmentIndex >= 0) {
           const rawInst = String(row[mapping.installmentIndex] || '').trim();
@@ -786,19 +1049,53 @@ export const ImportService = {
           }
         }
 
-        return {
+        const resolvedCategory = p.type === TransactionType.TRANSFER && (categoryVal === Category.OTHER || !categoryVal)
+          ? defaultTransferCategory
+          : categoryVal;
+
+        if (p.type === TransactionType.TRANSFER) {
+          if (mapping.toAssetIndex === undefined || mapping.toAssetIndex < 0) {
+            throw new Error("Transfer requires destination account column");
+          }
+
+          const destinationAssetId = ImportService.resolveAssetId(row[mapping.toAssetIndex], assets) || undefined;
+
+          if (destinationAssetId && currentAssetId === destinationAssetId) {
+            throw new Error("Source and destination accounts must be different");
+          }
+
+          finalTransactions.push({
+            id: `imported-${Date.now()}-${index}-${subIdx}`,
+            date: dateStr,
+            timestamp,
+            amount: p.amount,
+            type: TransactionType.TRANSFER,
+            category: resolvedCategory,
+            memo: finalMemo,
+            merchant: merchantVal,
+            tags: tagNames,
+            assetId: currentAssetId,
+            toAssetId: destinationAssetId,
+            originalText: finalMemo
+          });
+
+          return;
+        }
+
+        finalTransactions.push({
           id: `imported-${Date.now()}-${index}-${subIdx}`,
           date: dateStr,
           timestamp,
           amount: p.amount,
           type: p.type,
-          category: categoryVal,
+          category: resolvedCategory,
           memo: finalMemo,
           merchant: merchantVal,
+          tags: tagNames,
           installment: txInstallment,
           assetId: currentAssetId,
           originalText: finalMemo
-        };
+        });
       });
 
       return { transactions: finalTransactions };
@@ -834,7 +1131,9 @@ export const ImportService = {
             tx.assetId!,
             tx.timestamp!,
             tx.amount!,
-            tx.memo!
+            tx.memo || tx.merchant || '',
+            tx.type,
+            tx.toAssetId
           );
           const currentCount = baseHashCounts.get(baseHash) || 0;
           baseHashCounts.set(baseHash, currentCount + 1);
@@ -842,6 +1141,7 @@ export const ImportService = {
 
           rows.push({
             index: i,
+            subIdx,
             data: rawRowData,
             status: 'valid',
             transaction: tx
@@ -852,6 +1152,7 @@ export const ImportService = {
         if (reason === 'Zero Amount') continue;
         rows.push({
           index: i,
+          subIdx: 0,
           data: rawRowData,
           status: 'invalid',
           reason: reason || 'Unknown Error'
@@ -867,42 +1168,110 @@ export const ImportService = {
    * Preserves the original subIdx from the transaction's existing hashKey (set by mapRawDataToImportRows)
    * so that multi-transaction rows (e.g. 결제+취소 simultaneously) maintain correct #count#subIdx.
    */
-  reassignHashKeys: (rows: ImportRow[], dbHashBank?: Set<string>): ImportRow[] => {
+  // reconciliationCandidates Parameter Added (Tier 2 Evaluation)
+  reassignHashKeys: (rows: ImportRow[], dbHashBank?: Set<string>, reconciliationCandidates?: any[]): ImportRow[] => {
     const baseHashCounts = new Map<string, number>();
-    
-    return rows.map(row => {
+    const duplicateDbHashKeys = new Set<string>();
+
+    const stagedRows = rows.map(row => {
       // Keep invalid rows as they are, but re-calculate for others
-      if (row.status === 'invalid' || !row.transaction) return row;
+      if (row.status === 'invalid' || !row.transaction) {
+        return { ...row, review_candidates: undefined };
+      }
       
       const tx = row.transaction;
       const baseHash = ImportService.generateHashKey(
         tx.assetId!,
         tx.timestamp!,
         tx.amount!,
-        tx.memo!
+        tx.memo || tx.merchant || '',
+        tx.type,
+        tx.toAssetId
       );
       
       const currentCount = baseHashCounts.get(baseHash) || 0;
       baseHashCounts.set(baseHash, currentCount + 1);
       
-      // Preserve the original subIdx from mapRawDataToImportRows.
-      // The existing hashKey format is "{baseHash}#{count}#{subIdx}" — extract the last segment.
-      // Falls back to 0 if there's no pre-existing hashKey (e.g., manually added rows).
-      const existingSubIdx = tx.hashKey
-        ? parseInt(tx.hashKey.split('#').pop() ?? '0', 10)
-        : 0;
-      const subIdx = isNaN(existingSubIdx) ? 0 : existingSubIdx;
-      
+      const subIdx = row.subIdx || 0;
       const hashKey = `${baseHash}#${currentCount}#${subIdx}`;
       tx.hashKey = hashKey;
 
-      // CROSS-CHECK against DB Hash Bank
-      let newStatus: 'valid' | 'duplicate' = 'valid';
       if (dbHashBank && dbHashBank.has(hashKey)) {
-        newStatus = 'duplicate';
+        duplicateDbHashKeys.add(hashKey);
       }
 
-      return { ...row, status: newStatus, transaction: { ...tx } };
+      return {
+        ...row,
+        status: dbHashBank && dbHashBank.has(hashKey) ? 'duplicate' : 'valid',
+        reason: row.reason,
+        replace_target_id: undefined,
+        review_candidates: undefined,
+        transaction: { ...tx }
+      };
+    });
+
+    const unresolvedCandidates = (reconciliationCandidates || []).filter(candidate => {
+      if (!candidate?.hash_key) return true;
+      return !duplicateDbHashKeys.has(String(candidate.hash_key));
+    });
+
+    const reassignedRows = stagedRows.map(row => {
+      if (row.status !== 'valid' || !row.transaction || unresolvedCandidates.length === 0) {
+        return row;
+      }
+
+      const tx = row.transaction;
+      if (tx.type !== TransactionType.INCOME && tx.type !== TransactionType.EXPENSE) {
+        return row;
+      }
+
+      const reviewCandidates = ImportService.buildNeedsReviewCandidates(tx, unresolvedCandidates);
+      if (reviewCandidates.length === 0) {
+        return row;
+      }
+
+      const typeLabel = ImportService.getNeedsReviewLabel(tx.type);
+
+      return {
+        ...row,
+        status: 'needs_review' as const,
+        reason: reviewCandidates.length === 1
+          ? `기존 ${typeLabel} 교체 후보 1건`
+          : `기존 ${typeLabel} 교체 후보 ${reviewCandidates.length}건`,
+        replace_target_id: ImportService.selectNeedsReviewTarget(reviewCandidates),
+        review_candidates: reviewCandidates.map(candidate => ({
+          id: String(candidate.id),
+          memo: candidate.memo,
+          merchant: candidate.merchant,
+          date: candidate.date,
+          timestamp: candidate.timestamp,
+          amount: Number(candidate.amount),
+          assetId: candidate.asset_id,
+          type: candidate.type,
+          hashKey: candidate.hash_key,
+        })),
+      };
+    });
+
+    const targetUsageCounts = new Map<string, number>();
+    reassignedRows.forEach(row => {
+      if (row.replace_target_id) {
+        targetUsageCounts.set(row.replace_target_id, (targetUsageCounts.get(row.replace_target_id) || 0) + 1);
+      }
+    });
+
+    return reassignedRows.map(row => {
+      if (!row.replace_target_id) return row;
+
+      if ((targetUsageCounts.get(row.replace_target_id) || 0) > 1) {
+        return {
+          ...row,
+          replace_target_id: undefined,
+          reason: '교체 후보 충돌 - 직접 선택 필요'
+        };
+      }
+
+      return row;
     });
   },
 

@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Transaction, TransactionType, Category, Asset, CategoryItem, Tag as TagType } from '../types';
-import { SupabaseService } from '../services/supabaseService';
 import { Dialog } from './ui/Dialog';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
 import { Button } from './ui/Button';
+import { getDefaultCategoryId, normalizeCategoryId } from '../utils/category';
+import { formatTransactionDetailsInput, parseTransactionDetailsInput } from '../utils/transactionDetails';
+import { useSmartInputAI } from '../hooks/useSmartInputAI';
 import {
   FileText,
   Camera,
   RefreshCw,
-  AlertCircle,
-  Check
+  AlertCircle
 } from 'lucide-react';
 
 interface SmartInputProps {
@@ -27,6 +28,35 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
   const [mode, setMode] = useState<'select' | 'manual'>(initialData ? 'manual' : 'select');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const buildDetailsValue = (transaction?: Partial<Transaction> | null) => formatTransactionDetailsInput({
+    memo: transaction?.memo,
+    merchant: transaction?.merchant,
+    tags: transaction?.tags
+  });
+
+  const getCategoryForType = (type: TransactionType, value?: string | null) => {
+    if (type === TransactionType.TRANSFER) {
+      return normalizeCategoryId(value, categories, {
+        type: 'TRANSFER',
+        preferredNames: ['Card Payment', 'Savings/Invest', 'Withdrawal'],
+        fallbackValue: Category.TRANSFER
+      });
+    }
+
+    if (type === TransactionType.INCOME) {
+      return normalizeCategoryId(value, categories, {
+        type: 'INCOME',
+        preferredNames: ['Salary', 'Investment'],
+        fallbackValue: Category.SALARY
+      });
+    }
+
+    return normalizeCategoryId(value, categories, {
+      type: 'EXPENSE',
+      preferredNames: ['Other', 'Housing & Bill'],
+      fallbackValue: Category.FOOD
+    });
+  };
 
   const [isExternalTransfer, setIsExternalTransfer] = useState(() => {
     if (!initialData) return false;
@@ -38,18 +68,9 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
   const [isInterestFree, setIsInterestFree] = useState(() => initialData?.installment?.isInterestFree ?? true);
 
   // TAGGING SYSTEM STATE
-  const [availableTags, setAvailableTags] = useState<TagType[]>([]);
+  const { availableTags, analyzeReceipt } = useSmartInputAI(assets, categories);
   const [tagSuggestions, setTagSuggestions] = useState<TagType[]>([]);
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
-
-  // Load Tags on Mount
-  useEffect(() => {
-    const loadTags = async () => {
-      const tags = await SupabaseService.getTags();
-      setAvailableTags(tags);
-    };
-    loadTags();
-  }, []);
 
   // Handle Memo Change with Tag Detection
   const handleMemoChange = (text: string) => {
@@ -74,7 +95,8 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
   const insertTag = (tagName: string) => {
     const words = manualForm.memo.split(' ');
     words.pop(); // Remove partial tag
-    const newMemo = [...words, `#${tagName} `].join(' '); // Add full tag
+    const formattedTag = formatTransactionDetailsInput({ tags: [tagName] });
+    const newMemo = [...words, formattedTag, ''].join(' ').trimStart();
     setManualForm(prev => ({ ...prev, memo: newMemo }));
     setShowTagSuggestions(false);
   };
@@ -86,16 +108,8 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
         date: initialData.date,
         amount: initialData.amount.toString(),
         type: initialData.type,
-        category: initialData.category as Category,
-        // BUG FIX: Prevent duplicate @Tagging if already present
-        memo: (() => {
-          const legacy = (initialData as any).merchant;
-          const currentMemo = initialData.memo || '';
-          if (legacy && !currentMemo.includes(`@${legacy}`)) {
-            return currentMemo ? `${currentMemo} @${legacy}` : `@${legacy}`;
-          }
-          return currentMemo;
-        })(),
+        category: getCategoryForType(initialData.type, initialData.category),
+        memo: buildDetailsValue(initialData),
         assetId: initialData.assetId,
         toAssetId: initialData.toAssetId || '',
         time: initialData.timestamp ? new Date(initialData.timestamp).toTimeString().slice(0, 8) : new Date().toTimeString().slice(0, 8)
@@ -106,7 +120,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
       time: new Date().toTimeString().slice(0, 8),
       amount: '',
       type: TransactionType.EXPENSE,
-      category: categories.length > 0 ? categories[0].id : Category.FOOD, // Default to first category or legacy
+      category: getDefaultCategoryId(categories, 'EXPENSE', ['Other', 'Housing & Bill']) || Category.FOOD,
       memo: '',
       merchant: '',
       assetId: assets[0]?.id || '',
@@ -133,24 +147,16 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
         date: initialData.date,
         amount: initialData.amount.toString(),
         type: initialData.type,
-        category: initialData.category as Category,
-        // BUG FIX: Prevent duplicate @Tagging if already present
-        memo: (() => {
-          const legacy = (initialData as any).merchant;
-          const currentMemo = initialData.memo || '';
-          if (legacy && !currentMemo.includes(`@${legacy}`)) {
-            return currentMemo ? `${currentMemo} @${legacy}` : `@${legacy}`;
-          }
-          return currentMemo;
-        })(),
+        category: getCategoryForType(initialData.type, initialData.category),
+        memo: buildDetailsValue(initialData),
         assetId: initialData.assetId,
         toAssetId: initialData.toAssetId || '',
         time: initialData.timestamp ? new Date(initialData.timestamp).toTimeString().slice(0, 8) : new Date().toTimeString().slice(0, 8)
       });
     }
-  }, [initialData]);
+  }, [categories, initialData]);
 
-  const handleCategoryChange = (cat: Category | string) => {
+  const handleCategoryChange = (cat: string) => {
     setManualForm(prev => ({
       ...prev,
       category: cat
@@ -189,15 +195,6 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
         });
         return; // Wait for user choice
       }
-    }
-
-    // HYBRID TAGGING: Scan for new tags and update dictionary in background
-    const tags = manualForm.memo?.match(/#\S+/g); // Find all #hashtags
-    if (tags) {
-      tags.forEach(tag => {
-        // Remove # and upsert
-        SupabaseService.upsertTag(tag.slice(1));
-      });
     }
 
     // V3 DUAL CREATION LOGIC
@@ -289,18 +286,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
     setLoading(true);
     setError(null);
     try {
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve) => {
-        reader.onload = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          resolve(base64);
-        };
-      });
-      reader.readAsDataURL(file);
-      const base64 = await base64Promise;
-
-      const { GeminiService } = await import('../services/geminiService');
-      const result = await GeminiService.parseReceipt(base64, categories, assets);
+      const result = await analyzeReceipt(file);
 
       if (result) {
         if (result.type === TransactionType.TRANSFER && result.to_asset_id) {
@@ -310,8 +296,16 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
           ...prev,
           amount: result.amount?.toString() || prev.amount,
           date: result.date || prev.date,
-          memo: result.merchant || prev.memo,
-          category: result.category_id || prev.category,
+          memo: (() => {
+            const parsedPrev = parseTransactionDetailsInput(prev.memo || '');
+            const nextDetails = formatTransactionDetailsInput({
+              memo: parsedPrev.memo,
+              merchant: result.merchant || parsedPrev.merchant,
+              tags: parsedPrev.tags
+            });
+            return nextDetails || prev.memo;
+          })(),
+          category: getCategoryForType(result.type || prev.type, result.category_id || prev.category),
           assetId: result.asset_id || prev.assetId,
           toAssetId: result.to_asset_id || prev.toAssetId,
           type: result.type || prev.type
@@ -404,7 +398,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                       onClick={() => setManualForm({
                         ...manualForm,
                         type: t,
-                        category: t === TransactionType.TRANSFER ? Category.TRANSFER : manualForm.category
+                        category: getCategoryForType(t, manualForm.category)
                       })}
                       className={`flex-1 py-1.5 text-[10px] font-black rounded-md transition-all uppercase tracking-wide ${manualForm.type === t
                         ? (t === TransactionType.INCOME ? 'bg-white text-emerald-600 shadow-sm' : t === TransactionType.EXPENSE ? 'bg-white text-rose-600 shadow-sm' : 'bg-white text-blue-600 shadow-sm')
@@ -587,10 +581,10 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                 <div className="col-span-2">
                   <div className="relative">
                     <Input
-                      label="Description"
+                      label="Details"
                       value={manualForm.memo}
                       onChange={e => handleMemoChange(e.target.value)}
-                      placeholder="Description @Merchant #Tag"
+                      placeholder='Coffee @Starbucks #work'
                       className="placeholder:text-slate-300"
                     />
                     {showTagSuggestions && (
@@ -611,7 +605,7 @@ const SmartInput: React.FC<SmartInputProps> = ({ onTransactionsParsed, onCancel,
                       </div>
                     )}
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1 pl-1 text-right font-medium">Use <span className="text-purple-500 font-bold bg-purple-50 px-1 rounded mx-0.5">@</span> Merchant, <span className="text-blue-500 font-bold bg-blue-50 px-1 rounded mx-0.5">#</span> Tag</p>
+                  <p className="text-[10px] text-slate-400 mt-1 pl-1 text-right font-medium">Use <span className="text-purple-500 font-bold bg-purple-50 px-1 rounded mx-0.5">@</span> for merchant and <span className="text-blue-500 font-bold bg-blue-50 px-1 rounded mx-0.5">#</span> for tags</p>
                 </div>
               </div>
 

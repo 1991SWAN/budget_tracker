@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View } from '../../types';
 import { ArrowLeft, Trash2, Link2, Link2Off, FileUp } from 'lucide-react';
-import { ImportService, ImportPreset } from '../../services/importService';
-import { SupabaseService } from '../../services/supabaseService';
+import { useImportSettingsController } from '../../hooks/useImportSettingsController';
 
 interface ImportSettingsProps {
     onNavigate: (view: View) => void;
@@ -10,34 +9,9 @@ interface ImportSettingsProps {
 }
 
 export const ImportSettings: React.FC<ImportSettingsProps> = ({ onNavigate, onImportFile }) => {
-    const [presets, setPresets] = useState<ImportPreset[]>([]);
-    const [assets, setAssets] = useState<any[]>([]);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
-
-    useEffect(() => {
-        loadData();
-    }, []);
-
-    const loadData = async () => {
-        setPresets(ImportService.getPresets());
-        const assetList = await SupabaseService.getAssets();
-        setAssets(assetList);
-    };
-
-    const handleDelete = (id: string) => {
-        if (window.confirm('Are you sure you want to delete this preset?')) {
-            ImportService.deletePreset(id);
-            setPresets(ImportService.getPresets());
-        }
-    };
-
-    const handleUnlink = (id: string) => {
-        if (window.confirm('Unlink this preset from the specific account? It will become a generic preset.')) {
-            ImportService.unlinkPreset(id);
-            setPresets(ImportService.getPresets());
-        }
-    };
+    const { presets, assets, handleDelete, handleUnlink } = useImportSettingsController();
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];

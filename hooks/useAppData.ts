@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { SupabaseService } from '../services/supabaseService';
 import { Asset, Transaction, RecurringTransaction, SavingsGoal, TransactionFilters } from '../types';
 import { useToast } from '../contexts/ToastContext';
@@ -17,7 +17,7 @@ export const useAppData = (user: any) => {
     const [activeFilters, setActiveFilters] = useState<TransactionFilters | undefined>();
     const PAGE_SIZE = 50;
 
-    const loadData = async (filters?: TransactionFilters) => {
+    const loadData = useCallback(async (filters?: TransactionFilters) => {
         try {
             if (!user) return;
             setActiveFilters(filters);
@@ -42,9 +42,9 @@ export const useAppData = (user: any) => {
             console.error(e);
             addToast('Failed to load data from cloud', 'error');
         }
-    };
+    }, [addToast, user]);
 
-    const fetchMoreTransactions = async () => {
+    const fetchMoreTransactions = useCallback(async () => {
         if (isFetchingMore || !hasMoreTransactions || !user) return;
         setIsFetchingMore(true);
         try {
@@ -56,7 +56,7 @@ export const useAppData = (user: any) => {
         } finally {
             setIsFetchingMore(false);
         }
-    };
+    }, [activeFilters, hasMoreTransactions, isFetchingMore, transactions.length, user]);
 
     useEffect(() => {
         if (user) {
@@ -71,7 +71,7 @@ export const useAppData = (user: any) => {
             setIsDataLoaded(false);
             setHasMoreTransactions(true);
         }
-    }, [user]);
+    }, [loadData, user]);
 
     return {
         assets, setAssets,

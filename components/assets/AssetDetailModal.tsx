@@ -1,12 +1,11 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Asset, AssetType, Transaction, TransactionType } from '../../types';
 import { FinanceCalculator } from '../../services/financeCalculator';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { ASSET_THEMES } from './constants';
 import { SafeChart } from './SafeChart';
-import { SupabaseService } from '../../services/supabaseService';
-import { useEffect } from 'react';
+import { useAssetInstallments } from '../../hooks/useAssetInstallments';
 
 export const AssetDetailModal: React.FC<{
     asset: Asset,
@@ -17,8 +16,6 @@ export const AssetDetailModal: React.FC<{
     onPay?: (asset: Asset) => void,
     onClearHistory?: (assetId: string) => void
 }> = ({ asset, transactions, onClose, onEdit, onDelete, onPay, onClearHistory }) => {
-    const modalRef = useRef<HTMLDivElement>(null);
-
     const chartData = useMemo(() => {
         const relevantTxs = transactions
             .filter(t => t.assetId === asset.id || t.toAssetId === asset.id)
@@ -48,19 +45,7 @@ export const AssetDetailModal: React.FC<{
 
     const [isDeleting, setIsDeleting] = useState(false);
     const [isClearing, setIsClearing] = useState(false); // New State: History Clear Confirmation
-
-    const [allInstallments, setAllInstallments] = useState<Transaction[]>([]);
-    const [isLoadingInstallments, setIsLoadingInstallments] = useState(false);
-
-    useEffect(() => {
-        if (activeTab === 'installments' && asset.type === AssetType.CREDIT_CARD) {
-            setIsLoadingInstallments(true);
-            SupabaseService.getInstallmentsByAsset(asset.id).then(data => {
-                setAllInstallments(data);
-                setIsLoadingInstallments(false);
-            });
-        }
-    }, [activeTab, asset.id, asset.type]);
+    const { allInstallments, isLoadingInstallments } = useAssetInstallments(asset, activeTab);
 
     const footerContent = isDeleting ? (
         <>

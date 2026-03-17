@@ -1,11 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ImportService, ColumnMapping, ImportPreset, ImportRow, ColumnAnalysis } from '../../services/importService';
-import { Transaction, Asset, CategoryItem } from '../../types';
-import { TransactionService } from '../../services/transactionService';
+import { Transaction, Asset, CategoryItem, TransactionType } from '../../types';
 import { Upload, ArrowRight, X, AlertTriangle, Check, Trash2, Sparkles, Download, LayoutTemplate, FileJson, History } from 'lucide-react';
 import { Virtuoso } from 'react-virtuoso';
 import { useToast } from '../../contexts/ToastContext';
 import { MappingCanvas } from './MappingCanvas';
+import { formatTransactionDetailsInput } from '../../utils/transactionDetails';
+import { useImportWizardReconciliation } from '../../hooks/useImportWizardReconciliation';
+import {
+    formatImportPreviewAmountDisplay,
+    normalizeImportPreviewEditedAmount,
+} from '../../utils/importPreviewAmount';
 
 interface ImportWizardModalProps {
     isOpen: boolean;
@@ -43,6 +48,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
         memoIndex: -1,
         memoIndices: [],
         assetIndex: -1,
+        toAssetIndex: -1,
         categoryIndex: -1,
         merchantIndex: -1,
         tagIndex: -1,
@@ -59,19 +65,33 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
 
     // Preview Data
     const [importRows, setImportRows] = useState<ImportRow[]>([]);
-    const [previewTab, setPreviewTab] = useState<'VALID' | 'INVALID' | 'DUPLICATE'>('VALID');
+    const [previewTab, setPreviewTab] = useState<'VALID' | 'INVALID' | 'DUPLICATE' | 'NEEDS_REVIEW'>('VALID');
     const [columnAnalyses, setColumnAnalyses] = useState<ColumnAnalysis[]>([]);
-    const [dbHashBank, setDbHashBank] = useState<Set<string>>(new Set());
-    const [isLoadingDb, setIsLoadingDb] = useState(false);
+    const {
+        dbHashBank,
+        reconciliationCandidates,
+        isLoadingDb,
+        resetDbContext,
+        loadDbContextForMapping,
+    } = useImportWizardReconciliation(rawData, headerIndex);
+
+    const mappingHasTransferRows = React.useCallback((candidateMapping: ColumnMapping) => {
+        if (candidateMapping.typeIndex === undefined || candidateMapping.typeIndex < 0) return false;
+        return rawData.slice(headerIndex + 1).some(row =>
+            ImportService.parseTransactionTypeValue(row[candidateMapping.typeIndex!]) === TransactionType.TRANSFER
+        );
+    }, [rawData, headerIndex]);
 
     // Memos for performance
     const validRows = React.useMemo(() => importRows.filter(r => r.status === 'valid'), [importRows]);
     const invalidRows = React.useMemo(() => importRows.filter(r => r.status === 'invalid'), [importRows]);
     const duplicateRows = React.useMemo(() => importRows.filter(r => r.status === 'duplicate'), [importRows]);
+    const needsReviewRows = React.useMemo(() => importRows.filter(r => r.status === 'needs_review'), [importRows]);
     
-    const currentPreviewRows = previewTab === 'VALID' 
-        ? validRows 
-        : (previewTab === 'INVALID' ? invalidRows : duplicateRows);
+    let currentPreviewRows = validRows;
+    if (previewTab === 'INVALID') currentPreviewRows = invalidRows;
+    else if (previewTab === 'DUPLICATE') currentPreviewRows = duplicateRows;
+    else if (previewTab === 'NEEDS_REVIEW') currentPreviewRows = needsReviewRows;
 
     // Load Presets
     useEffect(() => {
@@ -98,6 +118,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                 memoIndex: -1,
                 memoIndices: [],
                 assetIndex: -1,
+                toAssetIndex: -1,
                 categoryIndex: -1,
                 merchantIndex: -1,
                 tagIndex: -1,
@@ -107,7 +128,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             setPresetName('');
             setMatchingPreset(null);
             setApplyPreset(false);
-            setDbHashBank(new Set());
+            resetDbContext();
             setPreviewTab('VALID');
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,85 +157,79 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                 setHeaderIndex(analysisResult.headerIndex);
             } catch (err) {
                 console.error('Failed to parse initial file:', err);
+                if (!cancelled) {
+                    addToast('Could not read the file. Please upload it again.', 'error');
+                    setRawData([]);
+                    setColumnAnalyses([]);
+                    setHeaderIndex(0);
+                    setFileName('');
+                    setStep('UPLOAD');
+                }
             }
         })();
 
         return () => { cancelled = true; };
-    }, [isOpen, initialFile]);
+    }, [isOpen, initialFile, addToast]);
 
     // Handle DB Hash Bank Loading on Date Mapping
     useEffect(() => {
+        let cancelled = false;
+
         const loadDbHashes = async () => {
-            if (mapping.dateIndex === -1 || rawData.length <= headerIndex + 1) return;
-
-            setIsLoadingDb(true);
             try {
-                // 1. Scan Min/Max Dates from the raw data using the mapping
-                let minDateStr = '';
-                let maxDateStr = '';
+                const { hashes, candidates } = await loadDbContextForMapping(mapping);
+                if (cancelled) return;
 
-                for (let i = headerIndex + 1; i < rawData.length; i++) {
-                    const cell = rawData[i][mapping.dateIndex];
-                    if (!cell) continue;
-                    
-                    const d = ImportService.parseLooseDate(cell);
-                    if (d) {
-                        const iso = d.toISOString().split('T')[0];
-                        if (!minDateStr || iso < minDateStr) minDateStr = iso;
-                        if (!maxDateStr || iso > maxDateStr) maxDateStr = iso;
-                    }
-                }
-
-                if (minDateStr && maxDateStr) {
-                    // Add 1 day buffer as planned
-                    const minDate = new Date(minDateStr);
-                    minDate.setDate(minDate.getDate() - 1);
-                    const maxDate = new Date(maxDateStr);
-                    maxDate.setDate(maxDate.getDate() + 1);
-
-                    const hashes = await TransactionService.getHashKeysByDateRange(
-                        minDate.toISOString().split('T')[0],
-                        maxDate.toISOString().split('T')[0]
-                    );
-                    setDbHashBank(hashes);
-                    
-                    // Re-calculate hash keys if we already have rows
-                    if (importRows.length > 0) {
-                        setImportRows(prev => ImportService.reassignHashKeys(prev, hashes));
-                    }
+                if (importRows.length > 0) {
+                    setImportRows(prev => ImportService.reassignHashKeys(prev, hashes, candidates));
                 }
             } catch (err) {
-                console.error("Failed to load DB hash bank:", err);
-            } finally {
-                setIsLoadingDb(false);
+                if (!cancelled) {
+                    console.error("Failed to load DB hash bank:", err);
+                }
             }
         };
 
         loadDbHashes();
-    }, [mapping.dateIndex, rawData, headerIndex]);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [mapping.dateIndex, rawData, headerIndex, loadDbContextForMapping]);
 
     if (!isOpen) return null;
 
     // --- Handlers ---
     const processFileGrid = ({ rawGrid, displayGrid }: { rawGrid: any[][], displayGrid: any[][] }, fName: string) => {
-        if (rawGrid.length < 1) {
-            alert('File appears to be empty.');
-            return;
+        try {
+            if (rawGrid.length < 1) {
+                addToast('The file is empty.', 'error');
+                setStep('UPLOAD');
+                return;
+            }
+
+            // Clean empty rows
+            const cleanRaw = rawGrid.filter(row => row.some((cell: any) => cell !== undefined && cell !== null && String(cell).trim() !== ''));
+            const cleanDisplay = displayGrid.filter(row => row.some((cell: any) => cell !== undefined && cell !== null && String(cell).trim() !== ''));
+
+            setRawData(cleanRaw);
+            setFileName(fName);
+            
+            // analyzeColumns: type detection from rawGrid, sampleValues from displayGrid
+            const analysisResult = ImportService.analyzeColumns(cleanRaw, cleanDisplay);
+            setColumnAnalyses(analysisResult.columns);
+            setHeaderIndex(analysisResult.headerIndex);
+            
+            setStep('ASSET_SELECTION');
+        } catch (err) {
+            console.error('Failed to process parsed file:', err);
+            addToast('Could not process the file. Please upload it again.', 'error');
+            setRawData([]);
+            setColumnAnalyses([]);
+            setHeaderIndex(0);
+            setFileName('');
+            setStep('UPLOAD');
         }
-
-        // Clean empty rows
-        const cleanRaw = rawGrid.filter(row => row.some((cell: any) => cell !== undefined && cell !== null && String(cell).trim() !== ''));
-        const cleanDisplay = displayGrid.filter(row => row.some((cell: any) => cell !== undefined && cell !== null && String(cell).trim() !== ''));
-
-        setRawData(cleanRaw);
-        setFileName(fName);
-        
-        // analyzeColumns: type detection from rawGrid, sampleValues from displayGrid
-        const analysisResult = ImportService.analyzeColumns(cleanRaw, cleanDisplay);
-        setColumnAnalyses(analysisResult.columns);
-        setHeaderIndex(analysisResult.headerIndex);
-        
-        setStep('ASSET_SELECTION');
     };
 
     const handleDeleteRawRow = (index: number) => {
@@ -233,6 +248,56 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
         }
     };
 
+    const handleResolveReview = (rowIndex: number, subIdx: number, action: 'replace' | 'new') => {
+        let missingTarget = false;
+
+        setImportRows(prev => prev.map(row => {
+            if (row.index === rowIndex && row.subIdx === subIdx) {
+                if (action === 'new') {
+                    return { ...row, status: 'valid', replace_target_id: undefined, reason: undefined };
+                } else if (action === 'replace') {
+                    if (!row.replace_target_id) {
+                        missingTarget = true;
+                        return row;
+                    }
+
+                    return { ...row, status: 'valid', reason: 'Replacement Selected' };
+                }
+            }
+            return row;
+        }));
+
+        if (missingTarget) {
+            addToast('Select an existing DB record before replacing.', 'error');
+        }
+    };
+
+    const handleReviewTargetChange = (rowIndex: number, subIdx: number, targetId: string) => {
+        let hasConflict = false;
+
+        setImportRows(prev => {
+            if (targetId && prev.some(row => row.replace_target_id === targetId && !(row.index === rowIndex && row.subIdx === subIdx))) {
+                hasConflict = true;
+                return prev;
+            }
+
+            return prev.map(row => {
+                if (row.index === rowIndex && row.subIdx === subIdx) {
+                    return {
+                        ...row,
+                        replace_target_id: targetId || undefined
+                    };
+                }
+
+                return row;
+            });
+        });
+
+        if (hasConflict) {
+            addToast('The same DB record cannot be linked to multiple review rows at once.', 'error');
+        }
+    };
+
     // Check for matching preset when step or asset changes
     React.useEffect(() => {
         if (step === 'ASSET_SELECTION' && rawData.length > 0) {
@@ -243,7 +308,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
         }
     }, [step, targetAssetId, rawData]);
 
-    const handleAssetConfirm = () => {
+    const handleAssetConfirm = async () => {
         const headers = rawData[headerIndex] || [];
 
         // Apply Preset if user opted in
@@ -254,23 +319,37 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             setPresetName(matchingPreset.name);
 
             // Validation: If General Import (dynamic), Asset Column MUST be mapped
-            if (targetAssetId === 'dynamic' && matchingPreset.mapping.assetIndex === undefined) {
+            if (targetAssetId === 'dynamic' && (matchingPreset.mapping.assetIndex === undefined || matchingPreset.mapping.assetIndex < 0)) {
                 addToast("Preset incomplete for General Import. Please map Account column.", 'error');
                 setStep('MAPPING');
                 return;
             }
 
+            if (mappingHasTransferRows(matchingPreset.mapping) && (matchingPreset.mapping.toAssetIndex === undefined || matchingPreset.mapping.toAssetIndex < 0)) {
+                addToast("Preset includes transfer rows but is missing a 'To Account' mapping.", 'error');
+                setStep('MAPPING');
+                return;
+            }
+
             // Auto-advance to PREVIEW
-            const rows = ImportService.mapRawDataToImportRows(
-                rawData,
-                matchingPreset.mapping,
-                targetAssetId,
-                assets,
-                categories,
-                headerIndex
-            );
-            setImportRows(rows);
-            setStep('PREVIEW');
+            try {
+                const { hashes, candidates } = await loadDbContextForMapping(matchingPreset.mapping);
+                const mappedRows = ImportService.mapRawDataToImportRows(
+                    rawData,
+                    matchingPreset.mapping,
+                    targetAssetId,
+                    assets,
+                    categories,
+                    headerIndex
+                );
+                const verifiedRows = ImportService.reassignHashKeys(mappedRows, hashes, candidates);
+
+                setImportRows(verifiedRows);
+                setStep('PREVIEW');
+            } catch (err) {
+                console.error('Failed to build preview with preset:', err);
+                addToast('Could not finish the DB matching check. Please try again.', 'error');
+            }
 
         } else {
             // Reset to defaults or custom if ignored or not found
@@ -309,15 +388,21 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             const result = await ImportService.parseFileToGrid(file);
             processFileGrid(result, file.name);
         } catch (err) {
-            alert('Failed to read file.');
             console.error(err);
+            addToast('Could not read the file. Please upload it again.', 'error');
+            setStep('UPLOAD');
         }
     };
 
-    const handleMappingConfirm = () => {
+    const handleMappingConfirm = async () => {
         // Validation: If General Import (dynamic), Asset Column MUST be mapped
-        if (targetAssetId === 'dynamic' && mapping.assetIndex === undefined) {
+        if (targetAssetId === 'dynamic' && (mapping.assetIndex === undefined || mapping.assetIndex < 0)) {
             addToast("For General Import, you must map an 'Account' column.", 'error');
+            return;
+        }
+
+        if (mappingHasTransferRows(mapping) && (mapping.toAssetIndex === undefined || mapping.toAssetIndex < 0)) {
+            addToast("Transfer rows require a mapped 'To Account' column.", 'error');
             return;
         }
 
@@ -334,31 +419,60 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
         );
 
         // Generate preview
-        const rawRows = ImportService.mapRawDataToImportRows(rawData, mapping, targetAssetId, assets, categories, headerIndex);
-        const rows = ImportService.reassignHashKeys(rawRows, dbHashBank);
-        setImportRows(rows);
-        setStep('PREVIEW');
+        try {
+            const { hashes, candidates } = await loadDbContextForMapping(mapping);
+            const rawRows = ImportService.mapRawDataToImportRows(rawData, mapping, targetAssetId, assets, categories, headerIndex);
+            const rows = ImportService.reassignHashKeys(rawRows, hashes, candidates);
+            setImportRows(rows);
+            setStep('PREVIEW');
+        } catch (err) {
+            console.error('Failed to build preview:', err);
+            addToast('Could not finish the DB matching check. Please try again.', 'error');
+        }
     };
 
     const handleFinalConfirm = () => {
-        // We just pass it up to App.tsx which calculates duplicates/transfers
-        // Include valid (non-duplicate) rows. 
-        // We exclude duplicates by default unless we add a way to toggle them back.
-        const validTxs = validRows.map(r => r.transaction as Transaction);
-        onConfirm(validTxs);
+        const finalTxs = validRows.map(r => ({
+            ...r.transaction,
+            replaceTargetId: r.replace_target_id
+        }));
+
+        const replaceTargetIds = finalTxs
+            .map(tx => (tx as any).replaceTargetId)
+            .filter((value): value is string => Boolean(value));
+        const duplicateTargetIds = Array.from(new Set(replaceTargetIds.filter((id, index) => replaceTargetIds.indexOf(id) !== index)));
+
+        if (duplicateTargetIds.length > 0) {
+            addToast('The same DB record cannot be selected as the replacement target for multiple rows.', 'error');
+            return;
+        }
+
+        onConfirm(finalTxs as any[]);
         onClose();
     };
 
+    // --- Main Render ---
     // Phase 2: Inline Editing & Deletion
     const handleUpdateRowData = (rowIndex: number, colIndex: number, newValue: any) => {
         setImportRows(prev => {
             const existingRows = prev.filter(r => r.index === rowIndex);
             if (existingRows.length === 0) return prev;
 
+            const sourceRow = existingRows[0];
             const updatedData = [...existingRows[0].data];
-            if (updatedData[colIndex] === newValue) return prev; // No change, no update needed
-            
-            updatedData[colIndex] = newValue;
+            const hasExplicitTypeValue = mapping.typeIndex !== undefined
+                && mapping.typeIndex >= 0
+                && String(sourceRow.data[mapping.typeIndex] ?? '').trim() !== '';
+            const normalizedValue = normalizeImportPreviewEditedAmount({
+                value: newValue,
+                currentType: sourceRow.transaction?.type,
+                usesSignedAmountColumn: mapping.amountIndex === colIndex,
+                hasExplicitTypeValue,
+            });
+
+            if (updatedData[colIndex] === normalizedValue) return prev; // No change, no update needed
+
+            updatedData[colIndex] = normalizedValue;
 
             // 2. Re-validate atomic row (now returns multiple)
             const { transactions, reason } = ImportService.validateRow(
@@ -376,9 +490,10 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             
             const nextRows: ImportRow[] = [...filtered];
             if (transactions && transactions.length > 0) {
-                transactions.forEach(tx => {
+                transactions.forEach((tx, subIdx) => {
                     nextRows.push({
                         index: rowIndex,
+                        subIdx,
                         data: updatedData,
                         status: 'valid',
                         transaction: tx
@@ -387,6 +502,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             } else {
                 nextRows.push({
                     index: rowIndex,
+                    subIdx: 0,
                     data: updatedData,
                     status: 'invalid',
                     reason: reason || 'Unknown Error'
@@ -394,13 +510,13 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             }
 
             // Global collision check and hash key reformatting (includes DB check)
-            return ImportService.reassignHashKeys(nextRows.sort((a, b) => a.index - b.index), dbHashBank);
+            return ImportService.reassignHashKeys(nextRows.sort((a, b) => a.index - b.index), dbHashBank, reconciliationCandidates);
         });
     };
 
-    const handleDeleteRow = (rowIndex: number) => {
-        if (window.confirm("Remove this row from import?")) {
-            setImportRows(prev => prev.filter(r => r.index !== rowIndex));
+    const handleDeleteRow = (rowIndex: number, subIdx: number) => {
+        if (window.confirm("Remove this transaction from import?")) {
+            setImportRows(prev => prev.filter(r => !(r.index === rowIndex && r.subIdx === subIdx)));
         }
     };
 
@@ -429,8 +545,9 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             const result = await ImportService.parseFileToGrid(file);
             processFileGrid(result, file.name);
         } catch (err) {
-            alert('Failed to read file.');
             console.error(err);
+            addToast('Could not read the file. Please upload it again.', 'error');
+            setStep('UPLOAD');
         }
     };
 
@@ -630,13 +747,13 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
         const cols = [];
         if (mapping.dateIndex >= 0) cols.push({ id: 'date', label: 'Date', index: mapping.dateIndex, width: '110px' });
         if (mapping.timeIndex !== undefined && mapping.timeIndex >= 0) cols.push({ id: 'time', label: 'Time', index: mapping.timeIndex, width: '80px' });
-        if (mapping.memoIndex >= 0) cols.push({ id: 'memo', label: 'Description', index: mapping.memoIndex, width: '180px' });
+        if (mapping.memoIndex >= 0) cols.push({ id: 'memo', label: 'Details', index: mapping.memoIndex, width: '180px' });
         
         // Memo Extra indices (concatenated in service, but we show them if desired, or just show the result)
         // For preview, it's often better to show the "final" memo. But the current UI is column-based.
         // Let's add a "Final Memo" pseudo-column if there are multiple.
         if (mapping.memoIndices && mapping.memoIndices.length > 0) {
-            cols.push({ id: 'final_memo', label: 'Final Memo', index: -4, width: '200px' });
+            cols.push({ id: 'final_memo', label: 'Final Details', index: -4, width: '200px' });
         }
 
         // Amount logic
@@ -648,15 +765,107 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
 
         if (mapping.categoryIndex !== undefined && mapping.categoryIndex >= 0) cols.push({ id: 'category', label: 'Category', index: mapping.categoryIndex, width: '140px' });
         if (mapping.assetIndex !== undefined && mapping.assetIndex >= 0) cols.push({ id: 'asset', label: 'Account', index: mapping.assetIndex, width: '120px' });
+        if (mapping.toAssetIndex !== undefined && mapping.toAssetIndex >= 0) cols.push({ id: 'to_asset', label: 'To Account', index: mapping.toAssetIndex, width: '120px' });
         if (mapping.merchantIndex !== undefined && mapping.merchantIndex >= 0) cols.push({ id: 'merchant', label: 'Merchant', index: mapping.merchantIndex, width: '120px' });
         if (mapping.tagIndex !== undefined && mapping.tagIndex >= 0) cols.push({ id: 'tag', label: 'Tag', index: mapping.tagIndex, width: '100px' });
         if (mapping.installmentIndex !== undefined && mapping.installmentIndex >= 0) cols.push({ id: 'installment', label: 'Inst.', index: mapping.installmentIndex, width: '80px' });
-
-        // Add Hash Key column for transparency
-        cols.push({ id: 'hashKey', label: 'Hash Key', index: -3, width: '120px' });
+        if (previewTab === 'NEEDS_REVIEW') cols.push({ id: 'review_hash', label: 'Hash Key', index: -5, width: '190px' });
 
         return cols;
-    }, [mapping]);
+    }, [mapping, previewTab]);
+
+    const REVIEW_COLUMN_WIDTH = 240;
+
+    const getAssetName = React.useCallback((id?: string) => {
+        if (!id) return '—';
+        return assets.find(asset => asset.id === id)?.name || id;
+    }, [assets]);
+
+    const formatPreviewDate = React.useCallback((rawValue: any, timestamp?: number) => {
+        const formatDate = (date: Date) => new Intl.DateTimeFormat('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: '2-digit',
+        }).format(date);
+
+        if (timestamp) return formatDate(new Date(timestamp));
+        if (typeof rawValue === 'number' && rawValue >= 1e12) return formatDate(new Date(rawValue));
+        if (typeof rawValue === 'number' && rawValue > 10000) {
+            const date = new Date((rawValue - 25569) * 86400 * 1000 + (12 * 60 * 60 * 1000));
+            return formatDate(date);
+        }
+        return rawValue ? String(rawValue) : '—';
+    }, []);
+
+    const formatPreviewTime = React.useCallback((rawValue: any, timestamp?: number) => {
+        const formatTime = (date: Date) => new Intl.DateTimeFormat('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+        }).format(date);
+
+        if (timestamp) return formatTime(new Date(timestamp));
+        if (typeof rawValue === 'number' && rawValue > 0 && rawValue < 1) {
+            const totalSeconds = Math.round(rawValue * 86400);
+            const h = Math.floor(totalSeconds / 3600);
+            const m = Math.floor((totalSeconds % 3600) / 60);
+            const s = totalSeconds % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+        return rawValue ? String(rawValue) : '—';
+    }, []);
+
+    const getUploadedCellDefaultValue = React.useCallback((row: ImportRow, col: { id: string; index: number }) => {
+        const tx = row.transaction || {};
+        const rawVal = col.index >= 0 ? row.data[col.index] : (col.id === 'amount_combined' ? tx.amount : undefined);
+
+        if (col.id === 'date') return formatPreviewDate(rawVal, tx.timestamp);
+        if (col.id === 'time') return formatPreviewTime(rawVal, tx.timestamp);
+        if (col.id === 'asset') return getAssetName(tx.assetId);
+        if (col.id === 'to_asset') return getAssetName(tx.toAssetId);
+        if (col.id === 'final_memo') {
+            return formatTransactionDetailsInput({
+                memo: tx.memo,
+                merchant: tx.merchant,
+                tags: tx.tags
+            }) || '—';
+        }
+        if (col.id === 'amount' || col.id === 'amount_combined') {
+            return formatImportPreviewAmountDisplay(tx.amount);
+        }
+        if (col.id === 'review_hash') return tx.hashKey || '—';
+        return rawVal || '—';
+    }, [formatPreviewDate, formatPreviewTime, getAssetName]);
+
+    const getSelectedCandidate = React.useCallback((row: ImportRow) => {
+        if (!row.review_candidates || row.review_candidates.length === 0) return undefined;
+        return row.review_candidates.find(candidate => candidate.id === row.replace_target_id);
+    }, []);
+
+    const getCandidateCellValue = React.useCallback((candidate: NonNullable<ImportRow['review_candidates']>[number], col: { id: string }) => {
+        if (col.id === 'date') return formatPreviewDate(candidate.date, candidate.timestamp);
+        if (col.id === 'time') return formatPreviewTime(undefined, candidate.timestamp);
+        if (col.id === 'memo' || col.id === 'final_memo') {
+            return formatTransactionDetailsInput({
+                memo: candidate.memo,
+                merchant: candidate.merchant
+            }) || '—';
+        }
+        if (col.id === 'amount' || col.id === 'amount_combined') {
+            return formatImportPreviewAmountDisplay(candidate.amount);
+        }
+        if (col.id === 'asset') return getAssetName(candidate.assetId);
+        if (col.id === 'review_hash') return candidate.hashKey || '—';
+        return '—';
+    }, [formatPreviewDate, formatPreviewTime, getAssetName]);
+
+    const getNeedsReviewSummary = React.useCallback((row: ImportRow) => {
+        const count = row.review_candidates?.length || 0;
+        if (count === 0) return 'Needs review';
+        if (count === 1) return '1 possible DB match';
+        return `${count} possible DB matches`;
+    }, []);
 
     const renderPreviewStep = () => {
         // Data is now sourced from top-level memo: currentPreviewRows
@@ -703,6 +912,18 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                         >
                             {isLoadingDb ? 'Checking...' : `Duplicates (${duplicateRows.length})`}
                         </button>
+                        <button
+                            onClick={() => setPreviewTab('NEEDS_REVIEW')}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${previewTab === 'NEEDS_REVIEW'
+                                ? 'bg-white text-violet-600 shadow-sm'
+                                : needsReviewRows.length > 0
+                                    ? 'text-slate-400 hover:text-violet-600'
+                                    : 'text-slate-300 cursor-not-allowed'
+                                }`}
+                            disabled={needsReviewRows.length === 0}
+                        >
+                            Needs Review ({needsReviewRows.length})
+                        </button>
                     </div>
                 </div>
 
@@ -710,15 +931,19 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                     <div className="flex-1 overflow-x-auto custom-scrollbar">
                         <Virtuoso
                             key={previewTab} // Force reset on tab change
-                            style={{ height: '500px', minWidth: activeColumns.reduce((acc, c) => acc + parseInt(c.width), 450) + 'px' }}
+                            style={{ height: '500px', minWidth: activeColumns.reduce((acc, c) => acc + parseInt(c.width), REVIEW_COLUMN_WIDTH + 50) + 'px' }}
                             data={currentPreviewRows}
+                            computeItemKey={(_, row) => {
+                                const txId = row.transaction?.id || 'no-tx';
+                                return `${previewTab}:${row.status}:${row.index}:${row.subIdx}:${txId}`;
+                            }}
                             components={{
                                 Header: () => (
                                     <div className="bg-slate-900/5 backdrop-blur-xl border-b border-slate-200/50 flex items-center px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0 z-50">
+                                        <div style={{ width: `${REVIEW_COLUMN_WIDTH}px` }} className="flex-shrink-0 px-2">Review</div>
                                         {activeColumns.map(col => (
                                             <div key={col.id} style={{ width: col.width }} className="flex-shrink-0 px-2">{col.label}</div>
                                         ))}
-                                        <div className="flex-1 px-4 min-w-[200px]">Detected Info</div>
                                         <div className="w-[50px] flex-shrink-0"></div>
                                     </div>
                                 )
@@ -727,165 +952,295 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                                 const isInvalid = row.status === 'invalid';
                                 const isDuplicate = row.status === 'duplicate';
                                 const tx = row.transaction || {};
+                                const selectedCandidate = getSelectedCandidate(row);
+                                const hasTimeColumn = activeColumns.some(col => col.id === 'time');
+                                const reviewTone = isInvalid
+                                    ? 'bg-rose-50/20'
+                                    : isDuplicate
+                                        ? 'bg-amber-50/20'
+                                        : row.status === 'needs_review'
+                                            ? 'bg-violet-50/30'
+                                            : '';
 
                                 return (
-                                    <div className={`flex items-center px-4 py-3 border-b border-slate-100/50 hover:bg-white/60 transition-colors group ${isInvalid ? 'bg-rose-50/20' : isDuplicate ? 'bg-amber-50/20' : ''}`}>
+                                    <div className={`border-b border-slate-100/50 hover:bg-white/60 transition-colors group ${reviewTone}`}>
+                                        <div className="flex w-full items-stretch px-4 py-2">
+                                        <div style={{ width: `${REVIEW_COLUMN_WIDTH}px` }} className="flex-shrink-0 px-2">
+                                            <div className={`h-full rounded-2xl border px-3 py-2 ${isInvalid
+                                                ? 'border-rose-200 bg-rose-50'
+                                                : isDuplicate
+                                                    ? 'border-amber-200 bg-amber-50'
+                                                    : row.status === 'needs_review'
+                                                        ? 'border-violet-200 bg-violet-50'
+                                                        : 'border-slate-200 bg-slate-50/70'
+                                                }`}>
+                                                {isInvalid ? (
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <AlertTriangle size={14} className="text-rose-500 flex-shrink-0" />
+                                                            <span className="text-[10px] font-black text-rose-600 uppercase tracking-wider">Issue</span>
+                                                        </div>
+                                                        <p className="text-[11px] font-bold text-rose-600 leading-relaxed">{row.reason || 'This row could not be imported.'}</p>
+                                                    </div>
+                                                ) : isDuplicate ? (
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <History size={14} className="text-amber-500 flex-shrink-0" />
+                                                            <span className="text-[10px] font-black text-amber-600 uppercase tracking-wider">Duplicate</span>
+                                                        </div>
+                                                        <p className="text-[11px] font-bold text-amber-700 leading-relaxed">This row already exists in the database and will be skipped.</p>
+                                                    </div>
+                                                ) : row.status === 'needs_review' ? (
+                                                    <div className="space-y-2.5">
+                                                        <div className="space-y-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <Sparkles size={14} className="text-violet-500 flex-shrink-0" />
+                                                                <span className="text-[10px] font-black text-violet-600 uppercase tracking-wider">Needs Review</span>
+                                                            </div>
+                                                        </div>
+                                                        {row.review_candidates && row.review_candidates.length > 0 && (
+                                                            <select
+                                                                value={row.replace_target_id || ''}
+                                                                onChange={(event) => handleReviewTargetChange(row.index, row.subIdx, event.target.value)}
+                                                                className="w-full bg-white border border-violet-200 px-3 py-2 rounded-xl text-[11px] font-bold text-violet-800 focus:ring-4 focus:ring-violet-100"
+                                                            >
+                                                                <option value="">Select a DB record</option>
+                                                                {row.review_candidates.map(candidate => {
+                                                                    const candidateLabel = candidate.date
+                                                                        ? formatPreviewDate(candidate.date, candidate.timestamp)
+                                                                        : (candidate.timestamp ? formatPreviewDate(undefined, candidate.timestamp) : 'Unknown date');
+                                                                    return (
+                                                                        <option key={candidate.id} value={candidate.id}>
+                                                                            {candidateLabel} · {candidate.memo || 'Existing record'}
+                                                                        </option>
+                                                                    );
+                                                                })}
+                                                            </select>
+                                                        )}
+                                                        <div className="grid grid-cols-[0.9fr_1.1fr] gap-2 w-full">
+                                                            <button
+                                                                onClick={() => handleResolveReview(row.index, row.subIdx, 'replace')}
+                                                                disabled={!row.replace_target_id}
+                                                                className={`w-full px-3 py-1 min-h-[36px] text-[10px] font-black rounded-xl uppercase tracking-[0.08em] transition-colors whitespace-nowrap ${row.replace_target_id
+                                                                    ? 'bg-violet-600 hover:bg-violet-700 text-white'
+                                                                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                                                }`}
+                                                            >
+                                                                Replace
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleResolveReview(row.index, row.subIdx, 'new')}
+                                                                className="w-full px-3 py-1 min-h-[36px] bg-white hover:bg-slate-100 text-slate-600 text-[10px] font-black rounded-xl uppercase tracking-[0.08em] transition-colors border border-slate-200 whitespace-nowrap"
+                                                            >
+                                                                Keep as New
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <Check size={14} className="text-emerald-500 flex-shrink-0" />
+                                                            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-wider">
+                                                                {row.replace_target_id ? 'Replace' : 'Ready'}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[11px] font-bold text-slate-600 leading-relaxed">
+                                                            {row.replace_target_id
+                                                                ? 'This row will update the selected DB transaction on import.'
+                                                                : 'This row is ready to import.'}
+                                                        </p>
+                                                        <div className="flex flex-wrap gap-2 pt-1">
+                                                            {row.replace_target_id && (
+                                                                <span className="text-[9px] font-black bg-violet-50 text-violet-600 px-2 py-1 rounded-lg uppercase tracking-tighter border border-violet-200">
+                                                                    Replace
+                                                                </span>
+                                                            )}
+                                                            {tx.assetId && (
+                                                                <span className="text-[9px] font-black bg-white text-slate-500 px-2 py-1 rounded-lg uppercase tracking-tighter border border-slate-200">
+                                                                    {getAssetName(tx.assetId)}
+                                                                </span>
+                                                            )}
+                                                            {tx.merchant && (
+                                                                <span className="text-[9px] font-black bg-indigo-50 text-indigo-600 px-2 py-1 rounded-lg uppercase tracking-tighter">
+                                                                    @{tx.merchant}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                         {activeColumns.map(col => {
                                             const val = row.data[col.index];
                                             const hasError = isInvalid && row.reason?.toLowerCase().includes(col.id.toLowerCase());
+                                            const displayValue = String(getUploadedCellDefaultValue(row, col));
+                                            const isEditableInput = col.index >= 0 && col.id !== 'asset';
+                                            const uploadedTime = tx.timestamp
+                                                ? formatPreviewTime(undefined, tx.timestamp)
+                                                : '—';
+                                            const showCandidateComparison = row.status === 'needs_review' && !!selectedCandidate;
+                                            const candidateValue = selectedCandidate ? getCandidateCellValue(selectedCandidate, col) : '—';
+                                            const candidateDate = selectedCandidate ? formatPreviewDate(selectedCandidate.date, selectedCandidate.timestamp) : '—';
+                                            const candidateTime = selectedCandidate?.timestamp
+                                                ? formatPreviewTime(undefined, selectedCandidate.timestamp)
+                                                : '—';
+                                            const comparisonTone = col.id === 'review_hash'
+                                                ? 'font-mono tracking-tight text-violet-500'
+                                                : (col.id === 'amount' || col.id === 'amount_combined')
+                                                    ? (selectedCandidate?.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-slate-700')
+                                                    : 'text-violet-700';
+                                            const isAmountColumn = col.id === 'amount' || col.id === 'amount_combined';
+                                            const isHashColumn = col.id === 'review_hash';
+                                            const uploadedPrimaryClass = isHashColumn
+                                                ? 'font-mono text-[11px] font-bold tracking-tight leading-[1.3]'
+                                                : isAmountColumn
+                                                    ? 'text-[15px] font-black leading-[1.1]'
+                                                    : 'text-[14px] font-bold leading-[1.2]';
+                                            const comparisonTextClass = isHashColumn
+                                                ? 'text-[11px]'
+                                                : isAmountColumn
+                                                    ? 'text-[15px]'
+                                                    : 'text-[14px]';
+                                            const secondaryMetaClass = 'text-[11px] font-bold tracking-wide text-slate-400';
+                                            const comparisonLayoutClass = showCandidateComparison
+                                                ? 'grid min-h-[78px] grid-rows-[48px_auto]'
+                                                : '';
 
                                             return (
                                                 <div key={col.id} style={{ width: col.width }} className="flex-shrink-0 px-2">
-                                                    {col.id === 'hashKey' ? (() => {
-                                                        const ts = (tx as any).timestamp as number | undefined;
-                                                        const assetId = (tx as any).assetId as string | undefined;
-                                                        const amount = (tx as any).amount as number | undefined;
-                                                        const memo = (tx as any).memo as string | undefined;
-                                                        const hashKey = (tx as any).hashKey as string | undefined;
-                                                        const timeKey = Math.floor((ts || 0) / 60000);
-                                                        const normalizedMemo = (memo || '').trim().replace(/\s/g, '');
-                                                        const timeDisplay = ts ? new Date(ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-';
-                                                        return (
-                                                            <div
-                                                                className="font-mono bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg w-full cursor-pointer hover:bg-amber-100 transition-colors"
-                                                                onClick={() => {
-                                                                    const info = [
-                                                                        `■ Hash Key Debug`,
-                                                                        ``,
-                                                                        `assetId   : ${assetId}`,
-                                                                        `timestamp : ${ts}`,
-                                                                        `timeKey   : ${timeKey}`,
-                                                                        `amount    : ${amount}`,
-                                                                        `memo(raw) : ${memo}`,
-                                                                        `memo(norm): ${normalizedMemo}`,
-                                                                        ``,
-                                                                        `raw: ${assetId}|${timeKey}|${amount}|${normalizedMemo}`,
-                                                                        `hash: ${hashKey}`,
-                                                                    ].join('\n');
-                                                                    alert(info);
-                                                                }}
-                                                            >
-                                                                <div className="text-[9px] text-slate-600 truncate">{hashKey || '-'}</div>
-                                                                <div className="text-[8px] text-amber-500 font-bold">{timeDisplay}</div>
+                                                    {col.id === 'final_memo' ? (
+                                                        <div className={comparisonLayoutClass}>
+                                                            <div className={`min-h-[48px] px-1 italic truncate text-slate-700 ${uploadedPrimaryClass}`} title={tx.memo}>
+                                                                {tx.memo}
                                                             </div>
-                                                        );
-                                                    })() : col.id === 'final_memo' ? (
-                                                        <div className="text-[11px] font-bold text-slate-700 italic truncate" title={tx.memo}>
-                                                            {tx.memo}
+                                                            {showCandidateComparison && (
+                                                                <div className={`mt-1 border-t border-violet-100 px-1 pt-1 font-bold leading-relaxed ${comparisonTextClass} ${comparisonTone}`}>
+                                                                    {String(candidateValue)}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     ) : col.id === 'category' ? (
-                                                        <select
-                                                            value={tx.category || ''}
-                                                            onChange={(e) => {
-                                                                setImportRows(prev => prev.map(r => r.index === row.index ? {
-                                                                    ...r,
-                                                                    transaction: { ...r.transaction, category: e.target.value } as any
-                                                                } : r));
-                                                            }}
-                                                            className="w-full bg-slate-100/50 border-none px-2 py-1.5 rounded-lg text-[10px] font-black text-slate-700 cursor-pointer focus:ring-4 focus:ring-black/5"
-                                                        >
-                                                            <option value="Uncategorized">UNCATEGORIZED</option>
-                                                            {categories.map(c => (
-                                                                <option key={c.id} value={c.id}>{c.icon} {c.name.toUpperCase()}</option>
-                                                            ))}
-                                                        </select>
+                                                        <div className={comparisonLayoutClass}>
+                                                            <div className="min-h-[48px]">
+                                                                <select
+                                                                    value={tx.category || ''}
+                                                                    onChange={(e) => {
+                                                                        setImportRows(prev => prev.map(r => r.index === row.index ? {
+                                                                            ...r,
+                                                                            transaction: { ...r.transaction, category: e.target.value } as any
+                                                                        } : r));
+                                                                    }}
+                                                                    className={`w-full bg-slate-100/50 border-none px-2 py-1.5 rounded-lg cursor-pointer focus:ring-4 focus:ring-black/5 text-slate-700 ${uploadedPrimaryClass}`}
+                                                                >
+                                                                    <option value="Uncategorized">UNCATEGORIZED</option>
+                                                                    {categories.map(c => (
+                                                                        <option key={c.id} value={c.id}>{c.icon} {c.name.toUpperCase()}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                            {showCandidateComparison && (
+                                                                <div className={`mt-1 border-t border-violet-100 px-1 pt-1 font-bold leading-relaxed text-violet-400 ${comparisonTextClass}`}>
+                                                                    —
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ) : col.id === 'asset' ? (
+                                                        <div className={comparisonLayoutClass}>
+                                                            <div className="min-h-[48px]">
+                                                                <select
+                                                                    value={tx.assetId || ''}
+                                                                    onChange={(e) => {
+                                                                        handleUpdateRowData(row.index, col.index, e.target.value);
+                                                                    }}
+                                                                    className={`w-full bg-slate-100/50 border-none px-2 py-1.5 rounded-lg cursor-pointer focus:ring-4 focus:ring-black/5 text-slate-700 ${uploadedPrimaryClass}`}
+                                                                >
+                                                                    <option value="">SELECT ASSET</option>
+                                                                    {assets.map(a => (
+                                                                        <option key={a.id} value={a.id}>{a.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                            {showCandidateComparison && (
+                                                                <div className={`mt-1 border-t border-violet-100 px-1 pt-1 font-bold leading-relaxed ${comparisonTextClass} ${comparisonTone}`}>
+                                                                    {String(candidateValue)}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     ) : (
-                                                        <input
-                                                            type="text"
-                                                            defaultValue={(() => {
-                                                                // Raw Value from Excel/CSV
-                                                                const rawVal = col.index >= 0 ? row.data[col.index] : (col.id === 'amount_combined' ? tx.amount : val);
-                                                                
-                                                                // 1. Date ID Formatting
-                                                                if (col.id === 'date') {
-                                                                    const fmt = (d: Date) => {
-                                                                        const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
-                                                                        if (hasTime) {
-                                                                            return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(d);
-                                                                        }
-                                                                        return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-                                                                    };
-                                                                    if (tx.timestamp) return fmt(new Date(tx.timestamp));
-                                                                    // Unix ms (DB export timestamp, 1e12 이상) - INVALID 행 fallback
-                                                                    if (typeof rawVal === 'number' && rawVal >= 1e12) return fmt(new Date(rawVal));
-                                                                    // Excel Date Serial (46089 등)
-                                                                    if (typeof rawVal === 'number' && rawVal > 10000) {
-                                                                        const d = new Date((rawVal - 25569) * 86400 * 1000 + (12 * 60 * 60 * 1000));
-                                                                        return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`;
-                                                                    }
-                                                                }
-                                                                
-                                                                // 2. Time ID Formatting
-                                                                if (col.id === 'time') {
-                                                                    if (typeof rawVal === 'number' && rawVal > 0 && rawVal < 1) {
-                                                                        const totalSeconds = Math.round(rawVal * 86400);
-                                                                        const h = Math.floor(totalSeconds / 3600);
-                                                                        const m = Math.floor((totalSeconds % 3600) / 60);
-                                                                        const s = totalSeconds % 60;
-                                                                        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-                                                                    }
-                                                                }
+                                                        <div className={comparisonLayoutClass}>
+                                                            <div className="min-h-[48px]">
+                                                                <input
+                                                                    key={`${previewTab}:${row.index}:${row.subIdx}:${col.id}:${String(col.index >= 0 ? row.data[col.index] : (col.id === 'amount_combined' ? tx.amount : val))}`}
+                                                                    type="text"
+                                                                    defaultValue={displayValue}
+                                                                    readOnly={col.index < 0 || col.id === 'asset'}
+                                                                    title={col.id === 'date' && tx.timestamp ? new Intl.DateTimeFormat('en-US', {
+                                                                        year: 'numeric',
+                                                                        month: 'short',
+                                                                        day: '2-digit',
+                                                                        hour: '2-digit',
+                                                                        minute: '2-digit',
+                                                                        second: '2-digit',
+                                                                    }).format(new Date(tx.timestamp)) : undefined}
+                                                                    onFocus={(event) => {
+                                                                        event.currentTarget.dataset.initialValue = event.currentTarget.value;
+                                                                    }}
+                                                                    onBlur={(e) => {
+                                                                        if (!isEditableInput) return;
 
-                                                                return rawVal || '';
-                                                            })()}
-                                                            readOnly={col.index < 0}
-                                                            title={col.id === 'date' && tx.timestamp ? new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(tx.timestamp)) : undefined}
-                                                            onBlur={(e) => {
-                                                                if (col.index >= 0) {
-                                                                    handleUpdateRowData(row.index, col.index, e.target.value);
-                                                                }
-                                                            }}
-                                                            className={`w-full bg-transparent border-none p-1 text-[12px] font-black focus:ring-2 focus:ring-black/5 rounded-lg transition-all ${hasError ? 'text-rose-600 bg-rose-50 ring-1 ring-rose-200' :
-                                                                (col.id === 'amount' || col.id === 'amount_combined') ? (tx.type === 'INCOME' ? 'text-emerald-600' : 'text-slate-900') :
-                                                                    'text-slate-700'
-                                                                } ${col.index < 0 ? 'opacity-80 cursor-not-allowed' : ''}`}
-                                                        />
+                                                                        const initialValue = e.currentTarget.dataset.initialValue ?? displayValue;
+                                                                        if (initialValue === e.target.value) return;
+
+                                                                        handleUpdateRowData(row.index, col.index, e.target.value);
+                                                                    }}
+                                                                    className={`w-full bg-transparent border-none p-1 focus:ring-2 focus:ring-black/5 rounded-lg transition-all ${uploadedPrimaryClass} ${hasError ? 'text-rose-600 bg-rose-50 ring-1 ring-rose-200' :
+                                                                        isAmountColumn ? (tx.type === 'INCOME' ? 'text-emerald-600' : 'text-slate-900') :
+                                                                        isHashColumn ? 'text-slate-500' :
+                                                                            'text-slate-700'
+                                                                        } ${col.index < 0 ? 'opacity-80 cursor-not-allowed' : ''}`}
+                                                                />
+                                                                {col.id === 'date' && !hasTimeColumn && uploadedTime !== '—' && (
+                                                                    <div className={`px-1 pt-1 uppercase ${secondaryMetaClass}`}>
+                                                                        {uploadedTime}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            {showCandidateComparison && (
+                                                                <div className={`mt-1 border-t border-violet-100 px-1 pt-1 font-bold leading-relaxed ${comparisonTextClass} ${comparisonTone}`}>
+                                                                    {col.id === 'date' ? (
+                                                                        <>
+                                                                            <div className={`whitespace-nowrap ${comparisonTextClass} ${comparisonTone}`}>
+                                                                                {candidateDate}
+                                                                            </div>
+                                                                            {!hasTimeColumn && candidateTime !== '—' && (
+                                                                                <div className={`pt-1 uppercase text-violet-400 ${secondaryMetaClass}`}>
+                                                                                    {candidateTime}
+                                                                                </div>
+                                                                            )}
+                                                                        </>
+                                                                    ) : col.id === 'time' ? (
+                                                                        <span className={`${uploadedPrimaryClass} ${comparisonTone}`}>
+                                                                            {String(candidateValue)}
+                                                                        </span>
+                                                                    ) : (
+                                                                        String(candidateValue)
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     )}
                                                 </div>
                                             );
                                         })}
 
-                                        <div className="flex-1 px-4 min-w-[200px]">
-                                            {isInvalid ? (
-                                                <div className="flex items-center gap-2">
-                                                    <AlertTriangle size={14} className="text-rose-500 flex-shrink-0" />
-                                                    <span className="text-[10px] font-black text-rose-500 uppercase tracking-tighter truncate" title={row.reason}>
-                                                        {row.reason}
-                                                    </span>
-                                                </div>
-                                            ) : isDuplicate ? (
-                                                <div className="flex items-center gap-2">
-                                                    <History size={14} className="text-amber-500 flex-shrink-0" />
-                                                    <span className="text-[10px] font-black text-amber-500 uppercase tracking-tighter truncate">
-                                                        Existing in DB (Skipped)
-                                                    </span>
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center gap-2 opacity-80">
-                                                    {tx.assetId && (() => {
-                                                        const asset = assets.find(a => a.id === tx.assetId);
-                                                        return asset && (
-                                                            <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-2 py-1 rounded-lg uppercase tracking-tighter">
-                                                                {asset.name}
-                                                            </span>
-                                                        );
-                                                    })()}
-                                                    {tx.merchant && (
-                                                        <span className="text-[9px] font-black bg-indigo-50 text-indigo-600 px-2 py-1 rounded-lg uppercase tracking-tighter">
-                                                            @{tx.merchant}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-
                                         <div className="w-[50px] flex-shrink-0 flex justify-center">
                                             <button
-                                                onClick={() => handleDeleteRow(row.index)}
+                                                onClick={() => handleDeleteRow(row.index, row.subIdx)}
                                                 className="p-2 text-slate-300 hover:text-rose-500 transition-colors rounded-xl hover:bg-rose-50 opacity-0 group-hover:opacity-100"
                                             >
                                                 <Trash2 size={16} />
                                             </button>
+                                        </div>
                                         </div>
                                     </div>
                                 );
@@ -901,13 +1256,13 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                     <div className="flex gap-4">
                         <button
                             onClick={handleFinalConfirm}
-                            disabled={validRows.length === 0}
-                            className={`px-10 py-4 rounded-full font-black shadow-2xl transition-all active:scale-95 text-sm flex items-center justify-center gap-3 group ${validRows.length === 0
+                            disabled={validRows.length === 0 || isLoadingDb}
+                            className={`px-10 py-4 rounded-full font-black shadow-2xl transition-all active:scale-95 text-sm flex items-center justify-center gap-3 group ${(validRows.length === 0 || isLoadingDb)
                                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                                 : 'bg-slate-900 text-white shadow-slate-300 hover:bg-slate-800'
                                 }`}
                         >
-                            <span>Finalize Import</span>
+                            <span>{isLoadingDb ? 'Checking DB...' : 'Finalize Import'}</span>
                             <Check size={18} className="group-hover:scale-110 transition-transform duration-300" />
                         </button>
                     </div>

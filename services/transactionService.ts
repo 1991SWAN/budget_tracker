@@ -1,5 +1,7 @@
 import { supabase } from './dbClient';
+import { TagService } from './tagService';
 import { Transaction, TransactionType, TransactionFilters } from '../types';
+import { getTransactionTagNames, parseTransactionDetailsInput } from '../utils/transactionDetails';
 
 export const TransactionService = {
     getTransactions: async (limit: number = 50, offset: number = 0, filters?: TransactionFilters): Promise<Transaction[]> => {
@@ -10,9 +12,10 @@ export const TransactionService = {
         // Apply Filters
         if (filters) {
             if (filters.searchTerm) {
-                // Quick Search on Memo/Merchant
-                // Note: For multi-field search, better use specialized SQL/RPC or multiple filter calls
-                query = query.ilike('memo', `%${filters.searchTerm}%`);
+                const safeSearchTerm = filters.searchTerm.trim().replace(/[,%()]/g, ' ');
+                if (safeSearchTerm) {
+                    query = query.or(`memo.ilike.%${safeSearchTerm}%,merchant.ilike.%${safeSearchTerm}%`);
+                }
             }
             if (filters.categories && filters.categories.length > 0) {
                 query = query.in('category', filters.categories);
@@ -141,14 +144,64 @@ export const TransactionService = {
         return new Set(allHashKeys);
     },
 
+    getTransactionsForImportReconciliation: async (startDate: string, endDate: string, assetIds?: string[]): Promise<any[]> => {
+        const allCandidates: any[] = [];
+        const PAGE_SIZE = 1000;
+        let from = 0;
+        let hasMore = true;
+
+        while (hasMore) {
+            let query = supabase
+                .from('transactions')
+                .select('id, asset_id, date, amount, type, memo, merchant, timestamp, hash_key')
+                .gte('date', startDate)
+                .lte('date', endDate)
+                .range(from, from + PAGE_SIZE - 1);
+
+            if (assetIds && assetIds.length > 0) {
+                query = query.in('asset_id', assetIds);
+            }
+
+            const { data, error } = await query;
+
+            if (error) {
+                console.error('Error fetching reconciliation candidates:', error);
+                break;
+            }
+
+            if (data && data.length > 0) {
+                allCandidates.push(...data);
+                from += PAGE_SIZE;
+                hasMore = data.length === PAGE_SIZE;
+            } else {
+                hasMore = false;
+            }
+        }
+
+        return allCandidates;
+    },
+
     saveTransaction: async (tx: Transaction) => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        // 1. Parse Merchant (@) and Tags (#) from memo
-        const merchantMatch = tx.memo?.match(/@(\S+)/);
-        const merchant = merchantMatch ? merchantMatch[1] : (tx.merchant || null);
-        const tagNames = tx.memo?.match(/#\S+/g)?.map(t => t.slice(1)) || [];
+        const structuredTagNames = getTransactionTagNames(tx.tags);
+        const structuredMerchant = tx.merchant?.trim() || null;
+        const usesStructuredDetails = structuredTagNames.length > 0 || structuredMerchant !== null;
+        const parsedDetails = usesStructuredDetails
+            ? {
+                memo: String(tx.memo || '').trim(),
+                merchant: structuredMerchant,
+                tags: structuredTagNames,
+            }
+            : (() => {
+                const parsed = parseTransactionDetailsInput(tx.memo || '');
+                return {
+                    memo: parsed.memo,
+                    merchant: parsed.merchant,
+                    tags: parsed.tags,
+                };
+            })();
 
         const row = {
             id: tx.id,
@@ -158,8 +211,8 @@ export const TransactionService = {
             amount: tx.amount,
             type: tx.type,
             category: tx.category,
-            memo: tx.memo,
-            merchant: merchant,
+            memo: parsedDetails.memo,
+            merchant: parsedDetails.merchant,
             asset_id: tx.assetId,
             to_asset_id: tx.toAssetId,
             linked_transaction_id: tx.linkedTransactionId,
@@ -181,10 +234,9 @@ export const TransactionService = {
         // Always delete existing relationships first to ensure cleanup works even if all tags are removed
         await supabase.from('transaction_tags').delete().eq('transaction_id', tx.id);
 
-        if (tagNames.length > 0) {
-            const { TagService } = await import('./tagService');
+        if (parsedDetails.tags.length > 0) {
             // Upsert each tag and collect their IDs
-            const tagIds = await Promise.all(tagNames.map(name => TagService.upsertTag(name)));
+            const tagIds = await Promise.all(parsedDetails.tags.map(name => TagService.upsertTag(name)));
             const validTagIds = tagIds.filter(id => id !== null) as string[];
 
             if (validTagIds.length > 0) {
@@ -198,7 +250,6 @@ export const TransactionService = {
             await TagService.cleanupOrphanTags();
         } else {
             // Even if no tags in memo, we should check for orphans after deletion
-            const { TagService } = await import('./tagService');
             await TagService.cleanupOrphanTags();
         }
     },
@@ -207,15 +258,27 @@ export const TransactionService = {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const { TagService } = await import('./tagService');
-
         const processedRows = await Promise.all(txs.map(async tx => {
-            const merchantMatch = tx.memo?.match(/@(\S+)/);
-            const merchant = merchantMatch ? merchantMatch[1] : (tx.merchant || null);
-            const tagNames = tx.memo?.match(/#\S+/g)?.map(t => t.slice(1)) || [];
+            const structuredTagNames = getTransactionTagNames(tx.tags);
+            const structuredMerchant = tx.merchant?.trim() || null;
+            const usesStructuredDetails = structuredTagNames.length > 0 || structuredMerchant !== null;
+            const parsedDetails = usesStructuredDetails
+                ? {
+                    memo: String(tx.memo || '').trim(),
+                    merchant: structuredMerchant,
+                    tags: structuredTagNames,
+                }
+                : (() => {
+                    const parsed = parseTransactionDetailsInput(tx.memo || '');
+                    return {
+                        memo: parsed.memo,
+                        merchant: parsed.merchant,
+                        tags: parsed.tags,
+                    };
+                })();
 
             // Parallel tag upsert
-            const tagIds = await Promise.all(tagNames.map(name => TagService.upsertTag(name)));
+            const tagIds = await Promise.all(parsedDetails.tags.map(name => TagService.upsertTag(name)));
             const validTagIds = tagIds.filter(id => id !== null) as string[];
 
             return {
@@ -227,8 +290,8 @@ export const TransactionService = {
                     amount: tx.amount,
                     type: tx.type,
                     category: tx.category,
-                    memo: tx.memo,
-                    merchant: merchant,
+                    memo: parsedDetails.memo,
+                    merchant: parsedDetails.merchant,
                     asset_id: tx.assetId,
                     to_asset_id: tx.toAssetId,
                     linked_transaction_id: tx.linkedTransactionId,
@@ -276,7 +339,6 @@ export const TransactionService = {
             throw new Error('No transaction deleted');
         }
 
-        const { TagService } = await import('./tagService');
         await TagService.cleanupOrphanTags();
     },
 
@@ -288,7 +350,6 @@ export const TransactionService = {
             throw error;
         }
 
-        const { TagService } = await import('./tagService');
         await TagService.cleanupOrphanTags();
     },
 

@@ -1,17 +1,18 @@
-import * as XLSX from 'xlsx';
 import { Transaction, Asset, RecurringTransaction, SavingsGoal } from '../types';
+import { getTransactionTagNames, parseTransactionDetailsInput } from '../utils/transactionDetails';
 
 export class ExportService {
     /**
      * Exports all application data to a single Excel file with multiple sheets.
      */
-    static exportData(
+    static async exportData(
         transactions: Transaction[],
         assets: Asset[],
         recurring: RecurringTransaction[],
         goals: SavingsGoal[],
         categories: any[] = [] // Added categories for lookup
     ) {
+        const XLSX = await import('xlsx');
         const workbook = XLSX.utils.book_new();
 
         // --- Helper: Asset Name Resolver ---
@@ -31,38 +32,14 @@ export class ExportService {
             return id === 'Other' ? 'Other' : id;
         };
 
-        // --- Helper: Memo Parser (@Merchant #Tag) ---
-        const parseMemo = (memo: string) => {
-            let cleanMemo = memo || '';
-            let merchant = '';
-            const tags: string[] = [];
-
-            // 1. Extract Tags (#)
-            const tagMatches = cleanMemo.match(/#(\S+)/g);
-            if (tagMatches) {
-                tagMatches.forEach(tag => {
-                    tags.push(tag);
-                    cleanMemo = cleanMemo.replace(tag, '');
-                });
-            }
-
-            // 2. Extract Merchant (@)
-            const mentionMatch = cleanMemo.match(/@(\S+)/);
-            if (mentionMatch) {
-                merchant = mentionMatch[1];
-                cleanMemo = cleanMemo.replace(mentionMatch[0], '');
-            }
-
-            return {
-                content: cleanMemo.trim(),
-                merchant,
-                tags: tags.join(' ')
-            };
-        };
-
         // 1. Transactions Sheet (Enhanced)
         const txData = transactions.map(t => {
-            const { content, merchant, tags } = parseMemo(t.memo);
+            const parsedLegacy = parseTransactionDetailsInput(t.memo || '');
+            const content = (t.memo || parsedLegacy.memo || '').trim();
+            const merchant = t.merchant || parsedLegacy.merchant || '';
+            const tags = getTransactionTagNames(t.tags).length > 0
+                ? getTransactionTagNames(t.tags).join(' ')
+                : parsedLegacy.tags.join(' ');
             const parsedDate = new Date(t.date);
             const timeStr = t.timestamp ? new Date(t.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
 
@@ -81,7 +58,7 @@ export class ExportService {
                 Amount: t.amount,
                 Category: getCategoryName(t.category),
                 Description: content || (merchant ? '' : 'No description'), // If merchant exists, main content might be empty
-                Merchant: t.merchant || merchant, // Database col OR Parsed
+                Merchant: merchant,
                 Installment: installmentStr,
                 Tags: tags,
                 // Hidden/Technical Columns (Optional, maybe at the end)
