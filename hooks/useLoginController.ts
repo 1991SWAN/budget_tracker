@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../services/dbClient';
 import { useToast } from '../contexts/ToastContext';
+import { CONCURRENT_LOGIN_LOGOUT_REASON, LOGOUT_REASON_KEY } from '../utils/authStorage';
 
 export const useLoginController = () => {
     const [email, setEmail] = useState('');
@@ -10,10 +11,10 @@ export const useLoginController = () => {
     const { addToast } = useToast();
 
     useEffect(() => {
-        const reason = sessionStorage.getItem('logout_reason');
-        if (reason === 'concurrent_login') {
+        const reason = sessionStorage.getItem(LOGOUT_REASON_KEY);
+        if (reason === CONCURRENT_LOGIN_LOGOUT_REASON) {
             addToast('Logged out because account was accessed from another device.', 'error');
-            sessionStorage.removeItem('logout_reason');
+            sessionStorage.removeItem(LOGOUT_REASON_KEY);
         }
     }, [addToast]);
 

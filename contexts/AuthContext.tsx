@@ -1,6 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '../services/supabaseService';
+import { supabase } from '../services/dbClient';
+import {
+    clearStorageByPrefix,
+    CONCURRENT_LOGIN_LOGOUT_REASON,
+    LOGOUT_REASON_KEY,
+    SMARTPENNY_DEVICE_ID_KEY,
+    SMARTPENNY_STORAGE_PREFIX
+} from '../utils/authStorage';
 
 interface AuthContextType {
     user: User | null;
@@ -28,12 +35,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Local unique ID for this browser tab/session (Persisted to allow refreshes/tabs)
     const [deviceSessionId] = useState(() => {
-        const STORAGE_KEY = 'smartpenny_device_id';
-        const stored = localStorage.getItem(STORAGE_KEY);
+        const stored = localStorage.getItem(SMARTPENNY_DEVICE_ID_KEY);
         if (stored) return stored;
 
         const newId = generateSessionId();
-        localStorage.setItem(STORAGE_KEY, newId);
+        localStorage.setItem(SMARTPENNY_DEVICE_ID_KEY, newId);
         return newId;
     });
 
@@ -143,11 +149,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // Manual cleanup
-        console.log('[Auth] Clearing localStorage...');
-        localStorage.clear();
+        console.log('[Auth] Clearing SmartPenny storage keys...');
+        clearStorageByPrefix(localStorage, SMARTPENNY_STORAGE_PREFIX);
 
         if (force) {
-            sessionStorage.setItem('logout_reason', 'concurrent_login');
+            sessionStorage.setItem(LOGOUT_REASON_KEY, CONCURRENT_LOGIN_LOGOUT_REASON);
         }
 
         console.log('[Auth] Reloading page...');
