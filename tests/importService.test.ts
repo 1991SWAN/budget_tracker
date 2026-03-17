@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ImportRow, ImportService } from '../services/importService';
-import { TransactionType } from '../types';
+import { ColumnMapping, ImportGrid, ImportRow, ImportService } from '../services/importService';
+import { Asset, AssetType, ImportReconciliationCandidate, TransactionType } from '../types';
 
 const createIncomeRow = (overrides: Partial<ImportRow> = {}): ImportRow => ({
     index: 1,
@@ -38,6 +38,30 @@ const createExpenseRow = (overrides: Partial<ImportRow> = {}): ImportRow => ({
     ...overrides,
 });
 
+const createCandidate = (overrides: Partial<ImportReconciliationCandidate> = {}): ImportReconciliationCandidate => ({
+    id: 'db-candidate-1',
+    assetId: 'asset-1',
+    date: '2026-03-12',
+    amount: 3000,
+    type: TransactionType.INCOME,
+    memo: '더스윙',
+    timestamp: new Date('2026-03-12T09:00:00+09:00').getTime(),
+    ...overrides,
+});
+
+const createAsset = (overrides: Partial<Asset> = {}): Asset => ({
+    id: 'asset-1',
+    name: '입출금통장',
+    type: AssetType.CHECKING,
+    balance: 0,
+    initialBalance: 0,
+    currency: 'KRW',
+    institution: '국민은행',
+    accountNumber: '1111',
+    productName: '입출금통장',
+    ...overrides,
+});
+
 describe('ImportService needs review rules', () => {
     it('normalizes review memos with unicode, spaces, and business suffix noise removed', () => {
         expect(ImportService.normalizeReviewMemo('  （주） 더 스윙  ')).toBe('더스윙');
@@ -47,17 +71,10 @@ describe('ImportService needs review rules', () => {
 
     it('marks surviving income rows as needs_review when an older DB income matches asset, amount, and normalized memo', () => {
         const row = createIncomeRow();
-        const candidates = [
-            {
-                id: 'db-income-1',
-                asset_id: 'asset-1',
-                amount: 3000,
-                type: TransactionType.INCOME,
-                memo: '(주) 더스윙',
-                timestamp: new Date('2026-03-12T09:00:00+09:00').getTime(),
-                date: '2026-03-12',
-            }
-        ];
+        const candidates = [createCandidate({
+            id: 'db-income-1',
+            memo: '(주) 더스윙',
+        })];
 
         const [result] = ImportService.reassignHashKeys([row], new Set(), candidates);
 
@@ -78,17 +95,10 @@ describe('ImportService needs review rules', () => {
                 memo: '02033434',
             }
         });
-        const candidates = [
-            {
-                id: 'db-income-1',
-                asset_id: 'asset-1',
-                amount: 3000,
-                type: TransactionType.INCOME,
-                memo: '2033434',
-                timestamp: new Date('2026-03-12T09:00:00+09:00').getTime(),
-                date: '2026-03-12',
-            }
-        ];
+        const candidates = [createCandidate({
+            id: 'db-income-1',
+            memo: '2033434',
+        })];
 
         const [result] = ImportService.reassignHashKeys([row], new Set(), candidates);
 
@@ -106,17 +116,12 @@ describe('ImportService needs review rules', () => {
                 memo: '0204452070306',
             }
         });
-        const candidates = [
-            {
-                id: 'db-income-1',
-                asset_id: 'asset-1',
-                amount: 3000,
-                type: TransactionType.INCOME,
-                memo: '204452070306',
-                timestamp: sharedTimestamp,
-                date: '2026-03-13',
-            }
-        ];
+        const candidates = [createCandidate({
+            id: 'db-income-1',
+            memo: '204452070306',
+            timestamp: sharedTimestamp,
+            date: '2026-03-13',
+        })];
 
         const [result] = ImportService.reassignHashKeys([row], new Set(), candidates);
 
@@ -135,16 +140,10 @@ describe('ImportService needs review rules', () => {
             tx.type,
             tx.toAssetId
         )}#0#0`;
-        const candidates = [
-            {
-                id: 'db-income-1',
-                asset_id: 'asset-1',
-                amount: 3000,
-                type: TransactionType.INCOME,
-                memo: '(주) 더스윙',
-                timestamp: new Date('2026-03-12T09:00:00+09:00').getTime(),
-            }
-        ];
+        const candidates = [createCandidate({
+            id: 'db-income-1',
+            memo: '(주) 더스윙',
+        })];
 
         const [result] = ImportService.reassignHashKeys([row], new Set([strictHash]), candidates);
 
@@ -157,24 +156,16 @@ describe('ImportService needs review rules', () => {
         const row = createIncomeRow();
         const sharedTimestamp = new Date('2026-03-12T09:00:00+09:00').getTime();
         const candidates = [
-            {
+            createCandidate({
                 id: 'db-income-1',
-                asset_id: 'asset-1',
-                amount: 3000,
-                type: TransactionType.INCOME,
                 memo: '더스윙',
                 timestamp: sharedTimestamp,
-                date: '2026-03-12',
-            },
-            {
+            }),
+            createCandidate({
                 id: 'db-income-2',
-                asset_id: 'asset-1',
-                amount: 3000,
-                type: TransactionType.INCOME,
                 memo: '더스윙',
                 timestamp: sharedTimestamp,
-                date: '2026-03-12',
-            }
+            })
         ];
 
         const [result] = ImportService.reassignHashKeys([row], new Set(), candidates);
@@ -187,17 +178,13 @@ describe('ImportService needs review rules', () => {
 
     it('marks surviving expense rows as needs_review only when a DB expense matches in the same time key', () => {
         const row = createExpenseRow();
-        const candidates = [
-            {
-                id: 'db-expense-1',
-                asset_id: 'asset-1',
-                amount: 3000,
-                type: TransactionType.EXPENSE,
-                memo: '주식회사더스윙',
-                timestamp: new Date('2026-03-13T10:00:51+09:00').getTime(),
-                date: '2026-03-13',
-            }
-        ];
+        const candidates = [createCandidate({
+            id: 'db-expense-1',
+            type: TransactionType.EXPENSE,
+            memo: '주식회사더스윙',
+            timestamp: new Date('2026-03-13T10:00:51+09:00').getTime(),
+            date: '2026-03-13',
+        })];
 
         const [result] = ImportService.reassignHashKeys([row], new Set(), candidates);
 
@@ -208,17 +195,13 @@ describe('ImportService needs review rules', () => {
 
     it('keeps expense rows valid when only the memo and amount match but the time key differs', () => {
         const row = createExpenseRow();
-        const candidates = [
-            {
-                id: 'db-expense-1',
-                asset_id: 'asset-1',
-                amount: 3000,
-                type: TransactionType.EXPENSE,
-                memo: '주식회사더스윙',
-                timestamp: new Date('2026-03-13T10:02:00+09:00').getTime(),
-                date: '2026-03-13',
-            }
-        ];
+        const candidates = [createCandidate({
+            id: 'db-expense-1',
+            type: TransactionType.EXPENSE,
+            memo: '주식회사더스윙',
+            timestamp: new Date('2026-03-13T10:02:00+09:00').getTime(),
+            date: '2026-03-13',
+        })];
 
         const [result] = ImportService.reassignHashKeys([row], new Set(), candidates);
 
@@ -236,17 +219,13 @@ describe('ImportService needs review rules', () => {
                 memo: '0204452070306',
             }
         });
-        const candidates = [
-            {
-                id: 'db-expense-1',
-                asset_id: 'asset-1',
-                amount: 3000,
-                type: TransactionType.EXPENSE,
-                memo: '204452070306',
-                timestamp: sharedTimestamp,
-                date: '2026-03-13',
-            }
-        ];
+        const candidates = [createCandidate({
+            id: 'db-expense-1',
+            type: TransactionType.EXPENSE,
+            memo: '204452070306',
+            timestamp: sharedTimestamp,
+            date: '2026-03-13',
+        })];
 
         const [result] = ImportService.reassignHashKeys([row], new Set(), candidates);
 
@@ -273,15 +252,10 @@ describe('ImportService needs review rules', () => {
             }
         });
         const candidates = [
-            {
+            createCandidate({
                 id: 'db-income-1',
-                asset_id: 'asset-1',
-                amount: 3000,
-                type: TransactionType.INCOME,
                 memo: '(주) 더스윙',
-                timestamp: new Date('2026-03-12T09:00:00+09:00').getTime(),
-                date: '2026-03-12',
-            }
+            })
         ];
 
         const results = ImportService.reassignHashKeys([first, second], new Set(), candidates);
@@ -320,16 +294,13 @@ describe('ImportService needs review rules', () => {
         )}#0#0`;
 
         const candidates = [
-            {
+            createCandidate({
                 id: 'db-income-1',
-                asset_id: 'asset-1',
-                amount: 3000,
-                type: TransactionType.INCOME,
                 memo: '주식회사더스윙',
                 timestamp: duplicateRow.transaction!.timestamp,
                 date: duplicateRow.transaction!.date,
-                hash_key: duplicateHash,
-            }
+                hashKey: duplicateHash,
+            })
         ];
 
         const results = ImportService.reassignHashKeys([duplicateRow, reviewRow], new Set([duplicateHash]), candidates);
@@ -377,15 +348,13 @@ describe('ImportService needs review rules', () => {
         ]);
 
         const candidates = [
-            {
+            createCandidate({
                 id: 'db-income-1',
-                asset_id: 'asset-1',
                 amount: 114600,
-                type: TransactionType.INCOME,
                 memo: '크림　주식회사',
                 timestamp: sharedTimestamp,
                 date: '2025-06-13',
-                hash_key: `${ImportService.generateHashKey(
+                hashKey: `${ImportService.generateHashKey(
                     incomeRow.transaction!.assetId!,
                     incomeRow.transaction!.timestamp!,
                     incomeRow.transaction!.amount!,
@@ -393,16 +362,15 @@ describe('ImportService needs review rules', () => {
                     incomeRow.transaction!.type,
                     incomeRow.transaction!.toAssetId
                 )}#0#0`,
-            },
-            {
+            }),
+            createCandidate({
                 id: 'db-expense-1',
-                asset_id: 'asset-1',
                 amount: 114600,
                 type: TransactionType.EXPENSE,
                 memo: '크림　주식회사',
                 timestamp: sharedTimestamp,
                 date: '2025-06-13',
-                hash_key: `${ImportService.generateHashKey(
+                hashKey: `${ImportService.generateHashKey(
                     expenseRow.transaction!.assetId!,
                     expenseRow.transaction!.timestamp!,
                     expenseRow.transaction!.amount!,
@@ -410,7 +378,7 @@ describe('ImportService needs review rules', () => {
                     expenseRow.transaction!.type,
                     expenseRow.transaction!.toAssetId
                 )}#0#1`,
-            }
+            })
         ];
 
         const [incomeResult, expenseResult] = ImportService.reassignHashKeys([incomeRow, expenseRow], dbHashBank, candidates);
@@ -553,6 +521,30 @@ describe('ImportService type mapping', () => {
         }));
     });
 
+    it('parses xlsx files into separate raw and display grids when cells carry display formatting', async () => {
+        const { utils, write } = await import('xlsx');
+        const workbook = utils.book_new();
+        const worksheet = utils.aoa_to_sheet([
+            ['거래일자', '거래금액', '적요'],
+            ['2026-03-13', 1234, '급여'],
+        ]);
+
+        worksheet.B2.z = '#,##0';
+        utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+
+        const file = new File(
+            [write(workbook, { bookType: 'xlsx', type: 'array' })],
+            'sample.xlsx',
+            { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+        );
+
+        const result = await ImportService.parseFileToGrid(file);
+
+        expect(result.rawGrid[0]).toEqual(['거래일자', '거래금액', '적요']);
+        expect(result.rawGrid[1]).toEqual(['2026-03-13', 1234, '급여']);
+        expect(result.displayGrid[1]).toEqual(['2026-03-13', '1,234', '급여']);
+    });
+
     it('parses csv files via array-buffer fallback even when TextDecoder is unavailable', async () => {
         const originalTextDecoder = globalThis.TextDecoder;
         vi.stubGlobal('TextDecoder', class {
@@ -577,5 +569,70 @@ describe('ImportService type mapping', () => {
         } finally {
             vi.stubGlobal('TextDecoder', originalTextDecoder);
         }
+    });
+
+    it('maps realistic import grids into valid, split, and invalid import rows while skipping zero-amount rows', () => {
+        const mapping: ColumnMapping = {
+            dateIndex: 0,
+            amountIndex: -1,
+            memoIndex: 1,
+            amountInIndex: 2,
+            amountOutIndex: 3,
+            assetIndex: 4,
+            merchantIndex: 5,
+            tagIndex: 6,
+        };
+        const assets: Asset[] = [
+            createAsset(),
+            createAsset({
+                id: 'asset-2',
+                name: '적금통장',
+                accountNumber: '2222',
+                productName: '적금통장',
+            }),
+        ];
+        const grid: ImportGrid = [
+            ['다운로드 정보', '2026-03-17'],
+            ['거래일자', '적요', '입금', '출금', '계좌명', '거래처', '태그'],
+            ['2026-03-13', '월급', '3200000', '', '입출금통장', '스마트컴퍼니', 'salary; monthly'],
+            ['2026-03-14', '생활비 정산', '50000', '50000', '적금통장', '', 'shared'],
+            ['2026-03-15', '0원 행', '0', '', '입출금통장', '', ''],
+            ['bad-date', '파싱 오류', '1000', '', '입출금통장', '', ''],
+        ];
+
+        const rows = ImportService.mapRawDataToImportRows(grid, mapping, 'dynamic', assets, [], 1);
+
+        expect(rows).toHaveLength(4);
+        expect(rows.map(({ index, status, subIdx }) => ({ index, status, subIdx }))).toEqual([
+            { index: 2, status: 'valid', subIdx: 0 },
+            { index: 3, status: 'valid', subIdx: 0 },
+            { index: 3, status: 'valid', subIdx: 1 },
+            { index: 5, status: 'invalid', subIdx: 0 },
+        ]);
+
+        expect(rows[0].transaction).toEqual(expect.objectContaining({
+            amount: 3200000,
+            type: TransactionType.INCOME,
+            assetId: 'asset-1',
+            merchant: '스마트컴퍼니',
+            tags: ['salary', 'monthly'],
+        }));
+        expect(rows[1].transaction).toEqual(expect.objectContaining({
+            amount: 50000,
+            type: TransactionType.INCOME,
+            assetId: 'asset-2',
+        }));
+        expect(rows[2].transaction).toEqual(expect.objectContaining({
+            amount: 50000,
+            type: TransactionType.EXPENSE,
+            assetId: 'asset-2',
+        }));
+        expect(rows[1].transaction?.hashKey).toMatch(/#0#0$/);
+        expect(rows[2].transaction?.hashKey).toMatch(/#0#1$/);
+        expect(rows[3]).toEqual(expect.objectContaining({
+            status: 'invalid',
+            reason: 'Invalid Date',
+            data: grid[5],
+        }));
     });
 });

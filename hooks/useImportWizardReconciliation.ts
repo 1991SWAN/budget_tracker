@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
-import { ColumnMapping, ImportService } from '../services/importService';
+import { ColumnMapping, ImportGrid, ImportService } from '../services/importService';
 import { TransactionService } from '../services/transactionService';
+import { ImportReconciliationCandidate } from '../types';
 
-export const useImportWizardReconciliation = (rawData: any[][], headerIndex: number) => {
+export const useImportWizardReconciliation = (rawData: ImportGrid, headerIndex: number) => {
     const [dbHashBank, setDbHashBank] = useState<Set<string>>(new Set());
-    const [reconciliationCandidates, setReconciliationCandidates] = useState<any[]>([]);
+    const [reconciliationCandidates, setReconciliationCandidates] = useState<ImportReconciliationCandidate[]>([]);
     const [isLoadingDb, setIsLoadingDb] = useState(false);
 
     const resetDbContext = useCallback(() => {
@@ -18,7 +19,7 @@ export const useImportWizardReconciliation = (rawData: any[][], headerIndex: num
             const emptyHashes = new Set<string>();
             setDbHashBank(emptyHashes);
             setReconciliationCandidates([]);
-            return { hashes: emptyHashes, candidates: [] as any[] };
+            return { hashes: emptyHashes, candidates: [] as ImportReconciliationCandidate[] };
         }
 
         setIsLoadingDb(true);
@@ -42,7 +43,7 @@ export const useImportWizardReconciliation = (rawData: any[][], headerIndex: num
                 const emptyHashes = new Set<string>();
                 setDbHashBank(emptyHashes);
                 setReconciliationCandidates([]);
-                return { hashes: emptyHashes, candidates: [] as any[] };
+                return { hashes: emptyHashes, candidates: [] as ImportReconciliationCandidate[] };
             }
 
             const minDate = new Date(minDateStr);

@@ -1,5 +1,20 @@
-import { Transaction, TransactionType, Category, CategoryItem } from '../types';
+import {
+  Asset,
+  CategoryId,
+  ImportReconciliationCandidate,
+  Transaction,
+  TransactionType,
+  Category,
+  CategoryItem
+} from '../types';
 import { generateTransactionHashBase, getTimeKey, resolveHashDirection } from '../utils/hashKey';
+import {
+  buildNeedsReviewCandidates,
+  getNeedsReviewLabel,
+  getNeedsReviewMemoKey,
+  normalizeReviewMemo,
+  selectNeedsReviewTarget
+} from '../utils/importNeedsReview';
 import { getTransactionTagNames } from '../utils/transactionDetails';
 
 export interface ColumnMapping {
@@ -31,9 +46,13 @@ export interface ImportPreset {
 
 const PRESET_STORAGE_KEY = 'smartpenny_import_presets';
 
+export type ImportCell = string | number | boolean | Date | null | undefined;
+export type ImportGridRow = ImportCell[];
+export type ImportGrid = ImportGridRow[];
+
 export interface ImportRow {
   index: number;
-  data: any[];
+  data: ImportGridRow;
   status: 'valid' | 'invalid' | 'duplicate' | 'needs_review';
   transaction?: Partial<Transaction>;
   subIdx: number; // For rows that split into multiple transactions (In/Out at same time)
@@ -43,23 +62,13 @@ export interface ImportRow {
   review_candidates?: ImportReviewCandidate[];
 }
 
-export interface ImportReviewCandidate {
-  id: string;
-  memo?: string;
-  merchant?: string;
-  date?: string;
-  timestamp?: number;
-  amount?: number;
-  assetId?: string;
-  type?: string;
-  hashKey?: string;
-}
+export interface ImportReviewCandidate extends ImportReconciliationCandidate {}
 
 export interface ColumnAnalysis {
   index: number;
   header?: string;
   dataType: 'date' | 'number' | 'text' | 'unknown';
-  sampleValues: any[];
+  sampleValues: ImportCell[];
   uniqueValueCount: number;
   confidence: number;
   suggestedField?: keyof ColumnMapping;
@@ -70,12 +79,18 @@ export interface GridAnalysisResult {
   columns: ColumnAnalysis[];
 }
 
+export interface InvalidImportRow {
+  row: number;
+  data: ImportGridRow;
+  reason?: string;
+}
+
 export const ImportService = {
 
   /**
    * Parses a flexible date/time string or Excel serial number.
    */
-  parseLooseDate: (dateVal: any, timeVal?: any): Date | null => {
+  parseLooseDate: (dateVal: ImportCell, timeVal?: ImportCell): Date | null => {
     let year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, millisecond = 0;
     let ts = String(timeVal || '').trim();
 
@@ -215,10 +230,10 @@ export const ImportService = {
 
     return new Date(year, month, day, hour, minute, second, millisecond);
   },
-  discoverHeaderIndex: (grid: any[][]): number => {
+  discoverHeaderIndex: (grid: ImportGrid): number => {
     if (grid.length < 2) return 0;
 
-    const getCellType = (v: any): string => {
+    const getCellType = (v: ImportCell): string => {
       const s = String(v || '').trim();
       if (/^\d{2,4}[./-]\d{1,2}([./-]\d{1,2})?/.test(s)) return 'date';
       const num = s.replace(/[,|원|\\$|\s]/g, '');
@@ -226,7 +241,7 @@ export const ImportService = {
       return 'txt';
     };
 
-    const getRowSignature = (row: any[]) => row.map(getCellType).join('|');
+    const getRowSignature = (row: ImportGridRow) => row.map(getCellType).join('|');
 
     // 1. Map all rows to their structural signatures
     const signatures = grid.map(getRowSignature);
@@ -276,7 +291,7 @@ export const ImportService = {
   /**
    * Analyzes columns to suggest mappings based on data patterns
    */
-  analyzeColumns: (grid: any[][], displayGrid?: any[][]): GridAnalysisResult => {
+  analyzeColumns: (grid: ImportGrid, displayGrid?: ImportGrid): GridAnalysisResult => {
     if (grid.length === 0) return { headerIndex: 0, columns: [] };
     
     // Use displayGrid for UI preview, fallback to rawGrid
@@ -408,7 +423,7 @@ export const ImportService = {
     };
   },
 
-  generateHeaderHash: (headers: any[]): string => {
+  generateHeaderHash: (headers: ImportGridRow): string => {
     // Take first 15 columns to form a signature for better precision
     return headers.slice(0, 15).map(h => String(h || '').trim()).join('|');
   },
@@ -487,7 +502,7 @@ export const ImportService = {
     }
   },
 
-  findMatchingPreset: (headers: any[], targetAssetId?: string): ImportPreset | null => {
+  findMatchingPreset: (headers: ImportGridRow, targetAssetId?: string): ImportPreset | null => {
     const hash = ImportService.generateHeaderHash(headers);
     const presets = ImportService.getPresets();
 
@@ -557,14 +572,14 @@ export const ImportService = {
     return generateTransactionHashBase(assetId, timestamp, amount, memo, direction);
   },
 
-  normalizeImportedCellValue: (value: any): string => {
+  normalizeImportedCellValue: (value: ImportCell): string => {
     const normalized = String(value ?? '').trim();
     if (!normalized) return '';
     if (/^(null|undefined|none|n\/a|na)$/i.test(normalized)) return '';
     return normalized;
   },
 
-  parseTransactionTypeValue: (value: any): TransactionType | null => {
+  parseTransactionTypeValue: (value: ImportCell): TransactionType | null => {
     const rawValue = ImportService.normalizeImportedCellValue(value);
     if (!rawValue) return null;
 
@@ -592,7 +607,7 @@ export const ImportService = {
     return null;
   },
 
-  resolveAssetId: (value: any, assets: any[]): string | null => {
+  resolveAssetId: (value: ImportCell, assets: Asset[]): string | null => {
     const assetVal = ImportService.normalizeImportedCellValue(value);
     if (!assetVal) return null;
 
@@ -630,135 +645,22 @@ export const ImportService = {
     return bestMatchId;
   },
 
-  normalizeReviewMemo: (memo: string): string => {
-    return String(memo || '')
-      .normalize('NFKC')
-      .toLowerCase()
-      .replace(/\(주\)|주식회사|\bcorp\b|\binc\b/gi, '')
-      .replace(/[\s\p{P}\p{S}]+/gu, '');
-  },
+  normalizeReviewMemo,
 
-  getNeedsReviewMemoKey: (memo: string, type?: TransactionType): string => {
-    const normalized = ImportService.normalizeReviewMemo(memo);
-    if (!normalized) return '';
-
-    // Numeric identifiers can lose leading zeros when exported through numeric cells.
-    // Apply the lenient comparison to income/expense review matching only.
-    if (
-      (type === TransactionType.INCOME || type === TransactionType.EXPENSE) &&
-      /^\d+$/.test(normalized)
-    ) {
-      const stripped = normalized.replace(/^0+/, '');
-      return stripped || '0';
-    }
-
-    return normalized;
-  },
+  getNeedsReviewMemoKey,
 
   getTimeKey: (timestamp: number): number => getTimeKey(timestamp),
 
-  getNeedsReviewLabel: (type?: TransactionType): string => {
-    if (type === TransactionType.EXPENSE) return '지출';
-    if (type === TransactionType.INCOME) return '수입';
-    return '거래';
-  },
+  getNeedsReviewLabel,
 
-  buildNeedsReviewCandidates: (transaction: Partial<Transaction>, reconciliationCandidates: any[] = []): any[] => {
-    if (
-      (transaction.type !== TransactionType.INCOME && transaction.type !== TransactionType.EXPENSE) ||
-      !transaction.assetId ||
-      !transaction.timestamp ||
-      !transaction.amount
-    ) {
-      return [];
-    }
+  buildNeedsReviewCandidates,
 
-    const transactionMemoSource = transaction.memo || transaction.merchant || '';
-    const reviewMemo = ImportService.getNeedsReviewMemoKey(transactionMemoSource, transaction.type);
-    if (!reviewMemo) return [];
-
-    const REVIEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-    const rawMemo = String(transactionMemoSource).trim();
-    const transactionTimestamp = Number(transaction.timestamp);
-    const transactionTimeKey = ImportService.getTimeKey(transactionTimestamp);
-    const transactionType = transaction.type;
-
-    return reconciliationCandidates
-      .filter(candidate => {
-        const candidateTimestamp = Number(candidate.timestamp);
-        if (!candidate?.id || !candidateTimestamp) return false;
-
-        const candidateMemo = ImportService.getNeedsReviewMemoKey(String(candidate.memo || candidate.merchant || ''), candidate.type);
-        if (candidateMemo !== reviewMemo) return false;
-
-        if (
-          candidate.asset_id !== transaction.assetId ||
-          candidate.type !== transactionType ||
-          Number(candidate.amount) !== Number(transaction.amount)
-        ) {
-          return false;
-        }
-
-        if (transactionType === TransactionType.EXPENSE) {
-          return ImportService.getTimeKey(candidateTimestamp) === transactionTimeKey;
-        }
-
-        return (
-          candidateTimestamp <= transactionTimestamp &&
-          (transactionTimestamp - candidateTimestamp) <= REVIEW_WINDOW_MS
-        );
-      })
-      .map(candidate => ({
-        ...candidate,
-        timestamp: Number(candidate.timestamp),
-        score: {
-          rawMemoExact: String(candidate.memo || candidate.merchant || '').trim() === rawMemo ? 1 : 0,
-          timeKeyExact: ImportService.getTimeKey(Number(candidate.timestamp)) === transactionTimeKey ? 1 : 0,
-          delta: Math.abs(transactionTimestamp - Number(candidate.timestamp)),
-        }
-      }))
-      .sort((left, right) => {
-        if (right.score.rawMemoExact !== left.score.rawMemoExact) {
-          return right.score.rawMemoExact - left.score.rawMemoExact;
-        }
-
-        if (right.score.timeKeyExact !== left.score.timeKeyExact) {
-          return right.score.timeKeyExact - left.score.timeKeyExact;
-        }
-
-        if (left.score.delta !== right.score.delta) {
-          return left.score.delta - right.score.delta;
-        }
-
-        return String(left.id).localeCompare(String(right.id));
-      });
-  },
-
-  selectNeedsReviewTarget: (candidates: any[]): string | undefined => {
-    if (candidates.length === 0) return undefined;
-    if (candidates.length === 1) return candidates[0].id;
-
-    const [best, second] = candidates;
-    if (!second) return best.id;
-
-    const bestScore = best.score || { rawMemoExact: 0, timeKeyExact: 0, delta: Number.MAX_SAFE_INTEGER };
-    const secondScore = second.score || { rawMemoExact: 0, timeKeyExact: 0, delta: Number.MAX_SAFE_INTEGER };
-
-    if (
-      bestScore.rawMemoExact !== secondScore.rawMemoExact ||
-      bestScore.timeKeyExact !== secondScore.timeKeyExact ||
-      bestScore.delta !== secondScore.delta
-    ) {
-      return best.id;
-    }
-
-    return undefined;
-  },
+  selectNeedsReviewTarget,
 
   /**
    * Reads a file (CSV or Excel) and returns raw 2D array data.
    */
-  parseFileToGrid: async (file: File): Promise<{ rawGrid: any[][], displayGrid: any[][] }> => {
+  parseFileToGrid: async (file: File): Promise<{ rawGrid: ImportGrid, displayGrid: ImportGrid }> => {
     const { read, utils } = await import('xlsx');
     const buffer = await file.arrayBuffer();
 
@@ -766,13 +668,13 @@ export const ImportService = {
       const sheetName = wb.SheetNames[0];
       const ws = wb.Sheets[sheetName];
       // rawGrid: 숫자/날짜 Serial 원본 (계산·파싱용)
-      const rawGrid = utils.sheet_to_json(ws, { header: 1, defval: '', raw: true }) as any[][];
+      const rawGrid = utils.sheet_to_json(ws, { header: 1, defval: '', raw: true }) as ImportGrid;
       // displayGrid: Excel에서 실제로 보이는 포맷 문자열 (매핑 화면 표시용)
-      const displayGrid = utils.sheet_to_json(ws, { header: 1, defval: '', raw: false }) as any[][];
+      const displayGrid = utils.sheet_to_json(ws, { header: 1, defval: '', raw: false }) as ImportGrid;
       return { rawGrid, displayGrid };
     };
 
-    const scoreParsedGrid = (result: { rawGrid: any[][], displayGrid: any[][] }): number => {
+    const scoreParsedGrid = (result: { rawGrid: ImportGrid, displayGrid: ImportGrid }): number => {
       const sampleValues = result.displayGrid
         .slice(0, 100)
         .flat()
@@ -803,7 +705,7 @@ export const ImportService = {
       const candidates = [
         tryArrayWorkbook({ codepage: 65001 }),
         tryArrayWorkbook({ codepage: 949 }),
-      ].filter((candidate): candidate is { rawGrid: any[][], displayGrid: any[][] } => Boolean(candidate));
+      ].filter((candidate): candidate is { rawGrid: ImportGrid, displayGrid: ImportGrid } => Boolean(candidate));
 
       if (candidates.length > 0) {
         candidates.sort((left, right) => scoreParsedGrid(right) - scoreParsedGrid(left));
@@ -848,7 +750,7 @@ export const ImportService = {
       const fallbackCandidates = [
         tryArrayWorkbook({ codepage: 65001 }),
         tryArrayWorkbook({ codepage: 949 }),
-      ].filter((candidate): candidate is { rawGrid: any[][], displayGrid: any[][] } => Boolean(candidate));
+      ].filter((candidate): candidate is { rawGrid: ImportGrid, displayGrid: ImportGrid } => Boolean(candidate));
 
       if (fallbackCandidates.length > 0) {
         fallbackCandidates.sort((left, right) => scoreParsedGrid(right) - scoreParsedGrid(left));
@@ -864,19 +766,19 @@ export const ImportService = {
    * Internal helper to parse and validate a single row.
    */
   validateRow: (
-    row: any[],
+    row: ImportGridRow,
     index: number,
     mapping: ColumnMapping,
     defaultAssetId: string,
-    assets: any[] = [],
+    assets: Asset[] = [],
     categories: CategoryItem[] = []
   ): { transactions?: Partial<Transaction>[], reason?: string } => {
     try {
       const dateVal = row[mapping.dateIndex];
       
       // Amount Resolution
-      const pendingTxs = [];
-      const parseAmt = (v: any) => {
+      const pendingTxs: Array<{ amount: number; type: TransactionType }> = [];
+      const parseAmt = (v: ImportCell) => {
         if (typeof v === 'number') return v;
         const s = String(v || '').trim();
         if (!s) return 0;
@@ -935,11 +837,11 @@ export const ImportService = {
    * Internal helper with ULTRA-STRICT asset matching.
    */
   _internalFinalizeRows: (
-    row: any[],
+    row: ImportGridRow,
     index: number,
     mapping: ColumnMapping,
     defaultAssetId: string,
-    assets: any[],
+    assets: Asset[],
     categories: CategoryItem[],
     pendingAmounts: { amount: number, type: TransactionType }[]
   ): { transactions?: Partial<Transaction>[], reason?: string } => {
@@ -1008,12 +910,12 @@ export const ImportService = {
       if (!finalMemo && !merchantVal && tagNames.length === 0) throw new Error("Empty Details");
 
       // --- Category ---
-      let categoryVal = Category.OTHER;
+      let categoryVal: CategoryId = Category.OTHER;
       if (mapping.categoryIndex !== undefined && mapping.categoryIndex >= 0) {
         const rawCat = String(row[mapping.categoryIndex] || '').trim();
         if (rawCat) {
           const match = categories.find(c => c.name.toLowerCase() === rawCat.toLowerCase());
-          categoryVal = match ? (match.id as any) : (rawCat as any);
+          categoryVal = match ? match.id : rawCat;
         }
       }
 
@@ -1021,7 +923,7 @@ export const ImportService = {
         const memoLower = finalMemo.toLowerCase();
         for (const cat of categories) {
           if (cat.keywords?.some(k => memoLower.includes(k.toLowerCase()))) {
-            categoryVal = cat.id as any;
+            categoryVal = cat.id;
             break;
           }
         }
@@ -1108,10 +1010,10 @@ export const ImportService = {
    * Converts raw grid data into ImportRows.
    */
   mapRawDataToImportRows: (
-    grid: any[][],
+    grid: ImportGrid,
     mapping: ColumnMapping,
     defaultAssetId: string,
-    assets: any[] = [],
+    assets: Asset[] = [],
     categories: CategoryItem[] = [],
     headerIndex: number = 0
   ): ImportRow[] => {
@@ -1169,7 +1071,11 @@ export const ImportService = {
    * so that multi-transaction rows (e.g. 결제+취소 simultaneously) maintain correct #count#subIdx.
    */
   // reconciliationCandidates Parameter Added (Tier 2 Evaluation)
-  reassignHashKeys: (rows: ImportRow[], dbHashBank?: Set<string>, reconciliationCandidates?: any[]): ImportRow[] => {
+  reassignHashKeys: (
+    rows: ImportRow[],
+    dbHashBank?: Set<string>,
+    reconciliationCandidates?: ImportReconciliationCandidate[]
+  ): ImportRow[] => {
     const baseHashCounts = new Map<string, number>();
     const duplicateDbHashKeys = new Set<string>();
 
@@ -1211,8 +1117,8 @@ export const ImportService = {
     });
 
     const unresolvedCandidates = (reconciliationCandidates || []).filter(candidate => {
-      if (!candidate?.hash_key) return true;
-      return !duplicateDbHashKeys.has(String(candidate.hash_key));
+      if (!candidate?.hashKey) return true;
+      return !duplicateDbHashKeys.has(String(candidate.hashKey));
     });
 
     const reassignedRows = stagedRows.map(row => {
@@ -1240,15 +1146,15 @@ export const ImportService = {
           : `기존 ${typeLabel} 교체 후보 ${reviewCandidates.length}건`,
         replace_target_id: ImportService.selectNeedsReviewTarget(reviewCandidates),
         review_candidates: reviewCandidates.map(candidate => ({
-          id: String(candidate.id),
+          id: candidate.id,
           memo: candidate.memo,
           merchant: candidate.merchant,
           date: candidate.date,
           timestamp: candidate.timestamp,
-          amount: Number(candidate.amount),
-          assetId: candidate.asset_id,
+          amount: candidate.amount,
+          assetId: candidate.assetId,
           type: candidate.type,
-          hashKey: candidate.hash_key,
+          hashKey: candidate.hashKey,
         })),
       };
     });
@@ -1277,13 +1183,13 @@ export const ImportService = {
 
 
   mapRawDataToTransactions: (
-    grid: any[][],
+    grid: ImportGrid,
     mapping: ColumnMapping,
     defaultAssetId: string,
-    assets: any[] = [],
+    assets: Asset[] = [],
     categories: CategoryItem[] = [],
     headerIndex: number = 0
-  ): { valid: Partial<Transaction>[], invalid: any[] } => {
+  ): { valid: Partial<Transaction>[], invalid: InvalidImportRow[] } => {
     const rows = ImportService.mapRawDataToImportRows(grid, mapping, defaultAssetId, assets, categories, headerIndex);
     return {
       valid: rows.filter(r => r.status === 'valid').map(r => r.transaction!),

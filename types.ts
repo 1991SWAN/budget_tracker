@@ -183,6 +183,24 @@ export interface TransactionFilters {
   expenseType?: 'ALL' | 'REGULAR' | 'INSTALLMENT';
 }
 
+export interface ImportReconciliationCandidate {
+  id: string;
+  assetId: string;
+  date: string;
+  amount: number;
+  type: TransactionType;
+  memo?: string;
+  merchant?: string;
+  timestamp?: number;
+  hashKey?: string;
+}
+
+export interface ImportReconciliationCandidateScore {
+  rawMemoExact: number;
+  timeKeyExact: number;
+  delta: number;
+}
+
 export interface RecurringTransaction {
   id: string;
   name: string;

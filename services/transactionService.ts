@@ -1,7 +1,35 @@
 import { supabase } from './dbClient';
 import { TagService } from './tagService';
-import { Transaction, TransactionType, TransactionFilters } from '../types';
+import { ImportReconciliationCandidate, Transaction, TransactionType, TransactionFilters } from '../types';
 import { getTransactionTagNames, parseTransactionDetailsInput } from '../utils/transactionDetails';
+
+interface ImportReconciliationCandidateRow {
+    id: string;
+    asset_id: string;
+    date: string;
+    amount: number | string;
+    type: TransactionType;
+    memo?: string | null;
+    merchant?: string | null;
+    timestamp?: number | null;
+    hash_key?: string | null;
+}
+
+const mapImportReconciliationCandidateRow = (
+    row: ImportReconciliationCandidateRow
+): ImportReconciliationCandidate => ({
+    id: String(row.id),
+    assetId: row.asset_id,
+    date: row.date,
+    amount: Number(row.amount),
+    type: row.type,
+    memo: row.memo || undefined,
+    merchant: row.merchant || undefined,
+    timestamp: row.timestamp !== null && row.timestamp !== undefined
+        ? Number(row.timestamp)
+        : undefined,
+    hashKey: row.hash_key || undefined,
+});
 
 export const TransactionService = {
     getTransactions: async (limit: number = 50, offset: number = 0, filters?: TransactionFilters): Promise<Transaction[]> => {
@@ -144,8 +172,12 @@ export const TransactionService = {
         return new Set(allHashKeys);
     },
 
-    getTransactionsForImportReconciliation: async (startDate: string, endDate: string, assetIds?: string[]): Promise<any[]> => {
-        const allCandidates: any[] = [];
+    getTransactionsForImportReconciliation: async (
+        startDate: string,
+        endDate: string,
+        assetIds?: string[]
+    ): Promise<ImportReconciliationCandidate[]> => {
+        const allCandidates: ImportReconciliationCandidate[] = [];
         const PAGE_SIZE = 1000;
         let from = 0;
         let hasMore = true;
@@ -170,7 +202,7 @@ export const TransactionService = {
             }
 
             if (data && data.length > 0) {
-                allCandidates.push(...data);
+                allCandidates.push(...(data as ImportReconciliationCandidateRow[]).map(mapImportReconciliationCandidateRow));
                 from += PAGE_SIZE;
                 hasMore = data.length === PAGE_SIZE;
             } else {

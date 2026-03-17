@@ -1,5 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ImportService, ColumnMapping, ImportPreset, ImportRow, ColumnAnalysis } from '../../services/importService';
+import {
+    ImportService,
+    ColumnMapping,
+    ImportPreset,
+    ImportRow,
+    ColumnAnalysis,
+    ImportGrid
+} from '../../services/importService';
 import { Transaction, Asset, CategoryItem, TransactionType } from '../../types';
 import { Upload, ArrowRight, X, AlertTriangle, Check, Trash2, Sparkles, Download, LayoutTemplate, FileJson, History } from 'lucide-react';
 import { Virtuoso } from 'react-virtuoso';
@@ -33,7 +40,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
     const { addToast } = useToast();
 
     // Data
-    const [rawData, setRawData] = useState<any[][]>([]);
+    const [rawData, setRawData] = useState<ImportGrid>([]);
     const [fileName, setFileName] = useState('');
     const [headerIndex, setHeaderIndex] = useState(0);
     const [targetAssetId, setTargetAssetId] = useState(assetId || 'dynamic'); // 'dynamic' means use column mapping
@@ -144,11 +151,11 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                 const { rawGrid, displayGrid } = await ImportService.parseFileToGrid(initialFile);
                 if (cancelled) return;
                 if (rawGrid.length < 1) return;
-                const cleanRaw = rawGrid.filter((row: any[]) =>
-                    row.some((cell: any) => cell !== undefined && cell !== null && String(cell).trim() !== '')
+                const cleanRaw = rawGrid.filter(row =>
+                    row.some(cell => cell !== undefined && cell !== null && String(cell).trim() !== '')
                 );
-                const cleanDisplay = displayGrid.filter((row: any[]) =>
-                    row.some((cell: any) => cell !== undefined && cell !== null && String(cell).trim() !== '')
+                const cleanDisplay = displayGrid.filter(row =>
+                    row.some(cell => cell !== undefined && cell !== null && String(cell).trim() !== '')
                 );
                 const analysisResult = ImportService.analyzeColumns(cleanRaw, cleanDisplay);
                 setRawData(cleanRaw);
@@ -200,7 +207,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
     if (!isOpen) return null;
 
     // --- Handlers ---
-    const processFileGrid = ({ rawGrid, displayGrid }: { rawGrid: any[][], displayGrid: any[][] }, fName: string) => {
+    const processFileGrid = ({ rawGrid, displayGrid }: { rawGrid: ImportGrid, displayGrid: ImportGrid }, fName: string) => {
         try {
             if (rawGrid.length < 1) {
                 addToast('The file is empty.', 'error');
@@ -209,8 +216,8 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             }
 
             // Clean empty rows
-            const cleanRaw = rawGrid.filter(row => row.some((cell: any) => cell !== undefined && cell !== null && String(cell).trim() !== ''));
-            const cleanDisplay = displayGrid.filter(row => row.some((cell: any) => cell !== undefined && cell !== null && String(cell).trim() !== ''));
+            const cleanRaw = rawGrid.filter(row => row.some(cell => cell !== undefined && cell !== null && String(cell).trim() !== ''));
+            const cleanDisplay = displayGrid.filter(row => row.some(cell => cell !== undefined && cell !== null && String(cell).trim() !== ''));
 
             setRawData(cleanRaw);
             setFileName(fName);
