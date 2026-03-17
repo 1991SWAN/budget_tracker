@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Project Memory"
+  short_description: "Maintain per-project memory docs"
+  default_prompt: "Use $maintain-project-memory to create or update plan, context, and checklist docs for a project under docs/projects."
