@@ -26,6 +26,7 @@ export default defineConfig(({ mode }) => {
               if (id.includes('react-virtuoso')) return 'list-vendor';
               if (id.includes('@supabase/supabase-js')) return 'supabase-vendor';
               if (id.includes('framer-motion')) return 'motion-vendor';
+              if (id.includes('lucide-react')) return 'icon-vendor';
             }
           }
         }
