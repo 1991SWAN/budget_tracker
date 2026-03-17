@@ -24,3 +24,6 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Local sibling workspace not part of the SmartPenny app
+codex/
