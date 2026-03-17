@@ -254,7 +254,7 @@ export const useRegularExpenseDetector = (
 };
 
 import { useState, useEffect } from 'react';
-import { SupabaseService } from '../services/supabaseService';
+import { TransactionService } from '../services/transactionService';
 
 export const useGlobalRegularExpenseDetector = (
     user: any,
@@ -281,7 +281,7 @@ export const useGlobalRegularExpenseDetector = (
 
             try {
                 // Fetch independently of the UI state to ensure we have enough history
-                const recentTxs = await SupabaseService.getTransactions(1000, 0, {
+                const recentTxs = await TransactionService.getTransactions(1000, 0, {
                     dateRange: { start: scanStartStr, end: '2099-12-31' }
                 });
 

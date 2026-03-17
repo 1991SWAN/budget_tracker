@@ -1,6 +1,11 @@
 import { useCallback } from 'react';
-import { SupabaseService } from '../services/supabaseService';
+import { AssetService } from '../services/assetService';
+import { CategoryService } from '../services/categoryService';
+import { DataService } from '../services/dataService';
 import { ExportService } from '../services/exportService';
+import { GoalService } from '../services/goalService';
+import { RecurringService } from '../services/recurringService';
+import { TransactionService } from '../services/transactionService';
 import { useToast } from '../contexts/ToastContext';
 
 export const useSettingsController = () => {
@@ -9,11 +14,11 @@ export const useSettingsController = () => {
     const handleExport = useCallback(async () => {
         try {
             const [txs, assets, recurring, goals, categories] = await Promise.all([
-                SupabaseService.getTransactions(),
-                SupabaseService.getAssets(),
-                SupabaseService.getRecurring(),
-                SupabaseService.getGoals(),
-                SupabaseService.getCategories()
+                TransactionService.getTransactions(),
+                AssetService.getAssets(),
+                RecurringService.getRecurring(),
+                GoalService.getGoals(),
+                CategoryService.getCategories()
             ]);
             await ExportService.exportData(txs, assets, recurring, goals, categories);
         } catch (error) {
@@ -23,7 +28,7 @@ export const useSettingsController = () => {
     }, [addToast]);
 
     const handleResetConfirm = useCallback(async (options: any) => {
-        await SupabaseService.resetData(options);
+        await DataService.resetData(options);
         window.location.reload();
     }, []);
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Budget } from '../types';
-import { SupabaseService, supabase } from '../services/supabaseService';
+import { BudgetService } from '../services/budgetService';
+import { supabase } from '../services/dbClient';
 import { useToast } from '../contexts/ToastContext';
 
 export const useBudgetManager = () => {
@@ -11,7 +12,7 @@ export const useBudgetManager = () => {
     const loadBudgets = useCallback(async () => {
         try {
             setIsLoading(true);
-            const data = await SupabaseService.getBudgets();
+            const data = await BudgetService.getBudgets();
             setBudgets(data);
         } catch (error) {
             console.error('Error loading budgets:', error);
@@ -23,7 +24,7 @@ export const useBudgetManager = () => {
 
     const saveBudget = async (budget: Partial<Budget>) => {
         try {
-            const { error } = await SupabaseService.saveBudget(budget);
+            const { error } = await BudgetService.saveBudget(budget);
             if (error) throw error;
             await loadBudgets();
             addToast('Budget saved', 'success');
@@ -36,7 +37,7 @@ export const useBudgetManager = () => {
 
     const deleteBudget = async (id: string) => {
         try {
-            const { error } = await SupabaseService.deleteBudget(id);
+            const { error } = await BudgetService.deleteBudget(id);
             if (error) throw error;
             await loadBudgets();
             addToast('Budget deleted', 'success');

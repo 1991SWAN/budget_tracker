@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { SupabaseService } from '../services/supabaseService';
+import { AssetService } from '../services/assetService';
+import { GoalService } from '../services/goalService';
+import { ProfileService } from '../services/profileService';
+import { RecurringService } from '../services/recurringService';
+import { TransactionService } from '../services/transactionService';
 import { Asset, Transaction, RecurringTransaction, SavingsGoal, TransactionFilters } from '../types';
 import { useToast } from '../contexts/ToastContext';
 
@@ -23,10 +27,10 @@ export const useAppData = (user: any) => {
             setActiveFilters(filters);
 
             const [txs, assts, recs, gls] = await Promise.all([
-                SupabaseService.getTransactions(PAGE_SIZE, 0, filters),
-                SupabaseService.getAssets(),
-                SupabaseService.getRecurring(),
-                SupabaseService.getGoals()
+                TransactionService.getTransactions(PAGE_SIZE, 0, filters),
+                AssetService.getAssets(),
+                RecurringService.getRecurring(),
+                GoalService.getGoals()
             ]);
 
             setTransactions(txs);
@@ -35,7 +39,7 @@ export const useAppData = (user: any) => {
             setGoals(gls);
             setHasMoreTransactions(txs.length === PAGE_SIZE);
 
-            const profile = await SupabaseService.getProfile();
+            const profile = await ProfileService.getProfile();
             setMonthlyBudget(profile?.monthlyBudget || 0);
             setIsDataLoaded(true);
         } catch (e) {
@@ -48,7 +52,7 @@ export const useAppData = (user: any) => {
         if (isFetchingMore || !hasMoreTransactions || !user) return;
         setIsFetchingMore(true);
         try {
-            const nextTxs = await SupabaseService.getTransactions(PAGE_SIZE, transactions.length, activeFilters);
+            const nextTxs = await TransactionService.getTransactions(PAGE_SIZE, transactions.length, activeFilters);
             if (nextTxs.length < PAGE_SIZE) setHasMoreTransactions(false);
             setTransactions(prev => [...prev, ...nextTxs]);
         } catch (e) {

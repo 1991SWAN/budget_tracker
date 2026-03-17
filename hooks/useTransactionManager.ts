@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { Transaction, Asset, TransactionType, Category } from '../types';
-import { SupabaseService } from '../services/supabaseService';
+import { TransactionService } from '../services/transactionService';
 import { useToast } from '../contexts/ToastContext';
 
 export const useTransactionManager = (
@@ -14,7 +14,7 @@ export const useTransactionManager = (
 
     const addTransaction = useCallback(async (newTx: Transaction) => {
         try {
-            await SupabaseService.saveTransaction(newTx);
+            await TransactionService.saveTransaction(newTx);
             setTransactions(prev => [newTx, ...prev]);
             if (onTransactionChange) await onTransactionChange();
             addToast('Transaction added', 'success');
@@ -27,7 +27,7 @@ export const useTransactionManager = (
     const addTransactions = useCallback(async (newTxs: Transaction[]) => {
         if (newTxs.length === 0) return;
         try {
-            await SupabaseService.saveTransactions(newTxs);
+            await TransactionService.saveTransactions(newTxs);
             setTransactions(prev => [...newTxs, ...prev]);
             if (onTransactionChange) await onTransactionChange();
             addToast(`${newTxs.length} transactions added`, 'success');
@@ -40,7 +40,7 @@ export const useTransactionManager = (
     const updateTransactions = useCallback(async (txs: Transaction[]) => {
         if (txs.length === 0) return;
         try {
-            await SupabaseService.saveTransactions(txs);
+            await TransactionService.saveTransactions(txs);
             const updatedIds = new Set(txs.map(t => t.id));
             setTransactions(prev => prev.map(t => updatedIds.has(t.id) ? txs.find(ut => ut.id === t.id)! : t));
             if (onTransactionChange) await onTransactionChange();
@@ -96,7 +96,7 @@ export const useTransactionManager = (
                 }
             }
 
-            await SupabaseService.deleteTransaction(tx.id);
+            await TransactionService.deleteTransaction(tx.id);
             setTransactions(prev => prev.filter(t => t.id !== tx.id));
             if (onTransactionChange) await onTransactionChange();
             addToast('Transaction deleted', 'success');
@@ -109,7 +109,7 @@ export const useTransactionManager = (
     const deleteTransactions = useCallback(async (ids: string[]) => {
         if (!ids || ids.length === 0) return;
         try {
-            await SupabaseService.deleteTransactions(ids);
+            await TransactionService.deleteTransactions(ids);
             setTransactions(prev => prev.filter(t => !ids.includes(t.id)));
             if (onTransactionChange) await onTransactionChange();
             addToast(`${ids.length} transactions deleted`, 'success');

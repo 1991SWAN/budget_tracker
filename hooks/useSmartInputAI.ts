@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Asset, CategoryItem, Tag as TagType } from '../types';
-import { SupabaseService } from '../services/supabaseService';
+import { TagService } from '../services/tagService';
 
 export const useSmartInputAI = (assets: Asset[], categories: CategoryItem[]) => {
     const [availableTags, setAvailableTags] = useState<TagType[]>([]);
@@ -9,7 +9,7 @@ export const useSmartInputAI = (assets: Asset[], categories: CategoryItem[]) => 
         let mounted = true;
 
         const loadTags = async () => {
-            const tags = await SupabaseService.getTags();
+            const tags = await TagService.getTags();
             if (mounted) {
                 setAvailableTags(tags);
             }

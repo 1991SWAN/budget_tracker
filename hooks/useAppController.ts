@@ -4,7 +4,7 @@ import {
     CategoryId,
     TransactionType,
 } from '../types';
-import { SupabaseService } from '../services/supabaseService';
+import { AssetService } from '../services/assetService';
 import { useAppData } from './useAppData';
 import { useAppViewState } from './useAppViewState';
 import { useCategoryManager } from './useCategoryManager';
@@ -99,7 +99,7 @@ export const useAppController = (user: any) => {
     const modalRef = useRef<HTMLDivElement>(null);
 
     const refreshAssets = useCallback(async () => {
-        const freshAssets = await SupabaseService.getAssets();
+        const freshAssets = await AssetService.getAssets();
         setAssets(freshAssets);
     }, [setAssets]);
 

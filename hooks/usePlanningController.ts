@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { SupabaseService } from '../services/supabaseService';
+import { GoalService } from '../services/goalService';
+import { ProfileService } from '../services/profileService';
+import { RecurringService } from '../services/recurringService';
 import { BillType, CategoryId, CategoryItem, RecurringTransaction, SavingsGoal, Transaction, TransactionType } from '../types';
 import { getDefaultCategoryId, normalizeCategoryId } from '../utils/category';
 import type { ModalFormSetter, ModalSelectedItemSetter, ModalTypeSetter } from './modalTypes';
@@ -36,16 +38,16 @@ export const usePlanningController = ({
 }: UsePlanningControllerOptions) => {
     const handleBudgetChange = useCallback(async (amount: number) => {
         setMonthlyBudget(amount);
-        await SupabaseService.saveProfile({ monthly_budget: amount });
+        await ProfileService.saveProfile({ monthly_budget: amount });
     }, [setMonthlyBudget]);
 
     const deleteRecurringById = useCallback((id: string) => {
-        void SupabaseService.deleteRecurring(id);
+        void RecurringService.deleteRecurring(id);
         setRecurring(previous => previous.filter(recurringItem => recurringItem.id !== id));
     }, [setRecurring]);
 
     const deleteGoalById = useCallback((id: string) => {
-        void SupabaseService.deleteGoal(id);
+        void GoalService.deleteGoal(id);
         setGoals(previous => previous.filter(goal => goal.id !== id));
     }, [setGoals]);
 
@@ -66,7 +68,7 @@ export const usePlanningController = ({
                 })
             };
 
-            void SupabaseService.saveRecurring(newRecurring);
+            void RecurringService.saveRecurring(newRecurring);
             setRecurring(previous => [...previous, newRecurring]);
             return;
         }
@@ -81,7 +83,7 @@ export const usePlanningController = ({
                 })
             };
 
-            void SupabaseService.saveRecurring(updatedRecurring);
+            void RecurringService.saveRecurring(updatedRecurring);
             setRecurring(previous => previous.map(recurringItem => (
                 recurringItem.id === updatedRecurring.id ? updatedRecurring : recurringItem
             )));
@@ -109,13 +111,13 @@ export const usePlanningController = ({
 
         if (action === 'add') {
             const newGoal = { ...item, id: Date.now().toString() };
-            void SupabaseService.saveGoal(newGoal);
+            void GoalService.saveGoal(newGoal);
             setGoals(previous => [...previous, newGoal]);
             return;
         }
 
         if (action === 'update') {
-            void SupabaseService.saveGoal(item);
+            void GoalService.saveGoal(item);
             setGoals(previous => previous.map(goal => (
                 goal.id === item.id ? { ...goal, ...item } : goal
             )));
@@ -130,7 +132,7 @@ export const usePlanningController = ({
                 ...currentGoal,
                 currentAmount: currentGoal.currentAmount + item.amount
             };
-            void SupabaseService.saveGoal(updatedGoal);
+            void GoalService.saveGoal(updatedGoal);
             setGoals(previous => previous.map(goal => (
                 goal.id === item.id ? updatedGoal : goal
             )));

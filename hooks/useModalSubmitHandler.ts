@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { SupabaseService } from '../services/supabaseService';
+import { GoalService } from '../services/goalService';
+import { RecurringService } from '../services/recurringService';
 import { Asset, AssetType, BillType, CategoryId, CategoryItem, RecurringTransaction, SavingsGoal, Transaction, TransactionType } from '../types';
 import { normalizeCategoryId } from '../utils/category';
 import type {
@@ -137,7 +138,7 @@ export const useModalSubmitHandler = ({
                 groupName: billForm.groupName || 'Default'
             } as RecurringTransaction & { groupName?: string };
 
-            await SupabaseService.saveRecurring(nextRecurring);
+            await RecurringService.saveRecurring(nextRecurring);
 
             if (selectedBill) {
                 setRecurring(previous => previous.map(recurringItem => (
@@ -158,7 +159,7 @@ export const useModalSubmitHandler = ({
                 currentAmount: selectedGoal?.currentAmount || 0
             };
 
-            await SupabaseService.saveGoal(nextGoal);
+            await GoalService.saveGoal(nextGoal);
 
             if (selectedGoal) {
                 setGoals(previous => previous.map(goal => (
@@ -186,7 +187,7 @@ export const useModalSubmitHandler = ({
 
             if (targetGoal) {
                 const updatedGoal = { ...targetGoal, currentAmount: targetGoal.currentAmount + amount };
-                await SupabaseService.saveGoal(updatedGoal);
+                await GoalService.saveGoal(updatedGoal);
                 setGoals(previous => previous.map(goal => (
                     goal.id === updatedGoal.id ? updatedGoal : goal
                 )));

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { CategoryItem } from '../types';
-import { SupabaseService, supabase } from '../services/supabaseService';
+import { CategoryService } from '../services/categoryService';
+import { supabase } from '../services/dbClient';
 import { useToast } from '../contexts/ToastContext';
 
 // Robust UUID Generator
@@ -52,7 +53,7 @@ export const useCategoryManager = () => {
     const loadCategories = useCallback(async (autoSeed = true) => {
         try {
             setIsLoading(true);
-            const data = await SupabaseService.getCategories();
+            const data = await CategoryService.getCategories();
 
             if (data.length === 0 && autoSeed) {
                 const { data: { session } } = await supabase.auth.getSession();
@@ -112,7 +113,7 @@ export const useCategoryManager = () => {
             if (!error) {
                 console.log('Auto-seeded default categories (Upsert completed).');
                 // Refresh categories
-                const data = await SupabaseService.getCategories();
+                const data = await CategoryService.getCategories();
                 setCategories(data);
             }
         } finally {
@@ -161,7 +162,7 @@ export const useCategoryManager = () => {
                 created_at: new Date().toISOString()
             };
             setCategories(prev => [...prev, newCategory]);
-            await SupabaseService.saveCategory(newCategory);
+            await CategoryService.saveCategory(newCategory);
             addToast('Category added', 'success');
         } catch (error) {
             console.error(error);
@@ -173,7 +174,7 @@ export const useCategoryManager = () => {
     const updateCategory = useCallback(async (updatedCategory: CategoryItem) => {
         try {
             setCategories(prev => prev.map(c => c.id === updatedCategory.id ? updatedCategory : c));
-            await SupabaseService.saveCategory(updatedCategory);
+            await CategoryService.saveCategory(updatedCategory);
             addToast('Category updated', 'success');
         } catch (error) {
             console.error(error);
@@ -190,7 +191,7 @@ export const useCategoryManager = () => {
         }
         try {
             setCategories(prev => prev.filter(c => c.id !== id));
-            await SupabaseService.deleteCategory(id);
+            await CategoryService.deleteCategory(id);
             addToast('Category deleted', 'success');
         } catch (error) {
             console.error(error);
@@ -208,7 +209,7 @@ export const useCategoryManager = () => {
 
         if (updates.length > 0) {
             try {
-                await Promise.all(updates.map(cat => SupabaseService.saveCategory(cat)));
+                await Promise.all(updates.map(cat => CategoryService.saveCategory(cat)));
             } catch (error) {
                 console.error(error);
                 addToast('Failed to save order', 'error');

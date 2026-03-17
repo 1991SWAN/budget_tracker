@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { SupabaseService } from '../services/supabaseService';
+import { AssetService } from '../services/assetService';
+import { TransactionService } from '../services/transactionService';
 import { Asset, AssetType, CategoryId, Transaction, TransactionType } from '../types';
 import type { ModalFormSetter, ModalSelectedItemSetter, ModalTypeSetter } from './modalTypes';
 
@@ -36,13 +37,13 @@ export const useAssetController = ({
     setModalType,
 }: UseAssetControllerOptions) => {
     const handleAssetAdd = useCallback(async (asset: Asset) => {
-        await SupabaseService.saveAsset(asset);
-        await SupabaseService.saveOpeningBalance({ asset_id: asset.id, amount: asset.initialBalance });
+        await AssetService.saveAsset(asset);
+        await AssetService.saveOpeningBalance({ asset_id: asset.id, amount: asset.initialBalance });
         setAssets(previous => [...previous, asset]);
     }, [setAssets]);
 
     const handleAssetDelete = useCallback(async (assetId: string) => {
-        await SupabaseService.deleteAsset(assetId);
+        await AssetService.deleteAsset(assetId);
         setAssets(previous => previous.filter(asset => asset.id !== assetId));
     }, [setAssets]);
 
@@ -56,8 +57,8 @@ export const useAssetController = ({
         if (mode === 'SETTING') {
             const correctedAsset = { ...editedAsset };
             delete (correctedAsset as any)._adjustmentMode;
-            await SupabaseService.saveAsset(correctedAsset);
-            await SupabaseService.saveOpeningBalance({ asset_id: correctedAsset.id, amount: correctedAsset.initialBalance });
+            await AssetService.saveAsset(correctedAsset);
+            await AssetService.saveOpeningBalance({ asset_id: correctedAsset.id, amount: correctedAsset.initialBalance });
             setAssets(previous => previous.map(asset => (
                 asset.id === correctedAsset.id ? correctedAsset : asset
             )));
@@ -66,7 +67,7 @@ export const useAssetController = ({
 
         const metadataOnly = { ...editedAsset, balance: previousAsset.balance };
         delete (metadataOnly as any)._adjustmentMode;
-        await SupabaseService.saveAsset(metadataOnly);
+        await AssetService.saveAsset(metadataOnly);
         setAssets(previous => previous.map(asset => (
             asset.id === metadataOnly.id ? metadataOnly : asset
         )));
@@ -86,7 +87,7 @@ export const useAssetController = ({
 
     const handleClearAssetHistory = useCallback(async (assetId: string) => {
         try {
-            await SupabaseService.deleteTransactionsByAsset(assetId);
+            await TransactionService.deleteTransactionsByAsset(assetId);
             setTransactions(previous => previous.filter(transaction => (
                 transaction.assetId !== assetId && transaction.toAssetId !== assetId
             )));

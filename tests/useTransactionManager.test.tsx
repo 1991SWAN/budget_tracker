@@ -15,8 +15,8 @@ vi.mock('../contexts/ToastContext', () => ({
     useToast: () => ({ addToast: mocks.addToast }),
 }));
 
-vi.mock('../services/supabaseService', () => ({
-    SupabaseService: {
+vi.mock('../services/transactionService', () => ({
+    TransactionService: {
         saveTransaction: mocks.saveTransaction,
         saveTransactions: mocks.saveTransactions,
         deleteTransaction: mocks.deleteTransaction,

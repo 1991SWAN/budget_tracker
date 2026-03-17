@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { ImportService } from '../services/importService';
-import { SupabaseService } from '../services/supabaseService';
+import { RecurringService } from '../services/recurringService';
 import { RegularCandidate, useGlobalRegularExpenseDetector } from './useRegularExpenseDetector';
 import { AssetType, CategoryId, CategoryItem, RecurringTransaction, Transaction, TransactionType, Asset, BillType } from '../types';
 import { normalizeCategoryId } from '../utils/category';
@@ -122,7 +122,7 @@ export const useTransactionController = ({
             billType: BillType.SUBSCRIPTION
         };
 
-        void SupabaseService.saveRecurring(nextRecurring);
+        void RecurringService.saveRecurring(nextRecurring);
         setRecurring(previous => [...previous, nextRecurring]);
         addToast('New regular bill added!', 'success');
     }, [addToast, defaultExpenseCategoryId, setRecurring]);

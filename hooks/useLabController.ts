@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { SupabaseService } from '../services/supabaseService';
+import { TransactionService } from '../services/transactionService';
 import { Transaction } from '../types';
 import { useToast } from '../contexts/ToastContext';
 
@@ -14,7 +14,7 @@ export const useLabController = () => {
         const fetchAll = async () => {
             setIsLoading(true);
             try {
-                const data = await SupabaseService.getTransactions(1000, 0);
+                const data = await TransactionService.getTransactions(1000, 0);
                 if (isMounted) setAllTransactions(data);
             } catch (error) {
                 console.error('Failed to fetch full history for Lab:', error);
@@ -33,7 +33,7 @@ export const useLabController = () => {
         setAllTransactions(previous => previous.map(tx => tx.id === updatedTx.id ? updatedTx : tx));
 
         try {
-            await SupabaseService.saveTransaction(updatedTx);
+            await TransactionService.saveTransaction(updatedTx);
         } catch (error) {
             console.error('Failed to save inline edit:', error);
         }
@@ -59,7 +59,7 @@ export const useLabController = () => {
         if (selectedTxIds.size === 0) return;
 
         try {
-            await SupabaseService.deleteTransactions(Array.from(selectedTxIds));
+            await TransactionService.deleteTransactions(Array.from(selectedTxIds));
             setAllTransactions(previous => previous.filter(tx => !selectedTxIds.has(tx.id)));
             clearSelection();
             addToast('Successfully deleted transactions.', 'success');

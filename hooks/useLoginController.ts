@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '../services/supabaseService';
+import { supabase } from '../services/dbClient';
 import { useToast } from '../contexts/ToastContext';
 
 export const useLoginController = () => {

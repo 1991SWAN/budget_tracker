@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Asset, AssetType, Transaction } from '../types';
-import { SupabaseService } from '../services/supabaseService';
+import { TransactionService } from '../services/transactionService';
 
 export const useAssetInstallments = (asset: Asset, activeTab: 'overview' | 'simulation' | 'installments') => {
     const [allInstallments, setAllInstallments] = useState<Transaction[]>([]);
@@ -16,7 +16,7 @@ export const useAssetInstallments = (asset: Asset, activeTab: 'overview' | 'simu
         const loadInstallments = async () => {
             setIsLoadingInstallments(true);
             try {
-                const data = await SupabaseService.getInstallmentsByAsset(asset.id);
+                const data = await TransactionService.getInstallmentsByAsset(asset.id);
                 if (mounted) {
                     setAllInstallments(data);
                 }

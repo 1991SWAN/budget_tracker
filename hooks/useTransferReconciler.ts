@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Transaction, TransactionType, Asset, AssetType, Category, CategoryItem } from '../types';
-import { SupabaseService } from '../services/supabaseService';
+import { TransactionService } from '../services/transactionService';
 
 interface TransferCandidate {
     withdrawal: Transaction; // The one that will be the SOURCE (Money Leaving)
@@ -35,7 +35,7 @@ export const useTransferReconciler = (
     const scanCandidates = useCallback(async () => {
         setIsScanning(true);
         try {
-            const { pairs, singles } = await SupabaseService.getReconciliationCandidates(1);
+            const { pairs, singles } = await TransactionService.getReconciliationCandidates(1);
             console.log(`[TransferReconciler] Received from server: ${pairs?.length || 0} Pairs, ${singles?.length || 0} Singles`);
 
             // Further filter by ignoredIds in memory for immediate UI response
@@ -86,7 +86,7 @@ export const useTransferReconciler = (
         };
 
         try {
-            await SupabaseService.linkTransactionsV3(sourceUpdate, targetUpdate);
+            await TransactionService.linkTransactionsV3(sourceUpdate, targetUpdate);
             // Session-level ignore to prevent reappearing during background refresh
             setIgnoredIds(prev => {
                 const updated = new Set(prev);
@@ -135,7 +135,7 @@ export const useTransferReconciler = (
 
         try {
             // New Logic: Create Counterpart Transaction Pair via Service
-            await SupabaseService.createTransferPair(transaction, targetAsset.id, targetCategoryId);
+            await TransactionService.createTransferPair(transaction, targetAsset.id, targetCategoryId);
 
             // Session-level ignore
             setIgnoredIds(prev => {
@@ -160,7 +160,7 @@ export const useTransferReconciler = (
 
         try {
             // Update in DB
-            await SupabaseService.saveTransaction({
+            await TransactionService.saveTransaction({
                 ...txToIgnore,
                 isReconciliationIgnored: true
             });

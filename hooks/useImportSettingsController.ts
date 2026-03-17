@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ImportPreset, ImportService } from '../services/importService';
-import { SupabaseService } from '../services/supabaseService';
+import { AssetService } from '../services/assetService';
 import { Asset } from '../types';
 
 export const useImportSettingsController = () => {
@@ -9,7 +9,7 @@ export const useImportSettingsController = () => {
 
     const loadData = useCallback(async () => {
         setPresets(ImportService.getPresets());
-        const assetList = await SupabaseService.getAssets();
+        const assetList = await AssetService.getAssets();
         setAssets(assetList);
     }, []);
 

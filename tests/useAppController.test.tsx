@@ -138,17 +138,37 @@ vi.mock('../services/importService', () => ({
     },
 }));
 
-vi.mock('../services/supabaseService', () => ({
-    SupabaseService: {
+vi.mock('../services/assetService', () => ({
+    AssetService: {
         getAssets: vi.fn(),
-        saveProfile: vi.fn(),
-        saveRecurring: vi.fn(),
-        saveGoal: vi.fn(),
-        deleteRecurring: vi.fn(),
-        deleteGoal: vi.fn(),
         saveAsset: vi.fn(),
         saveOpeningBalance: vi.fn(),
         deleteAsset: vi.fn(),
+    },
+}));
+
+vi.mock('../services/profileService', () => ({
+    ProfileService: {
+        saveProfile: vi.fn(),
+    },
+}));
+
+vi.mock('../services/recurringService', () => ({
+    RecurringService: {
+        saveRecurring: vi.fn(),
+        deleteRecurring: vi.fn(),
+    },
+}));
+
+vi.mock('../services/goalService', () => ({
+    GoalService: {
+        saveGoal: vi.fn(),
+        deleteGoal: vi.fn(),
+    },
+}));
+
+vi.mock('../services/transactionService', () => ({
+    TransactionService: {
         deleteTransactionsByAsset: vi.fn(),
     },
 }));
