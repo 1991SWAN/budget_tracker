@@ -15,7 +15,9 @@ import {
   normalizeReviewMemo,
   selectNeedsReviewTarget
 } from '../utils/importNeedsReview';
+import { buildPdfImportGrid } from '../utils/pdfImportGrid';
 import { getTransactionTagNames } from '../utils/transactionDetails';
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 export interface ColumnMapping {
   dateIndex: number;
@@ -45,6 +47,21 @@ export interface ImportPreset {
 }
 
 const PRESET_STORAGE_KEY = 'smartpenny_import_presets';
+const MAPPING_SAMPLE_ROW_LIMIT = 20;
+let pdfJsModulePromise: Promise<typeof import('pdfjs-dist/legacy/build/pdf.mjs')> | null = null;
+
+const loadPdfJsModule = async () => {
+  if (!pdfJsModulePromise) {
+    pdfJsModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs').then((pdfjs) => {
+      if (pdfjs.GlobalWorkerOptions?.workerSrc !== pdfWorkerUrl) {
+        pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+      }
+      return pdfjs;
+    });
+  }
+
+  return pdfJsModulePromise;
+};
 
 export type ImportCell = string | number | boolean | Date | null | undefined;
 export type ImportGridRow = ImportCell[];
@@ -85,7 +102,43 @@ export interface InvalidImportRow {
   reason?: string;
 }
 
+const DEFAULT_COLUMN_MAPPING: ColumnMapping = {
+  dateIndex: -1,
+  timeIndex: -1,
+  amountIndex: -1,
+  amountInIndex: -1,
+  amountOutIndex: -1,
+  memoIndex: -1,
+  memoIndices: [],
+  typeIndex: -1,
+  assetIndex: -1,
+  toAssetIndex: -1,
+  categoryIndex: -1,
+  merchantIndex: -1,
+  tagIndex: -1,
+  installmentIndex: -1,
+};
+
 export const ImportService = {
+  getDefaultMapping: (): ColumnMapping => ({ ...DEFAULT_COLUMN_MAPPING, memoIndices: [] }),
+
+  suggestMappingFromColumns: (columns: ColumnAnalysis[]): ColumnMapping => {
+    const next = ImportService.getDefaultMapping();
+    const ranked = [...columns]
+      .filter(column => column.suggestedField && column.confidence > 0)
+      .sort((left, right) => right.confidence - left.confidence || left.index - right.index);
+
+    ranked.forEach((column) => {
+      const field = column.suggestedField;
+      if (!field) return;
+      const currentValue = next[field];
+
+      if (typeof currentValue === 'number' && currentValue >= 0) return;
+      next[field] = column.index as never;
+    });
+
+    return next;
+  },
 
   /**
    * Parses a flexible date/time string or Excel serial number.
@@ -297,8 +350,8 @@ export const ImportService = {
     // Use displayGrid for UI preview, fallback to rawGrid
     const uiGrid = displayGrid || grid;
     
-    // Extract first 20 rows of the file for the UI preview
-    const previewRows = uiGrid.slice(0, 20);
+    // Keep the mapping canvas lightweight by limiting the preview sample rows.
+    const previewRows = uiGrid.slice(0, MAPPING_SAMPLE_ROW_LIMIT);
     const headerIndex = ImportService.discoverHeaderIndex(grid);
     const headers = grid[headerIndex] || [];
     
@@ -658,11 +711,63 @@ export const ImportService = {
   selectNeedsReviewTarget,
 
   /**
-   * Reads a file (CSV or Excel) and returns raw 2D array data.
+   * Reads a file (CSV, Excel, or text-based PDF) and returns raw 2D array data.
    */
   parseFileToGrid: async (file: File): Promise<{ rawGrid: ImportGrid, displayGrid: ImportGrid }> => {
-    const { read, utils } = await import('xlsx');
     const buffer = await file.arrayBuffer();
+
+    if (file.name.match(/\.pdf$/i)) {
+      const pdfjs = await loadPdfJsModule();
+      const loadingTask = pdfjs.getDocument({
+        data: buffer,
+        useWorkerFetch: false,
+        isEvalSupported: false,
+      });
+
+      try {
+        const pdf = await loadingTask.promise;
+        const pages = [];
+
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+          const page = await pdf.getPage(pageNumber);
+          const textContent = await page.getTextContent();
+          pages.push({
+            items: textContent.items
+              .filter((item): item is {
+                str: string;
+                transform: number[];
+                width?: number;
+                height?: number;
+              } => (
+                'str' in item &&
+                typeof item.str === 'string' &&
+                Array.isArray(item.transform)
+              ))
+              .map(item => ({
+                str: item.str,
+                transform: item.transform,
+                width: item.width,
+                height: item.height,
+              })),
+          });
+          page.cleanup();
+        }
+
+        const grid = buildPdfImportGrid(pages);
+        if (grid.length === 0) {
+          throw new Error('No extractable text found in PDF');
+        }
+
+        return {
+          rawGrid: grid,
+          displayGrid: grid,
+        };
+      } finally {
+        await loadingTask.destroy();
+      }
+    }
+
+    const { read, utils } = await import('xlsx');
 
     const parseWorkbook = (wb: any) => {
       const sheetName = wb.SheetNames[0];
@@ -847,7 +952,9 @@ export const ImportService = {
   ): { transactions?: Partial<Transaction>[], reason?: string } => {
     try {
       const dateVal = row[mapping.dateIndex];
-      const memoVal = row[mapping.memoIndex];
+      const memoVal = mapping.memoIndex !== undefined && mapping.memoIndex >= 0
+        ? row[mapping.memoIndex]
+        : undefined;
 
       // --- Asset Resolution (ULTRA-STRICT) ---
       let currentAssetId = defaultAssetId;

@@ -33,6 +33,16 @@ interface ImportWizardModalProps {
 
 
 export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, onClose, onConfirm, initialFile, assetId, assets, categories }) => {
+    const createDefaultMapping = React.useCallback(() => ImportService.getDefaultMapping(), []);
+    const getFileReadErrorMessage = React.useCallback((fileName: string, err: unknown) => {
+        const base = fileName.toLowerCase().endsWith('.pdf')
+            ? 'Could not read this PDF.'
+            : 'Could not read the file.';
+
+        const detail = err instanceof Error ? err.message.trim() : '';
+        return detail ? `${base} ${detail}` : `${base} Please upload it again.`;
+    }, []);
+
     // Steps: UPLOAD -> ASSET_SELECTION -> MAPPING -> PREVIEW
     const [step, setStep] = useState<'UPLOAD' | 'ASSET_SELECTION' | 'MAPPING' | 'PREVIEW'>('UPLOAD');
     const [isDragging, setIsDragging] = useState(false);
@@ -46,21 +56,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
     const [targetAssetId, setTargetAssetId] = useState(assetId || 'dynamic'); // 'dynamic' means use column mapping
 
     // Mapping State
-    const [mapping, setMapping] = useState<ColumnMapping>({
-        dateIndex: -1,
-        timeIndex: -1,
-        amountIndex: -1,
-        amountInIndex: -1,
-        amountOutIndex: -1,
-        memoIndex: -1,
-        memoIndices: [],
-        assetIndex: -1,
-        toAssetIndex: -1,
-        categoryIndex: -1,
-        merchantIndex: -1,
-        tagIndex: -1,
-        installmentIndex: -1,
-    });
+    const [mapping, setMapping] = useState<ColumnMapping>(createDefaultMapping);
 
     // Preset State
     const [selectedPresetId, setSelectedPresetId] = useState<string>('custom');
@@ -116,21 +112,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             setImportRows([]);
             setColumnAnalyses([]);
             setFileName('');
-            setMapping({
-                dateIndex: -1,
-                timeIndex: -1,
-                amountIndex: -1,
-                amountInIndex: -1,
-                amountOutIndex: -1,
-                memoIndex: -1,
-                memoIndices: [],
-                assetIndex: -1,
-                toAssetIndex: -1,
-                categoryIndex: -1,
-                merchantIndex: -1,
-                tagIndex: -1,
-                installmentIndex: -1,
-            });
+            setMapping(createDefaultMapping());
             setTargetAssetId(assetId || 'dynamic');
             setPresetName('');
             setMatchingPreset(null);
@@ -162,10 +144,11 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                 setFileName(initialFile.name);
                 setColumnAnalyses(analysisResult.columns);
                 setHeaderIndex(analysisResult.headerIndex);
+                setMapping(ImportService.suggestMappingFromColumns(analysisResult.columns));
             } catch (err) {
                 console.error('Failed to parse initial file:', err);
                 if (!cancelled) {
-                    addToast('Could not read the file. Please upload it again.', 'error');
+                    addToast(getFileReadErrorMessage(initialFile.name, err), 'error');
                     setRawData([]);
                     setColumnAnalyses([]);
                     setHeaderIndex(0);
@@ -176,7 +159,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
         })();
 
         return () => { cancelled = true; };
-    }, [isOpen, initialFile, addToast]);
+    }, [isOpen, initialFile, addToast, getFileReadErrorMessage]);
 
     // Handle DB Hash Bank Loading on Date Mapping
     useEffect(() => {
@@ -226,6 +209,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             const analysisResult = ImportService.analyzeColumns(cleanRaw, cleanDisplay);
             setColumnAnalyses(analysisResult.columns);
             setHeaderIndex(analysisResult.headerIndex);
+            setMapping(ImportService.suggestMappingFromColumns(analysisResult.columns));
             
             setStep('ASSET_SELECTION');
         } catch (err) {
@@ -396,7 +380,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             processFileGrid(result, file.name);
         } catch (err) {
             console.error(err);
-            addToast('Could not read the file. Please upload it again.', 'error');
+            addToast(getFileReadErrorMessage(file.name, err), 'error');
             setStep('UPLOAD');
         }
     };
@@ -553,7 +537,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
             processFileGrid(result, file.name);
         } catch (err) {
             console.error(err);
-            addToast('Could not read the file. Please upload it again.', 'error');
+            addToast(getFileReadErrorMessage(file.name, err), 'error');
             setStep('UPLOAD');
         }
     };
@@ -646,7 +630,7 @@ export const ImportWizardModal: React.FC<ImportWizardModalProps> = ({ isOpen, on
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileChange}
-                accept=".csv, .xls, .xlsx"
+                accept=".csv, .xls, .xlsx, .pdf"
                 className="hidden"
             />
         </div>

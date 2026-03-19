@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { ColumnMapping, ImportGrid, ImportRow, ImportService } from '../services/importService';
 import { Asset, AssetType, ImportReconciliationCandidate, TransactionType } from '../types';
 
+vi.mock('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url', () => ({
+    default: '/pdf.worker.min.mjs',
+}));
+
 const createIncomeRow = (overrides: Partial<ImportRow> = {}): ImportRow => ({
     index: 1,
     data: [],
@@ -498,6 +502,18 @@ describe('ImportService type mapping', () => {
         }));
     });
 
+    it('limits mapping sample rows to keep the mapping canvas compact', () => {
+        const grid: ImportGrid = [['거래일자', '적요']];
+        for (let i = 1; i <= 25; i += 1) {
+            grid.push([`2026-03-${String(i).padStart(2, '0')}`, `row-${i}`]);
+        }
+
+        const result = ImportService.analyzeColumns(grid);
+
+        expect(result.columns[0].sampleValues).toHaveLength(20);
+        expect(result.columns[1].sampleValues?.at(-1)).toBe('row-19');
+    });
+
     it('keeps imported merchant and tags structured instead of appending them to memo', () => {
         const result = ImportService.validateRow(
             ['2026-03-13', 'Coffee with client', '12,000', 'Blue Bottle Gangnam', 'coffee shop; client'],
@@ -633,6 +649,69 @@ describe('ImportService type mapping', () => {
             status: 'invalid',
             reason: 'Invalid Date',
             data: grid[5],
+        }));
+    });
+
+    it('suggests a merchant-only mapping for statement-style grids without a separate memo column', () => {
+        const mapping = ImportService.suggestMappingFromColumns([
+            {
+                index: 0,
+                header: '이용 일자',
+                dataType: 'date',
+                sampleValues: ['02/08'],
+                uniqueValueCount: 10,
+                confidence: 0.9,
+                suggestedField: 'dateIndex',
+            },
+            {
+                index: 1,
+                header: '이용가맹점',
+                dataType: 'text',
+                sampleValues: ['위캔디(WE CAN D)'],
+                uniqueValueCount: 10,
+                confidence: 0.8,
+                suggestedField: 'merchantIndex',
+            },
+            {
+                index: 2,
+                header: '이용금액',
+                dataType: 'number',
+                sampleValues: ['5,000'],
+                uniqueValueCount: 10,
+                confidence: 0.9,
+                suggestedField: 'amountIndex',
+            },
+        ]);
+
+        expect(mapping).toEqual(expect.objectContaining({
+            dateIndex: 0,
+            merchantIndex: 1,
+            amountIndex: 2,
+            memoIndex: -1,
+        }));
+    });
+
+    it('maps rows successfully when only merchant is mapped and memo is absent', () => {
+        const mapping: ColumnMapping = {
+            ...ImportService.getDefaultMapping(),
+            dateIndex: 0,
+            merchantIndex: 1,
+            amountIndex: 2,
+        };
+
+        const grid: ImportGrid = [
+            ['이용 일자', '이용가맹점', '이용금액'],
+            ['2026-03-13', '스타벅스 강남점', '6300'],
+        ];
+
+        const rows = ImportService.mapRawDataToImportRows(grid, mapping, 'asset-1', [createAsset()], [], 0);
+
+        expect(rows).toHaveLength(1);
+        expect(rows[0].status).toBe('valid');
+        expect(rows[0].transaction).toEqual(expect.objectContaining({
+            memo: '',
+            merchant: '스타벅스 강남점',
+            amount: 6300,
         }));
     });
 });

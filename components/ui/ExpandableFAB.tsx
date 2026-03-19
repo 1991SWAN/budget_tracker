@@ -182,7 +182,7 @@ export const ExpandableFAB: React.FC<ExpandableFABProps> = ({
                 ref={fileInputRef}
                 onChange={handleFileChange}
                 className="hidden"
-                accept=".csv,.xls,.xlsx"
+                accept=".csv,.xls,.xlsx,.pdf"
             />
         </div>
     );

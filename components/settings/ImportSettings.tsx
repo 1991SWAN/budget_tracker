@@ -95,7 +95,7 @@ export const ImportSettings: React.FC<ImportSettingsProps> = ({ onNavigate, onIm
                     ref={fileInputRef}
                     onChange={handleFileChange}
                     className="hidden"
-                    accept=".csv,.xls,.xlsx"
+                    accept=".csv,.xls,.xlsx,.pdf"
                 />
             </div>
 

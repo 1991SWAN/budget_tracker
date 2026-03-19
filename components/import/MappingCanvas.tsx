@@ -10,6 +10,7 @@ interface MappingCanvasProps {
 }
 
 type RequirementType = 'mandatory' | 'oneOf';
+const MAPPING_SAMPLE_ROW_LIMIT = 20;
 const SYSTEM_FIELDS: { key: keyof ColumnMapping | 'amount_combined'; label: string; required?: RequirementType; description: string }[] = [
   { key: 'dateIndex', label: 'Date', required: 'mandatory', description: 'Transaction Date' },
   { key: 'timeIndex', label: 'Time', description: 'Transaction Time (Optional)' },
@@ -88,13 +89,16 @@ export const MappingCanvas: React.FC<MappingCanvasProps> = ({
       setActivePopover(null);
   };
 
-  const hasMandatory = mapping.dateIndex !== undefined && mapping.dateIndex >= 0 && 
-                       mapping.memoIndex !== undefined && mapping.memoIndex >= 0;
+  const hasDate = mapping.dateIndex !== undefined && mapping.dateIndex >= 0;
+  const hasDetails = (
+    (mapping.memoIndex !== undefined && mapping.memoIndex >= 0) ||
+    (mapping.merchantIndex !== undefined && mapping.merchantIndex >= 0)
+  );
   const hasOneOfAmount = 
       (mapping.amountIndex !== undefined && mapping.amountIndex >= 0) || 
       (mapping.amountInIndex !== undefined && mapping.amountInIndex >= 0) || 
       (mapping.amountOutIndex !== undefined && mapping.amountOutIndex >= 0);
-  const isComplete = hasMandatory && hasOneOfAmount;
+  const isComplete = hasDate && hasDetails && hasOneOfAmount;
 
   const getMappedFieldForColumn = (colIndex: number) => {
       for (const [key, val] of Object.entries(mapping)) {
@@ -223,7 +227,7 @@ export const MappingCanvas: React.FC<MappingCanvasProps> = ({
 
                             {/* Data Context */}
                             <div className="flex flex-col pt-3 pointer-events-none w-full">
-                                {(analysis.sampleValues || []).slice(0, 20).map((sample, idx) => (
+                                {(analysis.sampleValues || []).slice(0, MAPPING_SAMPLE_ROW_LIMIT).map((sample, idx) => (
                                     <div 
                                         key={idx} 
                                         className="text-[13px] text-slate-500 font-medium tracking-tight truncate w-full h-[32px] flex items-center shrink-0 border-b border-slate-100/50 px-4 transition-colors hover:bg-slate-50"
